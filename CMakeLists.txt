@@ -296,12 +296,15 @@ src/addons/spi_analog_ads1256.cpp
 src/addons/gamepad_usb_host.cpp
 src/addons/gamepad_usb_host_listener.cpp
 src/addons/tg16_input.cpp
+src/addons/uart_link.cpp
+src/addons/wireless_receiver.cpp
 src/animationstation/animation.cpp
 src/animationstation/animationstation.cpp
 src/animationstation/effects/chase.cpp
 src/animationstation/effects/customtheme.cpp
 src/animationstation/effects/customthemepressed.cpp
 src/animationstation/effects/rainbow.cpp
+src/animationstation/effects/rainbowwave.cpp
 src/animationstation/effects/staticcolor.cpp
 src/animationstation/effects/statictheme.cpp
 src/hosts/DualsensePS5Host.cpp
@@ -389,7 +392,7 @@ install(FILES
     DESTINATION .
 )
 
-if (NOT (DEFINED ENV(CI)) AND (EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake))
+if (NOT DEFINED ENV{CI} AND EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake)
   message(STATUS "Found custom script.")
 	include(${CMAKE_SOURCE_DIR}/modules/Custom.cmake)
 endif()

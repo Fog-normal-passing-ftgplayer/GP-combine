@@ -1,0 +1,71 @@
+"""向导的共享状态与本地持久化。"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any
+
+from .app_config import state_file
+from .layout_model import Layout
+
+
+@dataclass
+class WizardState:
+    port: str = ""
+    cli_path: str = ""
+    source_dir: str = ""
+    background_src: str = ""
+    background_mode: str = "cover"
+    default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
+    layout: Layout = field(default_factory=Layout.preset)
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["version"] = 1
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "WizardState":
+        s = cls()
+        s.port = str(d.get("port", ""))
+        s.cli_path = str(d.get("cli_path", ""))
+        s.source_dir = str(d.get("source_dir", ""))
+        s.background_src = str(d.get("background_src", ""))
+        s.background_mode = str(d.get("background_mode", "cover"))
+        try:
+            s.default_layout = int(d.get("default_layout", 1))
+        except Exception:
+            s.default_layout = 1
+        if isinstance(d.get("layout"), dict):
+            try:
+                s.layout = Layout.from_dict(d["layout"])
+            except Exception:
+                s.layout = Layout.preset()
+        return s
+
+    def save(self) -> None:
+        try:
+            state_file().parent.mkdir(parents=True, exist_ok=True)
+            state_file().write_text(
+                json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    @classmethod
+    def load(cls) -> "WizardState":
+        try:
+            if state_file().exists():
+                return cls.from_dict(json.loads(state_file().read_text(encoding="utf-8")))
+        except Exception:
+            pass
+        return cls()
+
+
+def source_ready(source_dir: str) -> bool:
+    if not source_dir:
+        return False
+    p = Path(source_dir)
+    return (p / "esp32" / "esp32.ino").is_file()

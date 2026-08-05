@@ -197,6 +197,10 @@ void AnimationStation::SetMode(uint8_t mode) {
     this->baseAnimation = new CustomTheme(matrix);
     this->buttonAnimation = new CustomThemePressed(matrix, lastPressed);
     break;
+  case static_cast<AnimationEffects>(ANIM_RAINBOW_WAVE):
+    this->baseAnimation = new RainbowWave(matrix);
+    this->buttonAnimation = new StaticColor(matrix, lastPressed);
+    break;
   default:
     this->baseAnimation = new StaticColor(matrix);
     this->buttonAnimation = new StaticColor(matrix, lastPressed);

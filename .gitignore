@@ -5,6 +5,10 @@ node_modules/
 configs/MyBoard
 .DS_Store
 build/
+build_fusion/
+build_receiver/
+esp32/build/
+pico/build/
 
 .*.sw*
 compile_commands.json

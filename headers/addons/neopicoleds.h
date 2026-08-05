@@ -64,6 +64,10 @@
 #define LEDS_RAINBOW_CYCLE_TIME 40
 #endif
 
+#ifndef LEDS_FLOW_CYCLE_TIME
+#define LEDS_FLOW_CYCLE_TIME 40
+#endif
+
 #ifndef LEDS_CHASE_CYCLE_TIME
 #define LEDS_CHASE_CYCLE_TIME 85
 #endif
@@ -255,6 +259,13 @@ private:
     PLEDType ledType;
     GamepadHotkey lastAmbientAction;
     uint32_t frame[100];
+    // cached animation options for runtime hot-swap detection
+    uint8_t lastAnimIndex;
+    uint8_t lastBrightness;
+    uint8_t lastStaticColor;
+    uint16_t lastChase;
+    uint16_t lastRainbow;
+    uint16_t lastFlow;
 
     // Ambient neopico leds
 	float alBrightnessBreathX;

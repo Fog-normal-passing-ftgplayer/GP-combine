@@ -33,6 +33,8 @@
 #include "addons/gamepad_usb_host.h"
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
+#include "addons/uart_link.h"
+#include "addons/wireless_receiver.h"
 
 // Pico includes
 #include "pico/bootrom.h"
@@ -121,6 +123,8 @@ void GP2040::setup() {
 	addons.LoadAddon(new ReverseInput());
 	addons.LoadAddon(new TurboInput()); // Turbo overrides button states and should be close to the end
 	addons.LoadAddon(new InputMacro());
+	addons.LoadAddon(new UARTLinkAddon());
+	addons.LoadAddon(new WirelessReceiverAddon());
 
 	// Use the old method of selecting input mode via mapped button, i.e. AFTER initializing GPIO
 	// pins with the currently active profile. Calling this even if the GPIO-mapped selection is

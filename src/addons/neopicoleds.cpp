@@ -288,9 +288,15 @@ void NeoPicoLEDAddon::setup() {
 	// Configure Animation Station
     const AnimationOptions & animationOptions = Storage::getInstance().getAnimationOptions();
     as.ConfigureBrightness(ledOptions.brightnessMaximum, ledOptions.brightnessSteps);
-	as.SetMatrix(matrix);
+    as.SetMatrix(matrix);
     as.SetMode(animationOptions.baseAnimationIndex);
 	as.SetBrightness(animationOptions.brightness);
+	lastAnimIndex = (uint8_t)animationOptions.baseAnimationIndex;
+	lastBrightness = (uint8_t)as.GetBrightness();
+	lastStaticColor = (uint8_t)animationOptions.staticColorIndex;
+	lastChase = (uint16_t)animationOptions.chaseCycleTime;
+	lastRainbow = (uint16_t)animationOptions.rainbowCycleTime;
+	lastFlow = (uint16_t)animationOptions.flowCycleTime;
 
 	// Next Run
     nextRunTime = make_timeout_time_ms(0); // Reset timeout
@@ -507,6 +513,24 @@ void NeoPicoLEDAddon::process() {
     const LEDOptions& ledOptions = Storage::getInstance().getLedOptions();
     if (!isValidPin(ledOptions.dataPin) || !time_reached(this->nextRunTime))
         return;
+
+    // hot-swap animation options changed at runtime (e.g. via the ESP32 link)
+    const AnimationOptions &aOpts = Storage::getInstance().getAnimationOptions();
+    if (aOpts.baseAnimationIndex != lastAnimIndex ||
+        aOpts.brightness != lastBrightness ||
+        (uint16_t)aOpts.staticColorIndex != lastStaticColor ||
+        (uint16_t)aOpts.chaseCycleTime != lastChase ||
+        (uint16_t)aOpts.rainbowCycleTime != lastRainbow ||
+        (uint16_t)aOpts.flowCycleTime != lastFlow) {
+        as.SetMode((uint8_t)aOpts.baseAnimationIndex);
+        as.SetBrightness((uint8_t)aOpts.brightness);
+        lastAnimIndex = (uint8_t)aOpts.baseAnimationIndex;
+        lastBrightness = (uint8_t)as.GetBrightness();
+        lastStaticColor = (uint8_t)aOpts.staticColorIndex;
+        lastChase = (uint16_t)aOpts.chaseCycleTime;
+        lastRainbow = (uint16_t)aOpts.rainbowCycleTime;
+        lastFlow = (uint16_t)aOpts.flowCycleTime;
+    }
 
     // Get turbo options (turbo RGB led)
     const TurboOptions& turboOptions = Storage::getInstance().getAddonOptions().turboOptions;

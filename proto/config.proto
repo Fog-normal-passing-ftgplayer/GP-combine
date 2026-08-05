@@ -52,6 +52,7 @@ message GamepadOptions
     optional uint32 usbVendorID = 31;
     optional uint32 miniMenuGamepadInput = 32;
     optional InputModeDeviceType inputDeviceType = 33;
+    optional bool wirelessPaired = 34; // receiver: paired with a sender yet
 }
 
 message KeyboardMapping
@@ -395,6 +396,7 @@ message AnimationOptions
     optional float alStaticBrightnessCustomThemeX = 54;     // static custom theme brightness
     optional uint32 alCustomStaticThemeIndex = 55;          // custom theme index
     optional uint32 alCustomStaticColorIndex = 56;          // static color index
+    optional uint32 flowCycleTime = 57;                     // rainbow flow speed (ms)
 }
 
 message BootselButtonOptions

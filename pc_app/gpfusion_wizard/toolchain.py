@@ -83,7 +83,8 @@ def install_core_cmd(cli: Path) -> list[str]:
 
 
 def git_clone_cmd(url: str, dest: Path) -> list[str]:
-    return ["git", "clone", "--progress", url, str(dest)]
+    # --recursive: GP2040-CE 依赖 lib/tinyusb 等子模块
+    return ["git", "clone", "--progress", "--recursive", url, str(dest)]
 
 
 def core_install_cmd(cli: Path) -> list[str]:

@@ -836,9 +836,11 @@ void eggInput(uint8_t d) {
     } else {
       eggSeq = (d == 0x08) ? 1 : 0;  // 按错就从当前按键重新数
     }
-  } else {
+  } else if (d) {
+    // 上/下等其它方向输入：打断计数
     eggSeq = 0;
   }
+  // d == 0（pico 每 50ms 的心跳帧）：保持计数
 }
 
 void renderEaster() {
@@ -1557,7 +1559,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     if (view == VIEW_MENU) {
       if (dEdge & 0x04) menuMove(-1); // DPAD LEFT
       if (dEdge & 0x08) menuMove(+1); // DPAD RIGHT
-      eggInput(dEdge & 0x0C);         // 彩蛋：右左...12 连击
+      eggInput(dEdge);                // 彩蛋：右左...12 连击
+      if (bEdge) eggSeq = 0;          // 按键打断彩蛋计数
       if (bEdge & 0x01) { // B1 / A = enter sub-page
         view = VIEW_SUB;
         subPage = page;

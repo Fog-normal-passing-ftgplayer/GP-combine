@@ -47,6 +47,7 @@
 #define VIEW_LAYOUT 0   // default: button layout + status
 #define VIEW_MENU   1   // sliding square menu (enter: hold S2 3s)
 #define VIEW_SUB    2   // sub-page of the selected menu item
+#define VIEW_EASTER 3   // 彩蛋：紫树落叶
 
 // ---- menu layout: LANDSCAPE content 240x135 ----
 // Driver init, OX/OY offsets and the 135x240 window stay untouched;
@@ -677,7 +678,7 @@ void saverWake() {
 
 void saverTick() {
   int mode = sleepOpts[0].value;
-  if (mode > 0 && sleepOpts[1].value > 0 && !saverActive &&
+  if (view != VIEW_EASTER && mode > 0 && sleepOpts[1].value > 0 && !saverActive &&
       millis() - lastActivity >= (unsigned long)sleepOpts[1].value * 1000UL) {
     saverActive = true;
     saverEntered = millis();
@@ -802,6 +803,72 @@ void renderSaver() {
     case 4: drawSaverToast(); break;
     case 5: drawSaverMatrix(); break;
     default: lfbFill(COL_BG);
+  }
+}
+
+// ---- 彩蛋：紫树落叶（菜单里 右左右左... 12 连击触发） ----
+static int eggSeq = 0;
+#define EASTER_LEAVES 16
+static int elX[EASTER_LEAVES], elY[EASTER_LEAVES], elS[EASTER_LEAVES];
+unsigned long easterFrameMs = 0;
+
+void eggInit() {
+  for (int i = 0; i < EASTER_LEAVES; i++) {
+    elX[i] = (int)(saverRand() % 240);
+    elY[i] = -(int)(saverRand() % 30);
+    elS[i] = 1 + (int)(saverRand() % 3);
+  }
+}
+
+void eggInput(uint8_t d) {
+  if (d & 0x0C) { // 右(0x08)左(0x04)交替 12 连击
+    int expect = (eggSeq % 2 == 0) ? 0x08 : 0x04;
+    if (d == expect) {
+      eggSeq++;
+      if (eggSeq >= 12) {
+        eggSeq = 0;
+        animating = false;
+        pendingDir = 0;
+        eggInit();
+        view = VIEW_EASTER;
+        redrawNeeded = true;
+      }
+    } else {
+      eggSeq = (d == 0x08) ? 1 : 0;  // 按错就从当前按键重新数
+    }
+  } else {
+    eggSeq = 0;
+  }
+}
+
+void renderEaster() {
+  lfbFill(RGB565(140, 195, 235));   // 天空
+  // 紫色树干
+  lfbRect(112, 70, 16, 65, RGB565(115, 55, 165));
+  lfbRect(104, 98, 32, 37, RGB565(115, 55, 165));
+  lfbRect(118, 58, 4, 14, RGB565(115, 55, 165));   // 顶枝
+  lfbRect(100, 54, 4, 10, RGB565(115, 55, 165));   // 左枝
+  lfbRect(136, 54, 4, 10, RGB565(115, 55, 165));   // 右枝
+  // 红色树冠
+  drawDisc(120, 42, 26, RGB565(215, 55, 55));
+  drawDisc(90, 52, 20, RGB565(180, 40, 40));
+  drawDisc(150, 52, 20, RGB565(180, 40, 40));
+  drawDisc(120, 26, 18, RGB565(235, 95, 70));
+  drawDisc(75, 44, 14, RGB565(180, 40, 40));
+  drawDisc(165, 44, 14, RGB565(180, 40, 40));
+  // 落叶：从顶部飘落，带左右摆动
+  unsigned long t = millis() / 40;
+  for (int i = 0; i < EASTER_LEAVES; i++) {
+    elY[i] += elS[i];
+    int x = elX[i] + (int)((t + i * 7) % 13) - 6;
+    if (x < 0) x = 0;
+    if (x > 239) x = 239;
+    if (elY[i] > 134) {
+      elY[i] = -(int)(saverRand() % 24);
+      elX[i] = (int)(saverRand() % 240);
+      elS[i] = 1 + (int)(saverRand() % 3);
+    }
+    drawDisc(x, elY[i], 1, RGB565(225, 45, 45));
   }
 }
 
@@ -1287,6 +1354,8 @@ void renderScene(int16_t outX, int16_t inX) {
     drawInputHistory();
   } else if (view == VIEW_SUB) {
     renderSub();
+  } else if (view == VIEW_EASTER) {
+    renderEaster();
   } else {
     lfbFill(COL_BG);
     drawPageContent(outX, page);
@@ -1488,6 +1557,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     if (view == VIEW_MENU) {
       if (dEdge & 0x04) menuMove(-1); // DPAD LEFT
       if (dEdge & 0x08) menuMove(+1); // DPAD RIGHT
+      eggInput(dEdge & 0x0C);         // 彩蛋：右左...12 连击
       if (bEdge & 0x01) { // B1 / A = enter sub-page
         view = VIEW_SUB;
         subPage = page;
@@ -1510,6 +1580,15 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       }
       if (bEdge & 0x02) { // B2 / B = cancel -> back to layout
         view = VIEW_LAYOUT;
+        animating = false;
+        pendingDir = 0;
+        redrawNeeded = true;
+      }
+      s2PressStart = 0;
+    } else if (view == VIEW_EASTER) {
+      if (bEdge || dEdge) { // 任意输入退出彩蛋，回到菜单
+        view = VIEW_MENU;
+        page = 0;
         animating = false;
         pendingDir = 0;
         redrawNeeded = true;
@@ -1659,6 +1738,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       s2WasHeld = s2Held;
       if (s2PressStart && millis() - s2PressStart >= 3000) {
         s2PressStart = 0;
+        eggSeq = 0;
         view = VIEW_MENU;
         redrawNeeded = true;
       }
@@ -1788,6 +1868,10 @@ void loop(){
     redrawNeeded = true;
   }
   saverTick();
+  if (view == VIEW_EASTER && millis() - easterFrameMs >= 40) { // 彩蛋动画 ~25fps
+    easterFrameMs = millis();
+    redrawNeeded = true;
+  }
   // wireless: forward full gamepad state + mode over nRF24
   if (radioUp) {
     uint8_t pkt[15];

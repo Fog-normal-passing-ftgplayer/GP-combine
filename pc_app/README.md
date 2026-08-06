@@ -74,9 +74,12 @@ Windows：双击 `build_windows.bat`（自动建虚拟环境、装依赖、打�
 - **克隆完成后提示“仓库中没有 esp32/esp32.ino”**：上游 GP2040-CE 仓库不含
   ESP32 固件目录，必须使用包含 `esp32/` 的 GP-Fusion fork 地址，或用
   “选择已有文件夹”直接指定。
-- **arduino-cli 下载慢/失败**：可手动下载对应平台的 arduino-cli 放到
-  `~/.gpfusion/tools/arduino-cli/`（Windows 为
-  `%LOCALAPPDATA%\GPFusion\tools\arduino-cli\`），软件会自动识别。
+- **arduino-cli 安装方式**：软件不再自动下载，而是引导用户用系统包管理器安装——
+  Windows 点击后自动执行 `winget install ArduinoSA.CLI`；
+  Linux 会提示自行运行 `sudo pacman -S arduino-cli` 或
+  `sudo apt install arduino-cli`，装好后点「刷新检测」继续。
+  也可以手动把 arduino-cli 放到 `~/.gpfusion/tools/arduino-cli/`
+  （Windows 为 `%LOCALAPPDATA%\GPFusion\tools\arduino-cli\`），软件会自动识别。
 - **ESP32-S3 检测不到**：检查 USB 线是否为数据线；Windows 首次使用原生
   USB 串口无需驱动，外接 CP210x 转串口需装驱动。
 - **上传失败**：确认设备仍在线、没有别的串口工具占用该端口。

@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
 from pathlib import Path
 
 from .app_config import (
     ESP32_CORE,
     ESP32_INDEX_URL,
-    arduino_cli_download_url,
     arduino_cli_exe_name,
     default_cli_path,
+    is_windows,
 )
 
 
@@ -22,7 +23,31 @@ def find_arduino_cli() -> Path | None:
     found = shutil.which("arduino-cli")
     if found:
         return Path(found)
+    # Windows：winget 装完可能不在当前进程 PATH，扫描 winget 安装目录
+    if is_windows():
+        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Microsoft" / "WinGet" / "Packages"
+        if base.is_dir():
+            hits = sorted(base.rglob("arduino-cli.exe"))
+            if hits:
+                return hits[0]
     return None
+
+
+def winget_install_cmd() -> list[str]:
+    return [
+        "winget", "install", "--id", "ArduinoSA.CLI",
+        "--accept-package-agreements", "--accept-source-agreements",
+    ]
+
+
+def linux_install_hint() -> str:
+    return (
+        "本机未检测到 arduino-cli。\n\n"
+        "请打开终端自行安装：\n"
+        "  Arch/Manjaro:  sudo pacman -S arduino-cli\n"
+        "  Debian/Ubuntu: sudo apt install arduino-cli\n\n"
+        "安装完成后点「刷新检测」继续。"
+    )
 
 
 def git_available() -> bool:
@@ -102,6 +127,5 @@ __all__ = [
     "install_core_cmd",
     "git_clone_cmd",
     "core_install_cmd",
-    "arduino_cli_download_url",
     "arduino_cli_exe_name",
 ]

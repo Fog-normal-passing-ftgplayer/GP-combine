@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -19,16 +20,10 @@ from PySide6.QtWidgets import (
 
 from ..app_config import (
     DEFAULT_REPO_URL,
-    default_cli_path,
     default_source_dir,
-    arduino_cli_download_url,
+    is_windows,
 )
-from ..jobs import (
-    DownloadRunner,
-    JobRunner,
-    core_install_progress,
-    extract_archive,
-)
+from ..jobs import JobRunner, core_install_progress
 from ..serial_detect import list_esp32_ports
 from ..toolchain import (
     add_index_cmd,
@@ -39,7 +34,9 @@ from ..toolchain import (
     find_arduino_cli,
     git_available,
     git_clone_cmd,
+    linux_install_hint,
     update_index_cmd,
+    winget_install_cmd,
 )
 from ..wizard_state import WizardState, source_ready
 
@@ -92,7 +89,7 @@ class PrepPage(QWidget):
         self.device_label.setObjectName("Muted")
         self.device_label.setStyleSheet("font-size: 15px; color: #FFB454;")
         refresh_btn = QPushButton("刷新检测")
-        refresh_btn.clicked.connect(lambda: (self._refresh_port(), self._refresh_all()))
+        refresh_btn.clicked.connect(self._on_refresh)
         row.addWidget(self.device_label)
         row.addStretch(1)
         row.addWidget(refresh_btn)
@@ -331,33 +328,6 @@ class PrepPage(QWidget):
         runner.finished.connect(on_done)
         runner.start(cmd, parse_progress=parser)
 
-    def _start_download(self, url: str, dest: Path, bar: QProgressBar, label: str) -> None:
-        self._busy = True
-        bar.setRange(0, 100)
-        bar.setValue(0)
-        bar.setVisible(True)
-        dl = DownloadRunner()
-        self._runner = dl
-        dl.progress_changed.connect(lambda p: bar.setValue(int(p * 100)))
-        dl.error.connect(self._log)
-
-        def on_done(code: int) -> None:
-            bar.setVisible(False)
-            if code != 0:
-                self._fail_step(label, -1)
-                return
-            self._log("下载完成，正在解压…")
-            try:
-                extract_archive(dest.with_suffix(dest.suffix + ".part"), dest.parent)
-                self._log("解压完成：%s" % dest)
-                self._finish_step(label)
-            except Exception as exc:  # noqa: BLE001
-                self._log("解压失败: %s" % exc)
-                self._fail_step(label, -1)
-
-        dl.finished.connect(on_done)
-        dl.start(url, dest)
-
     # ---------- 手动触发 ----------
 
     def manual_install_cli(self) -> None:
@@ -372,12 +342,41 @@ class PrepPage(QWidget):
         if not force and find_arduino_cli():
             self._finish_step("arduino-cli 已就绪")
             return
-        dest = default_cli_path()
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dl_url = arduino_cli_download_url()
-        self._log("开始下载 arduino-cli…")
-        self._log(dl_url)
-        self._start_download(dl_url, dest, self.cli_bar, "arduino-cli 安装")
+        if is_windows():
+            self._log("通过 winget 安装 arduino-cli…")
+            self.cli_bar.setRange(0, 0)
+            self.cli_bar.setVisible(True)
+            self._busy = True
+            runner = JobRunner()
+            self._runner = runner
+            runner.line_ready.connect(self._log)
+            runner.finished.connect(self._on_winget_done)
+            runner.start(winget_install_cmd())
+        else:
+            self._log("未检测到 arduino-cli，请打开终端自行安装：")
+            self._log("  Arch/Manjaro:  sudo pacman -S arduino-cli")
+            self._log("  Debian/Ubuntu: sudo apt install arduino-cli")
+            self.cli_status.setText("请按提示手动安装 arduino-cli")
+            self.cli_status.setStyleSheet("color: #FFB454;")
+            QMessageBox.information(self, "安装 arduino-cli", linux_install_hint())
+            self.ready_changed.emit()
+
+    def _on_winget_done(self, code: int) -> None:
+        self.cli_bar.setVisible(False)
+        self._busy = False
+        self._refresh_cli()
+        if self._cli_ok:
+            self._log("✔ winget 安装完成，arduino-cli 已就绪")
+            self._run_auto_prep()
+        else:
+            self._log("winget 已执行完成，但当前进程还没检测到 arduino-cli。")
+            self._log("请重启本软件；或手动打开终端运行：winget install ArduinoSA.CLI")
+            self.cli_status.setText("安装完成，请重启软件后继续")
+            self.cli_status.setStyleSheet("color: #FFB454;")
+
+    def _on_refresh(self) -> None:
+        self._refresh_all()
+        self._run_auto_prep()
 
     def manual_install_core(self) -> None:
         if not self._core_ok:

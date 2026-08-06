@@ -18,12 +18,6 @@ FQBN = "esp32:esp32:esp32s3"
 ESP32_CORE = "esp32:esp32"
 ESP32_INDEX_URL = "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
-ARDUINO_CLI_VERSION = "1.4.1"
-ARDUINO_CLI_BASE = (
-    "https://github.com/arduino/arduino-cli/releases/download/"
-    "v%s/" % ARDUINO_CLI_VERSION
-)
-
 # 默认仓库地址（GP-Fusion 官方仓库）
 DEFAULT_REPO_URL = "https://github.com/Fog-normal-passing-ftgplayer/GP-combine.git"
 
@@ -34,23 +28,6 @@ def is_windows() -> bool:
 
 def arduino_cli_exe_name() -> str:
     return "arduino-cli.exe" if is_windows() else "arduino-cli"
-
-
-def arduino_cli_asset() -> tuple[str, bool]:
-    """返回 (下载文件名, 是否 zip)。当前只覆盖 Windows/Linux。"""
-    machine = platform.machine().lower()
-    if is_windows():
-        if machine in ("aarch64", "arm64"):
-            return ("arduino-cli_%s_Windows_ARM64.zip" % ARDUINO_CLI_VERSION, True)
-        return ("arduino-cli_%s_Windows_64bit.zip" % ARDUINO_CLI_VERSION, True)
-    if machine in ("aarch64", "arm64"):
-        return ("arduino-cli_%s_Linux_ARM64.tar.gz" % ARDUINO_CLI_VERSION, False)
-    return ("arduino-cli_%s_Linux_64bit.tar.gz" % ARDUINO_CLI_VERSION, False)
-
-
-def arduino_cli_download_url() -> str:
-    name, _ = arduino_cli_asset()
-    return ARDUINO_CLI_BASE + name
 
 
 def default_tool_dir() -> Path:

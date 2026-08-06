@@ -598,8 +598,9 @@ void layoutBtn(int cx, int cy, int r, bool pressed, const char *label) {
   drawBtn(lx(cx), ly(cy), lr(r), pressed, label);
 }
 
-void layoutSquare(int x, int y, int size, bool pressed, const char *label) {
-  int sx = lx(x), sy = ly(y), ss = lr(size);
+// 方形按键：x/y 为中心（与圆形、与 PC 向导画布一致）
+void layoutSquare(int cx, int cy, int size, bool pressed, const char *label) {
+  int sx = lx(cx - size / 2), sy = ly(cy - size / 2), ss = lr(size);
   if (ss < 2) return;
   if (pressed) {
     lfbRect(sx, sy, ss, ss, COL_HI);
@@ -692,10 +693,10 @@ static const LayoutBtn HITBOX_MOVE[] = {
   {0x01, 97, 120, 13, "U", 1, 0},
 };
 static const LayoutBtn WASD_MOVE[] = {
-  {0x01, 52, 44, 8, "U", 1, 1},
-  {0x02, 52, 88, 8, "D", 1, 1},
-  {0x04, 30, 66, 8, "L", 1, 1},
-  {0x08, 74, 66, 8, "R", 1, 1},
+  {0x01, 60, 52, 8, "U", 1, 1},   // 中心坐标（外观与旧版左上角坐标一致）
+  {0x02, 60, 96, 8, "D", 1, 1},
+  {0x04, 38, 74, 8, "L", 1, 1},
+  {0x08, 82, 74, 8, "R", 1, 1},
 };
 static const LayoutBtn RIGHT_CLUSTER[] = {
   {0x0004, 110, 48, 13, "B3", 0, 0},

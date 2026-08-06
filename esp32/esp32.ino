@@ -789,17 +789,18 @@ void drawSaverMatrix() {
   for (int i = 0; i < MATRIX_COLS; i++) {
     int x = i * 8;
     mHead[i] += mSpeed[i];
-    if (mHead[i] - 48 > 135) {
+    if (mHead[i] - 50 > 135) {
       mHead[i] = -(int)(saverRand() % 60);
       mSpeed[i] = 1 + (int)(saverRand() % 3);
     }
     for (int k = 0; k < 6; k++) {
-      int y = mHead[i] - k * 8;
+      int y = mHead[i] - k * 10;   // 字形高 10px，拖尾不重叠
       if (y < 0 || y >= 135) continue;
       char c[2] = {CH[saverRand() % 16], 0};
-      if (k == 0) drawText(x, y, c, RGB565(220, 255, 220));
-      else if (k < 3) drawText(x, y, c, RGB565(0, 200, 90));
-      else drawText(x, y, c, RGB565(0, 110, 45));
+      if (k == 0) drawText(x, y, c, RGB565(235, 255, 235));
+      else if (k == 1) drawText(x, y, c, RGB565(120, 255, 150));
+      else if (k < 4) drawText(x, y, c, RGB565(0, 200, 90));
+      else drawText(x, y, c, RGB565(0, 130, 60));
     }
   }
 }
@@ -1500,14 +1501,9 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     uint16_t bEdge = buttons & ~lastButtons;
     uint8_t dEdge = dpad & ~lastDpad;
     bool inputChanged = (buttons != lastButtons || dpad != lastDpad);
-    if (saverActive && inputChanged) { // 任意按键唤醒屏保，这一帧不当作菜单输入
-      saverWake();
-      lastButtons = buttons;
-      lastDpad = dpad;
-      lastActivity = millis();
-      sendAck();
-      return;
-    }
+    uint16_t olx = lastLX, oly = lastLY, orx = lastRX, ory = lastRY;
+    uint8_t olt = lastLT, ort = lastRT;
+    bool stateChanged = inputChanged;
     if (len >= 13) { // full state: sticks + triggers
       lastLX = payload[3] | ((uint16_t)payload[4] << 8);
       lastLY = payload[5] | ((uint16_t)payload[6] << 8);
@@ -1515,6 +1511,16 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       lastRY = payload[9] | ((uint16_t)payload[10] << 8);
       lastLT = payload[11];
       lastRT = payload[12];
+      if (lastLX != olx || lastLY != oly || lastRX != orx || lastRY != ory ||
+          lastLT != olt || lastRT != ort) stateChanged = true;
+    }
+    if (saverActive && stateChanged) { // 任意输入唤醒屏保，这一帧不当作菜单输入
+      saverWake();
+      lastButtons = buttons;
+      lastDpad = dpad;
+      lastActivity = millis();
+      sendAck();
+      return;
     }
 
     // record input history edges
@@ -1718,8 +1724,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     }
     lastButtons = buttons;
     lastDpad = dpad;
+    if (stateChanged) lastActivity = millis();  // pico 每 50ms 心跳帧不算活动
   }
-  lastActivity = millis();
   sendAck();
 }
 

@@ -119,9 +119,9 @@ bool redrawNeeded = true;
 static const char* const PAGE_TITLES[NUM_PAGES] = {"设置", "电池", "灯光", "背景", "休眠", "无线"};
 
 static const char *const SAVER_NAMES[] = {"关闭", "雪花", "弹跳", "管道", "吐司",
-                                          "时钟", "Matrix", "彩虹猫"};
+                                          "MATRIX"};
 static MenuOpt sleepOpts[] = {
-  {"屏保模式", OPT_ENUM, 1, 0, 7, 1, SAVER_NAMES, 8, ""},
+  {"屏保模式", OPT_ENUM, 1, 0, 5, 1, SAVER_NAMES, 6, ""},
   {"屏保时间", OPT_INT, 60, 0, 600, 10, NULL, 0, "秒"},
   {"关屏", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
 };
@@ -762,92 +762,36 @@ void drawSaverToast() {
   drawLine(tX + 6, tY + 6, tX + 4, tY + 8, 0x0000);
 }
 
-// 时钟：上电计时（HH:MM:SS），无 RTC/NTP 时最实用的时间显示
-void drawSaverClock() {
-  lfbFill(COL_BG);
-  unsigned long s = millis() / 1000;
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu",
-           s / 3600, (s / 60) % 60, s % 60);
-  drawCJKTextCentered(120, 26, "上电计时", RGB565(120, 132, 150), 1);
-  drawTextBig(120 - (int)strlen(buf) * 4 * 2, 52, buf, RGB565(90, 220, 140), 2);
-}
-
-#define MATRIX_COLS 30
+#define MATRIX_COLS 20
 static int mHead[MATRIX_COLS], mSpeed[MATRIX_COLS];
 void drawSaverMatrix() {
   static bool init = false;
   if (!init) {
     init = true;
     for (int i = 0; i < MATRIX_COLS; i++) {
-      mHead[i] = (int)(saverRand() % 150) - 40;
+      mHead[i] = (int)(saverRand() % 180) - 50;
       mSpeed[i] = 1 + (int)(saverRand() % 3);
     }
   }
-  lfbFill(RGB565(0, 8, 2));
-  static const char CH[] = "0123456789ABCDEF";
+  lfbFill(RGB565(0, 10, 3));
+  static const char CH[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   for (int i = 0; i < MATRIX_COLS; i++) {
-    int x = i * 8;
+    int x = i * 12;
     mHead[i] += mSpeed[i];
-    if (mHead[i] - 50 > 135) {
-      mHead[i] = -(int)(saverRand() % 60);
+    if (mHead[i] - 75 > 135) {
+      mHead[i] = -(int)(saverRand() % 80);
       mSpeed[i] = 1 + (int)(saverRand() % 3);
     }
-    for (int k = 0; k < 6; k++) {
-      int y = mHead[i] - k * 10;   // 字形高 10px，拖尾不重叠
+    for (int k = 0; k < 5; k++) {
+      int y = mHead[i] - k * 15;   // 大字形高 15px，拖尾不重叠
       if (y < 0 || y >= 135) continue;
-      char c[2] = {CH[saverRand() % 16], 0};
-      if (k == 0) drawText(x, y, c, RGB565(235, 255, 235));
-      else if (k == 1) drawText(x, y, c, RGB565(120, 255, 150));
-      else if (k < 4) drawText(x, y, c, RGB565(0, 200, 90));
-      else drawText(x, y, c, RGB565(0, 130, 60));
+      char c[2] = {CH[saverRand() % 36], 0};
+      if (k == 0) drawTextBig(x, y, c, RGB565(235, 255, 235), 3);
+      else if (k == 1) drawTextBig(x, y, c, RGB565(110, 255, 140), 3);
+      else if (k < 3) drawTextBig(x, y, c, RGB565(0, 210, 95), 3);
+      else drawTextBig(x, y, c, RGB565(0, 140, 65), 3);
     }
   }
-}
-
-// 彩虹猫：程序绘制的简易版（彩虹扫动 + 星星 + 弹跳猫）
-void drawSaverNyan() {
-  lfbFill(RGB565(12, 16, 38));
-  unsigned long t = millis() / 80;
-  // 星星
-  for (int i = 0; i < 20; i++) {
-    int sx = (i * 97 + (int)(t / 2)) % 240;
-    int sy = (i * 53) % 60;
-    lfbSet(sx, sy, ((t + i) % 3) ? RGB565(255, 255, 255) : RGB565(12, 16, 38));
-  }
-  // 彩虹彩带（竖直条向左滚动）
-  static const uint16_t RB[6] = {
-    RGB565(255, 60, 60), RGB565(255, 160, 40), RGB565(255, 240, 60),
-    RGB565(60, 220, 90), RGB565(60, 160, 255), RGB565(190, 90, 255),
-  };
-  for (int i = 0; i < 10; i++) {
-    int x = 240 - (int)(((i * 6) + t * 2) % 246);
-    lfbRect(x, 20, 5, 88, RB[(i + t / 2) % 6]);
-  }
-  // 猫（上下轻弹）
-  int bob = ((t / 3) % 8 < 4) ? 2 : 0;
-  int cx = 180, cy = 72 + bob;
-  // 尾巴（左右摆）
-  int ty = cy - 10 + ((t / 2) % 6);
-  lfbRect(cx - 36, ty, 14, 4, RGB565(160, 160, 175));
-  // 身体（pop-tart）
-  lfbRect(cx - 28, cy - 14, 46, 26, RGB565(250, 140, 170));
-  lfbRect(cx - 24, cy - 10, 38, 18, RGB565(255, 190, 205));
-  for (int i = 0; i < 6; i++) {   // 糖粒
-    int sx2 = cx - 20 + (i * 8) % 36;
-    int sy2 = cy - 8 + (i * 6) % 14;
-    lfbSet(sx2, sy2, RB[i]);
-  }
-  // 头 + 耳朵
-  lfbRect(cx + 16, cy - 16, 18, 16, RGB565(150, 150, 165));
-  lfbRect(cx + 16, cy - 22, 7, 7, RGB565(150, 150, 165));
-  lfbRect(cx + 27, cy - 22, 7, 7, RGB565(150, 150, 165));
-  // 眼睛
-  lfbSet(cx + 21, cy - 10, 0xFFFF);
-  lfbSet(cx + 29, cy - 10, 0xFFFF);
-  // 爪子
-  lfbRect(cx - 26, cy + 12, 9, 5, RGB565(150, 150, 165));
-  lfbRect(cx + 8, cy + 12, 9, 5, RGB565(150, 150, 165));
 }
 
 void renderSaver() {
@@ -856,9 +800,7 @@ void renderSaver() {
     case 2: drawSaverBounce(); break;
     case 3: drawSaverPipe(); break;
     case 4: drawSaverToast(); break;
-    case 5: drawSaverClock(); break;
-    case 6: drawSaverMatrix(); break;
-    case 7: drawSaverNyan(); break;
+    case 5: drawSaverMatrix(); break;
     default: lfbFill(COL_BG);
   }
 }

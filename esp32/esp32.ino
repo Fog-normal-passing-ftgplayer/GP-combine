@@ -118,9 +118,10 @@ bool redrawNeeded = true;
 // menu page metadata: titles and icon index into ICONS[]
 static const char* const PAGE_TITLES[NUM_PAGES] = {"设置", "电池", "灯光", "背景", "休眠", "无线"};
 
-static const char *const SAVER_NAMES[] = {"关闭", "雪花", "弹跳", "管道", "吐司"};
+static const char *const SAVER_NAMES[] = {"关闭", "雪花", "弹跳", "管道", "吐司",
+                                          "时钟", "Matrix", "彩虹猫"};
 static MenuOpt sleepOpts[] = {
-  {"屏保模式", OPT_ENUM, 1, 0, 4, 1, SAVER_NAMES, 5, ""},
+  {"屏保模式", OPT_ENUM, 1, 0, 7, 1, SAVER_NAMES, 8, ""},
   {"屏保时间", OPT_INT, 60, 0, 600, 10, NULL, 0, "秒"},
   {"关屏", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
 };
@@ -651,6 +652,216 @@ void drawMiniWireless(int x, int y, bool linked) {
   drawArc(x, y, 10, -145, -35, c);
 }
 
+// ---- screen savers (program-drawn, no GIF frames) ----
+bool saverActive = false;
+unsigned long saverEntered = 0;
+unsigned long saverFrameMs = 0;
+bool backlightOff = false;
+uint32_t srState = 0x9E3779B9;
+uint32_t saverRand() {
+  uint32_t x = srState;
+  x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+  srState = x;
+  return x;
+}
+
+void saverWake() {
+  if (!saverActive) return;
+  saverActive = false;
+  if (backlightOff) {
+    backlightOff = false;
+    ledcWrite(BL, (uint32_t)bgOpts[1].value * 255 / 100);
+  }
+  redrawNeeded = true;
+}
+
+void saverTick() {
+  int mode = sleepOpts[0].value;
+  if (mode > 0 && sleepOpts[1].value > 0 && !saverActive &&
+      millis() - lastActivity >= (unsigned long)sleepOpts[1].value * 1000UL) {
+    saverActive = true;
+    saverEntered = millis();
+    saverFrameMs = 0;
+    redrawNeeded = true;
+  }
+  if (saverActive) {
+    if (sleepOpts[2].value && !backlightOff &&
+        millis() - saverEntered >= 60000) {   // 屏保 1 分钟后关背光
+      backlightOff = true;
+      ledcWrite(BL, 0);
+    }
+    if (millis() - saverFrameMs >= 50) {      // ~20fps 动画
+      saverFrameMs = millis();
+      redrawNeeded = true;
+    }
+  }
+}
+
+void drawSaverSnow() {
+  lfbFill(RGB565(8, 12, 24));
+  unsigned long t = millis() / 60;
+  for (int i = 0; i < 36; i++) {
+    int y = (int)((t * (1 + i % 3) + i * 29) % 135);
+    int x = (int)((i * 61 + t / 2 + ((y / 9) % 3) * 5) % 240);
+    drawDisc(x, y, 1, RGB565(220, 230, 255));
+  }
+}
+
+static int bbX = 60, bbY = 40, bbVX = 3, bbVY = 2;
+void drawSaverBounce() {
+  lfbFill(COL_BG);
+  bbX += bbVX; bbY += bbVY;
+  if (bbX < 10 || bbX > 229) bbVX = -bbVX;
+  if (bbY < 10 || bbY > 124) bbVY = -bbVY;
+  drawDisc(bbX, bbY, 10, ACC_SETTINGS);
+  drawDisc(bbX - 3, bbY - 3, 2, COL_HI);
+}
+
+#define PIPE_N 6
+static int pX[PIPE_N], pY[PIPE_N], pW[PIPE_N], pS[PIPE_N];
+static uint16_t pC[PIPE_N];
+void drawSaverPipe() {
+  static bool init = false;
+  if (!init) {
+    init = true;
+    for (int i = 0; i < PIPE_N; i++) {
+      pX[i] = (int)(saverRand() % 220);
+      pY[i] = -(int)(saverRand() % 120);
+      pW[i] = 12 + (int)(saverRand() % 20);
+      pS[i] = 2 + (int)(saverRand() % 3);
+      pC[i] = RGB565(40 + (int)(saverRand() % 60), 120 + (int)(saverRand() % 80),
+                     60 + (int)(saverRand() % 60));
+    }
+  }
+  lfbFill(COL_BG);
+  for (int i = 0; i < PIPE_N; i++) {
+    pY[i] += pS[i];
+    if (pY[i] > 135) {
+      pY[i] = -20 - (int)(saverRand() % 60);
+      pX[i] = (int)(saverRand() % 220);
+      pW[i] = 12 + (int)(saverRand() % 20);
+      pC[i] = RGB565(40 + (int)(saverRand() % 60), 120 + (int)(saverRand() % 80),
+                     60 + (int)(saverRand() % 60));
+    }
+    lfbRect(pX[i], pY[i], pW[i], 135, pC[i]);
+  }
+}
+
+static int tX = 40, tY = 30, tVX = 3, tVY = 2;
+void drawSaverToast() {
+  lfbFill(RGB565(20, 16, 10));
+  tX += tVX; tY += tVY;
+  if (tX < 24 || tX > 215) tVX = -tVX;
+  if (tY < 20 || tY > 112) tVY = -tVY;
+  lfbRect(tX - 24, tY - 18, 48, 36, RGB565(205, 140, 70));    // 吐司边
+  lfbRect(tX - 19, tY - 13, 38, 26, RGB565(235, 190, 120));   // 面包
+  lfbSet(tX - 8, tY - 6, 0x0000);                              // 眼睛
+  lfbSet(tX + 8, tY - 6, 0x0000);
+  drawLine(tX - 6, tY + 6, tX + 6, tY + 6, 0x0000);           // 嘴
+  drawLine(tX - 6, tY + 6, tX - 4, tY + 8, 0x0000);
+  drawLine(tX + 6, tY + 6, tX + 4, tY + 8, 0x0000);
+}
+
+// 时钟：上电计时（HH:MM:SS），无 RTC/NTP 时最实用的时间显示
+void drawSaverClock() {
+  lfbFill(COL_BG);
+  unsigned long s = millis() / 1000;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu",
+           s / 3600, (s / 60) % 60, s % 60);
+  drawCJKTextCentered(120, 26, "上电计时", RGB565(120, 132, 150), 1);
+  drawTextBig(120 - (int)strlen(buf) * 4 * 2, 52, buf, RGB565(90, 220, 140), 2);
+}
+
+#define MATRIX_COLS 30
+static int mHead[MATRIX_COLS], mSpeed[MATRIX_COLS];
+void drawSaverMatrix() {
+  static bool init = false;
+  if (!init) {
+    init = true;
+    for (int i = 0; i < MATRIX_COLS; i++) {
+      mHead[i] = (int)(saverRand() % 150) - 40;
+      mSpeed[i] = 1 + (int)(saverRand() % 3);
+    }
+  }
+  lfbFill(RGB565(0, 8, 2));
+  static const char CH[] = "0123456789ABCDEF";
+  for (int i = 0; i < MATRIX_COLS; i++) {
+    int x = i * 8;
+    mHead[i] += mSpeed[i];
+    if (mHead[i] - 48 > 135) {
+      mHead[i] = -(int)(saverRand() % 60);
+      mSpeed[i] = 1 + (int)(saverRand() % 3);
+    }
+    for (int k = 0; k < 6; k++) {
+      int y = mHead[i] - k * 8;
+      if (y < 0 || y >= 135) continue;
+      char c[2] = {CH[saverRand() % 16], 0};
+      if (k == 0) drawText(x, y, c, RGB565(220, 255, 220));
+      else if (k < 3) drawText(x, y, c, RGB565(0, 200, 90));
+      else drawText(x, y, c, RGB565(0, 110, 45));
+    }
+  }
+}
+
+// 彩虹猫：程序绘制的简易版（彩虹扫动 + 星星 + 弹跳猫）
+void drawSaverNyan() {
+  lfbFill(RGB565(12, 16, 38));
+  unsigned long t = millis() / 80;
+  // 星星
+  for (int i = 0; i < 20; i++) {
+    int sx = (i * 97 + (int)(t / 2)) % 240;
+    int sy = (i * 53) % 60;
+    lfbSet(sx, sy, ((t + i) % 3) ? RGB565(255, 255, 255) : RGB565(12, 16, 38));
+  }
+  // 彩虹彩带（竖直条向左滚动）
+  static const uint16_t RB[6] = {
+    RGB565(255, 60, 60), RGB565(255, 160, 40), RGB565(255, 240, 60),
+    RGB565(60, 220, 90), RGB565(60, 160, 255), RGB565(190, 90, 255),
+  };
+  for (int i = 0; i < 10; i++) {
+    int x = 240 - (int)(((i * 6) + t * 2) % 246);
+    lfbRect(x, 20, 5, 88, RB[(i + t / 2) % 6]);
+  }
+  // 猫（上下轻弹）
+  int bob = ((t / 3) % 8 < 4) ? 2 : 0;
+  int cx = 180, cy = 72 + bob;
+  // 尾巴（左右摆）
+  int ty = cy - 10 + ((t / 2) % 6);
+  lfbRect(cx - 36, ty, 14, 4, RGB565(160, 160, 175));
+  // 身体（pop-tart）
+  lfbRect(cx - 28, cy - 14, 46, 26, RGB565(250, 140, 170));
+  lfbRect(cx - 24, cy - 10, 38, 18, RGB565(255, 190, 205));
+  for (int i = 0; i < 6; i++) {   // 糖粒
+    int sx2 = cx - 20 + (i * 8) % 36;
+    int sy2 = cy - 8 + (i * 6) % 14;
+    lfbSet(sx2, sy2, RB[i]);
+  }
+  // 头 + 耳朵
+  lfbRect(cx + 16, cy - 16, 18, 16, RGB565(150, 150, 165));
+  lfbRect(cx + 16, cy - 22, 7, 7, RGB565(150, 150, 165));
+  lfbRect(cx + 27, cy - 22, 7, 7, RGB565(150, 150, 165));
+  // 眼睛
+  lfbSet(cx + 21, cy - 10, 0xFFFF);
+  lfbSet(cx + 29, cy - 10, 0xFFFF);
+  // 爪子
+  lfbRect(cx - 26, cy + 12, 9, 5, RGB565(150, 150, 165));
+  lfbRect(cx + 8, cy + 12, 9, 5, RGB565(150, 150, 165));
+}
+
+void renderSaver() {
+  switch (sleepOpts[0].value) {
+    case 1: drawSaverSnow(); break;
+    case 2: drawSaverBounce(); break;
+    case 3: drawSaverPipe(); break;
+    case 4: drawSaverToast(); break;
+    case 5: drawSaverClock(); break;
+    case 6: drawSaverMatrix(); break;
+    case 7: drawSaverNyan(); break;
+    default: lfbFill(COL_BG);
+  }
+}
+
 // ---- button layout view ----
 const char *socdName(uint8_t m) {
   static const char *n[] = {"UP", "NEU", "2ND", "1ST", "BYP"};
@@ -1122,6 +1333,10 @@ void loadConfigFile() {
 }
 
 void renderScene(int16_t outX, int16_t inX) {
+  if (saverActive) {
+    renderSaver();
+    return;
+  }
   if (view == VIEW_LAYOUT) {
     memcpy(lfb, BACKGROUND_IMG[bgOpts[0].value], 240 * 135 * 2);
     drawStatusBar();
@@ -1285,6 +1500,14 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     uint16_t bEdge = buttons & ~lastButtons;
     uint8_t dEdge = dpad & ~lastDpad;
     bool inputChanged = (buttons != lastButtons || dpad != lastDpad);
+    if (saverActive && inputChanged) { // 任意按键唤醒屏保，这一帧不当作菜单输入
+      saverWake();
+      lastButtons = buttons;
+      lastDpad = dpad;
+      lastActivity = millis();
+      sendAck();
+      return;
+    }
     if (len >= 13) { // full state: sticks + triggers
       lastLX = payload[3] | ((uint16_t)payload[4] << 8);
       lastLY = payload[5] | ((uint16_t)payload[6] << 8);
@@ -1616,6 +1839,7 @@ void loop(){
     savedFlashUntil = 0;
     redrawNeeded = true;
   }
+  saverTick();
   // wireless: forward full gamepad state + mode over nRF24
   if (radioUp) {
     uint8_t pkt[15];

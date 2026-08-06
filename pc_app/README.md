@@ -50,12 +50,12 @@ python main.py
 
 ## 打包
 
-Linux：`./build_linux.sh`，输出在 `dist/GP-Fusion配置向导/`。
+Linux：`./build_linux.sh`，输出在 `dist/GPFusionWizard/`。
 
 Windows：双击 `build_windows.bat`（自动建虚拟环境、装依赖、打包并生成 zip），
-输出在 `dist\GP-Fusion配置向导\`，压缩包为
-`dist\GP-Fusion配置向导-windows.zip`。需要先装 Python 3.10+ 并勾选
-"Add python.exe to PATH"。
+输出在 `dist\GPFusionWizard\`，压缩包为 `dist\GPFusionWizard-windows.zip`。
+需要先装 64 位 Python 3.10+ 并勾选 "Add python.exe to PATH"。
+如果程序无法启动，把 `dist\GPFusionWizard\gpfusion_crash.log` 发给开发者即可定位。
 
 打包机建议在对应平台上执行；PyInstaller 不支持跨平台打包。
 

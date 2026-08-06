@@ -11,4 +11,4 @@ fi
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt pyinstaller
 python -m PyInstaller --clean -y gpfusion.spec
-echo "输出目录: dist/GP-Fusion配置向导/"
+echo "输出目录: dist/GPFusionWizard/"

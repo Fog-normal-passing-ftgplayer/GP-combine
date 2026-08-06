@@ -1,44 +1,70 @@
 @echo off
-chcp 65001 >nul
-rem 构建 Windows 版 GP-Fusion 配置向导
-setlocal
+rem Build Windows build of GP-Fusion Wizard (ASCII-only for encoding safety)
+setlocal enabledelayedexpansion
 cd /d %~dp0
 
-where python >nul 2>nul
-if errorlevel 1 (
-  echo [错误] 未找到 python，请先安装 Python 3.10+，安装时勾选 "Add python.exe to PATH"
+rem ---- find Python ----
+set "PYCMD="
+where py >nul 2>nul
+if not errorlevel 1 (
+  for /f "delims=" %%i in ('py -3 -c "import sys;print(sys.executable)" 2^>nul') do set "PYCMD=%%i"
+)
+if not defined PYCMD (
+  where python >nul 2>nul
+  if not errorlevel 1 set "PYCMD=python"
+)
+if not defined PYCMD (
+  echo [ERROR] Python 3.10+ not found. Install it and check "Add python.exe to PATH".
   pause
   exit /b 1
 )
 
+rem ---- check 64-bit ----
+"%PYCMD%" -c "import struct; exit(0 if struct.calcsize('P')*8==64 else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] Need 64-bit Python, 32-bit Python is not supported.
+  pause
+  exit /b 1
+)
+
+echo [1/4] Creating virtual environment...
 if not exist .venv (
-  echo [1/4] 创建虚拟环境...
-  python -m venv .venv
+  "%PYCMD%" -m venv .venv
+  if errorlevel 1 (
+    echo [ERROR] Failed to create venv.
+    pause
+    exit /b 1
+  )
 )
 call .venv\Scripts\activate.bat
 
-echo [2/4] 安装依赖（首次较慢，PySide6 约 200MB）...
+echo [2/4] Installing dependencies (PySide6 ~200MB, first run is slow)...
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 (
-  echo [错误] 依赖安装失败，请检查网络
+  echo [ERROR] Dependency install failed. Check network.
   pause
   exit /b 1
 )
 
-echo [3/4] 打包可执行文件...
-python -m PyInstaller --clean --noconfirm gpfusion.spec
+echo [3/4] Building executable...
+python -m PyInstaller --clean --noconfirm gpfusion.spec > build_log.txt 2>&1
 if errorlevel 1 (
-  echo [错误] 打包失败，请查看上方日志
+  echo [ERROR] Build failed. Last 30 lines of build_log.txt:
+  powershell -NoProfile -Command "Get-Content build_log.txt -Tail 30"
+  echo.
+  echo Full log saved to build_log.txt - send it to the developer for help.
   pause
   exit /b 1
 )
 
-echo [4/4] 生成压缩包...
-powershell -NoProfile -Command "Compress-Archive -Force -Path 'dist\GP-Fusion配置向导' -DestinationPath 'dist\GP-Fusion配置向导-windows.zip'"
+echo [4/4] Creating zip...
+powershell -NoProfile -Command "Compress-Archive -Force -Path 'dist\GPFusionWizard' -DestinationPath 'dist\GPFusionWizard-windows.zip'"
 
 echo.
-echo 完成！
-echo 运行目录: dist\GP-Fusion配置向导\（整个文件夹一起拷贝）
-echo 压缩包:   dist\GP-Fusion配置向导-windows.zip
+echo Done!
+echo Run folder : dist\GPFusionWizard\  (copy the whole folder)
+echo Zip        : dist\GPFusionWizard-windows.zip
+echo.
+echo If the app fails to start, send dist\GPFusionWizard\gpfusion_crash.log
 pause

@@ -474,6 +474,7 @@ enum AnimationEffects
     EFFECT_CHASE = 2;
     EFFECT_STATIC_THEME = 3;
     EFFECT_CUSTOM_THEME = 4;
+    EFFECT_FLOW = 5;
 }
 
 // This has to be kept in sync with LEDFormat in NeoPico.h
@@ -668,6 +669,7 @@ enum DisplaySaverMode
     DISPLAY_SAVER_BOUNCE = 2;
     DISPLAY_SAVER_PIPES = 3;
     DISPLAY_SAVER_TOAST = 4;
+    DISPLAY_SAVER_MATRIX = 5;
 };
 
 enum ButtonLayoutOrientation

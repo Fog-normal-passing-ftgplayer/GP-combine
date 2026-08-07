@@ -251,6 +251,8 @@ private:
     PLEDAnimationState animationState; // NeoPico can control the player LEDs
     NeoPicoPlayerLEDs * neoPLEDs = nullptr;
     AnimationStation as;
+    uint8_t lastAnimationIndex = 0xFF;   // 菜单实时改灯效的检测
+    uint8_t lastBrightness = 0xFF;
     std::map<std::string, int> buttonPositions;
     PLEDType ledType;
     GamepadHotkey lastAmbientAction;

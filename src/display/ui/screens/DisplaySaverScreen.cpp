@@ -22,6 +22,9 @@ void DisplaySaverScreen::init() {
         case DisplaySaverMode::DISPLAY_SAVER_TOAST:
             initToasters();
             break;
+        case DisplaySaverMode::DISPLAY_SAVER_MATRIX:
+            initMatrixScene();
+            break;
         default:
             break;
     }
@@ -44,6 +47,9 @@ void DisplaySaverScreen::drawScreen() {
             break;
         case DisplaySaverMode::DISPLAY_SAVER_TOAST:
             drawToasterScene();
+            break;
+        case DisplaySaverMode::DISPLAY_SAVER_MATRIX:
+            drawMatrixScene();
             break;
         default:
             break;
@@ -192,6 +198,39 @@ void DisplaySaverScreen::drawToasterScene() {
 
         if (sprite.y > SCREEN_HEIGHT) {
             sprite.y = 0;
+        }
+    }
+}
+
+uint32_t DisplaySaverScreen::matrixRand() {
+    uint32_t x = matrixSeed;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    matrixSeed = x;
+    return x;
+}
+
+void DisplaySaverScreen::initMatrixScene() {
+    for (uint8_t i = 0; i < 16; i++) {
+        matrixHead[i] = (uint8_t)(matrixRand() % 80);
+        matrixSpeed[i] = 1 + (uint8_t)(matrixRand() % 3);
+    }
+}
+
+void DisplaySaverScreen::drawMatrixScene() {
+    getRenderer()->clearScreen();
+    static const char CH[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (uint8_t i = 0; i < 16; i++) {
+        int x = i * 8;
+        matrixHead[i] += matrixSpeed[i];
+        if (matrixHead[i] > 72) {
+            matrixHead[i] = (uint8_t)(matrixRand() % 12);
+            matrixSpeed[i] = 1 + (uint8_t)(matrixRand() % 3);
+        }
+        for (int k = 0; k < 5; k++) {
+            int y = (int)matrixHead[i] - k * 8;
+            if (y < 0 || y >= 64) continue;
+            char c[2] = {CH[matrixRand() % 36], 0};
+            getRenderer()->drawText(x, y, std::string(c), 0);
         }
     }
 }

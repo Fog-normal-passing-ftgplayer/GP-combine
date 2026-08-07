@@ -236,7 +236,9 @@ private:
     bool isDisplayPowerOff();
     void setDisplayPower(uint8_t status);
     uint32_t displaySaverTimeout = 0;
-    int32_t displaySaverTimer;
+    uint32_t lastSaverTimeout = 0xFFFFFFFF;   // 检测超时变更，重置计时
+    bool saverPending = false;                // 在菜单里停留后，离开时重新计时
+    float displaySaverTimer = 0;
     uint8_t displayIsPowerOn = 1;
     uint32_t prevMillis;
     std::string statusBar;

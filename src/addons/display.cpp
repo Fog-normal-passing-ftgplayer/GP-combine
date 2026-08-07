@@ -14,6 +14,7 @@
 #include "version.h"
 #include "config.pb.h"
 #include "class/hid/hid.h"
+#include "display/ui/screens/GPFusionMenuScreen.h"
 
 bool DisplayAddon::available() {
     const DisplayOptions& options = Storage::getInstance().getDisplayOptions();
@@ -106,7 +107,7 @@ bool DisplayAddon::updateDisplayScreen() {
             gpScreen = new SplashScreen(gpDisplay);
             break;
         case MAIN_MENU:
-            gpScreen = new MainMenuScreen(gpDisplay);
+            gpScreen = new GPFusionMenuScreen(gpDisplay);
             break;
         case BUTTONS:
             gpScreen = new ButtonLayoutScreen(gpDisplay);
@@ -143,8 +144,9 @@ bool DisplayAddon::updateDisplayScreen() {
 bool DisplayAddon::isDisplayPowerOff()
 {
     Gamepad * gamepad = Storage::getInstance().GetGamepad();
+    const DisplayOptions& dop = Storage::getInstance().getDisplayOptions();
 
-    if (turnOffWhenSuspended && get_usb_suspended()) {
+    if (dop.turnOffWhenSuspended && get_usb_suspended()) {
         if (displayIsPowerOn)
             setDisplayPower(0);
         return true;
@@ -153,15 +155,37 @@ bool DisplayAddon::isDisplayPowerOff()
             setDisplayPower(1);
     }
 
-    if (!displaySaverTimeout) return false;
+    int32_t rawTimeout = dop.displaySaverTimeout;
+    uint32_t timeout = (rawTimeout <= 0) ? 0 : (uint32_t)rawTimeout;  // 负值脏数据=禁用
+    if (timeout > 3600000) timeout = 3600000;  // 防御脏数据（1 小时）
+    if (timeout != lastSaverTimeout) {   // 超时变了：重置计时，避免旧差值瞬间触发
+        lastSaverTimeout = timeout;
+        displaySaverTimer = (float)timeout;
+        prevMillis = getMillis();
+    }
+    if (!timeout) return false;
+    if (currDisplayMode == DisplayMode::MAIN_MENU) {
+        saverPending = true;               // 菜单中不抢屏；离开后重新计时
+        return false;
+    }
+    if (saverPending) {                    // 刚从菜单出来：完整超时重新起算
+        saverPending = false;
+        displaySaverTimer = (float)timeout;
+        prevMillis = getMillis();
+    }
 
-    float diffTime = getMillis() - prevMillis;
+    uint32_t now = getMillis();
+    float diffTime = (float)(now - prevMillis);
+    prevMillis = now;
+    if (diffTime > 5000.0f) diffTime = 0.0f;   // 异常大差值不触发
     displaySaverTimer -= diffTime;
-    if (!!displaySaverTimeout && (gamepad->state.buttons || gamepad->state.dpad)) {
-        displaySaverTimer = displaySaverTimeout;
+    if (displaySaverTimer < 0) displaySaverTimer = 0;
+    if (gamepad->state.buttons || gamepad->state.dpad) {
+        displaySaverTimer = (float)timeout;
+        saverPending = false;
         setDisplayPower(1);
-    } else if (!!displaySaverTimeout && displaySaverTimer <= 0) {
-        if (displaySaverMode == DisplaySaverMode::DISPLAY_SAVER_DISPLAY_OFF) {
+    } else if (displaySaverTimer <= 0) {
+        if (dop.displaySaverMode == DisplaySaverMode::DISPLAY_SAVER_DISPLAY_OFF) {
             setDisplayPower(0);
         } else {
             if (currDisplayMode != DISPLAY_SAVER) {
@@ -173,7 +197,7 @@ bool DisplayAddon::isDisplayPowerOff()
 
     prevMillis = getMillis();
 
-    return ((!!displaySaverTimeout && displaySaverTimer <= 0) && (displaySaverMode == DisplaySaverMode::DISPLAY_SAVER_DISPLAY_OFF));
+    return ((displaySaverTimer <= 0) && (dop.displaySaverMode == DisplaySaverMode::DISPLAY_SAVER_DISPLAY_OFF));
 }
 
 void DisplayAddon::setDisplayPower(uint8_t status)

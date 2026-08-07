@@ -68,6 +68,7 @@ export default {
 			bounce: '标志弹跳',
 			pipes: '经典管道',
 			toast: '吐司提示',
+			matrix: '数字雨 (MATRIX)',
 		},
 		'layout-modes': {
 			standard: '标准',

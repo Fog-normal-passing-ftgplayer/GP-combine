@@ -55,6 +55,14 @@ class DisplaySaverScreen : public GPScreen {
         void initToasters();
         void drawToasterScene();
 
+        // matrix (GP-Fusion Lite)
+        uint8_t matrixHead[16] = {};
+        uint8_t matrixSpeed[16] = {};
+        uint32_t matrixSeed = 0x12345678;
+        void initMatrixScene();
+        void drawMatrixScene();
+        uint32_t matrixRand();
+
         void delay_us(uint32_t us);
 
         const uint32_t SCREEN_DELAY_PIPES = 30;

@@ -504,6 +504,15 @@ void NeoPicoLEDAddon::ambientLightLinkage() {
 }
 
 void NeoPicoLEDAddon::process() {
+    // 菜单里改了灯效/亮度时实时应用（webconfig 也走这里生效）
+    const AnimationOptions& animationOptions = Storage::getInstance().getAnimationOptions();
+    if (animationOptions.baseAnimationIndex != lastAnimationIndex ||
+        animationOptions.brightness != lastBrightness) {
+        lastAnimationIndex = (uint8_t)animationOptions.baseAnimationIndex;
+        lastBrightness = (uint8_t)animationOptions.brightness;
+        as.SetMode(animationOptions.baseAnimationIndex);
+        as.SetBrightness(animationOptions.brightness);
+    }
     const LEDOptions& ledOptions = Storage::getInstance().getLedOptions();
     if (!isValidPin(ledOptions.dataPin) || !time_reached(this->nextRunTime))
         return;

@@ -5,6 +5,8 @@
 #include "drivers/xbone/XBOneDriver.h"
 #include "drivers/xinput/XInputDriver.h"
 #include "drivers/p5general/P5GeneralDriver.h"
+#include "addons/display.h"
+#include "GamepadState.h"
 
 void ButtonLayoutScreen::init() {
     isInputHistoryEnabled = Storage::getInstance().getDisplayOptions().inputHistoryEnabled;
@@ -131,6 +133,18 @@ int8_t ButtonLayoutScreen::update() {
         }
         prevButtonState = buttonState;
     }
+
+	// GP-Fusion Lite: 按住 S2 3 秒进入菜单
+	static uint32_t s2HoldStart = 0;
+	if (gamepad->state.buttons & GAMEPAD_MASK_S2) {
+		if (s2HoldStart == 0) s2HoldStart = getMillis();
+		else if (getMillis() - s2HoldStart >= 3000) {
+			s2HoldStart = 0;
+			return DisplayMode::MAIN_MENU;
+		}
+	} else {
+		s2HoldStart = 0;
+	}
 
 	return -1;
 }

@@ -248,6 +248,7 @@ src/display/ui/elements/GPShape.cpp
 src/display/ui/elements/GPSprite.cpp
 src/display/ui/screens/ButtonLayoutScreen.cpp
 src/display/ui/screens/ConfigScreen.cpp
+src/display/ui/screens/GPFusionMenuScreen.cpp
 src/display/ui/screens/MainMenuScreen.cpp
 src/display/ui/screens/PinViewerScreen.cpp
 src/display/ui/screens/RestartScreen.cpp
@@ -302,6 +303,7 @@ src/animationstation/effects/chase.cpp
 src/animationstation/effects/customtheme.cpp
 src/animationstation/effects/customthemepressed.cpp
 src/animationstation/effects/rainbow.cpp
+src/animationstation/effects/rainbowwave.cpp
 src/animationstation/effects/staticcolor.cpp
 src/animationstation/effects/statictheme.cpp
 src/hosts/DualsensePS5Host.cpp
@@ -389,7 +391,7 @@ install(FILES
     DESTINATION .
 )
 
-if (NOT (DEFINED ENV(CI)) AND (EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake))
+if (NOT (DEFINED ENV{CI}) AND (EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake))
   message(STATUS "Found custom script.")
 	include(${CMAKE_SOURCE_DIR}/modules/Custom.cmake)
 endif()

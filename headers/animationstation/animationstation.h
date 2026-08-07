@@ -14,6 +14,7 @@
 #include "effects/customtheme.h"
 #include "effects/customthemepressed.h"
 #include "effects/rainbow.h"
+#include "effects/rainbowwave.h"
 #include "effects/staticcolor.h"
 #include "effects/statictheme.h"
 

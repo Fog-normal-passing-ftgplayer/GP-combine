@@ -395,6 +395,7 @@ message AnimationOptions
     optional float alStaticBrightnessCustomThemeX = 54;     // static custom theme brightness
     optional uint32 alCustomStaticThemeIndex = 55;          // custom theme index
     optional uint32 alCustomStaticColorIndex = 56;          // static color index
+    optional int32 flowCycleTime = 57;                      // flow/流水 speed
 }
 
 message BootselButtonOptions

@@ -24,3 +24,6 @@ env.ini
 *docker-compose.yml
 www/src_gen/enums.ts
 /lib/NeoPico/src/generated/ws2812.pio.h
+
+# GP-Combine Lite（独立仓库，lite 分支）
+GP-Fusion Lite/

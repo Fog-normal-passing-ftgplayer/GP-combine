@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Configuração de Complementos',
 	'sub-header-text':
-		'Use o formulário abaixo para reconfigurar as opções de complemento no GP2040-CE.',
+		'Use o formulário abaixo para reconfigurar as opções de complemento no GP-Combine.',
 	'bootsel-header-text': 'Configuração do Botão BOOTSEL',
 	'bootsel-sub-header-text':
 		'Observação: a tela OLED pode ficar sem resposta se o botão estiver definido; desative para restaurar.',
@@ -98,7 +98,7 @@ export default {
 	'buzzer-speaker-volume-label': 'Volume do Buzzer',
 	'player-number-header-text': 'Número do Jogador (APENAS X-INPUT)',
 	'player-number-sub-header-text':
-		'ATENÇÃO: ATIVE ESTA OPÇÃO APENAS SE VOCÊ ESTIVER CONECTANDO VÁRIOS DISPOSITIVOS GP2040-CE COM NÚMERO DE JOGADOR HABILITADO',
+		'ATENÇÃO: ATIVE ESTA OPÇÃO APENAS SE VOCÊ ESTIVER CONECTANDO VÁRIOS DISPOSITIVOS GP-Combine COM NÚMERO DE JOGADOR HABILITADO',
 	'player-number-label': 'Número do Jogador',
 	'socd-cleaning-mode-selection-slider-header-text':
 		'Controle Deslizante de Seleção de Modo SOCD Cleaning',
@@ -107,7 +107,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'Modo de Controle Deslizante SOCD Padrão',
 	'ps4-mode-sub-header-text':
-		'<0>!!!! AVISO: O GP2040-CE NUNCA FORNECERÁ ESSES ARQUIVOS !!!!</0> <1>Carregue os 3 arquivos necessários e clique no botão "Verificar e Salvar" para usar o Modo PS4.</1>',
+		'<0>!!!! AVISO: O GP-Combine NUNCA FORNECERÁ ESSES ARQUIVOS !!!!</0> <1>Carregue os 3 arquivos necessários e clique no botão "Verificar e Salvar" para usar o Modo PS4.</1>',
 	'ps4-mode-private-key-label': 'Chave Privada (PEM)',
 	'ps4-mode-serial-number-label':
 		'Número de Série (16 Bytes em Hexadecimal ASCII)',

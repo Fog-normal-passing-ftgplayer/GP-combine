@@ -1,7 +1,7 @@
 export default {
 	'current-text': 'Actual: {{version}}',
 	'get-update-text': 'Obtener Última Versión',
-	'header-text': '¡Bienvenido al Configurador Web de GP2040-CE!',
+	'header-text': '¡Bienvenido al Configurador Web de GP-Combine!',
 	'latest-text': 'Más reciente: {{version}}',
 	'memory-flash-text': 'Flash',
 	'memory-board-text': 'Flash de Placa',

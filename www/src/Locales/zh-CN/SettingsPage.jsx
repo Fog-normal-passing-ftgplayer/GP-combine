@@ -46,7 +46,7 @@ export default {
 	'debounce-delay-label': '去抖延迟 (毫秒)',
 	'mini-menu-gamepad-input': '在显示屏菜单中使用手柄输入',
 	'ps4-mode-explanation-text':
-		'PS4 模式允许 GP2040-CE 以经过身份验证的 PS4 控制器身份运行。',
+		'PS4 模式允许 GP-Combine 以经过身份验证的 PS4 控制器身份运行。',
 	'ps4-mode-warning-text':
 		'<span>⏳ 警告 ⏳:</span> 如果没有有效的身份验证，PS4 连接将在 8 分钟后超时断开。',
 	'ps4-usb-host-mode-text':
@@ -59,7 +59,7 @@ export default {
 		emulation: '远程/模拟',
 	},
 	'ps5-mode-explanation-text':
-		'PS5 模式允许 GP2040-CE 以经过身份验证的 PS5 兼容的街机摇杆身份运行。',
+		'PS5 模式允许 GP-Combine 以经过身份验证的 PS5 兼容的街机摇杆身份运行。',
 	'ps5-mode-warning-text':
 		'<span>⏳ 警告 ⏳:</span> 如果没有有效的身份验证，PS5 连接将在 8 分钟后超时断开。',
 	'ps5-usb-host-mode-text':
@@ -120,7 +120,7 @@ export default {
 		'load-profile-4': '加载配置文件 #4',
 		'load-profile-5': '加载配置文件 #5',
 		'load-profile-6': '加载配置文件 #6',
-		'reboot-default': '重启 GP2040-CE',
+		'reboot-default': '重启 GP-Combine',
 		'reboot-webconfig': '重启并进入网页配置模式',
 		'reboot-usb': '重启并进入 BOOTSEL 模式',
 		'save-config': '保存配置',

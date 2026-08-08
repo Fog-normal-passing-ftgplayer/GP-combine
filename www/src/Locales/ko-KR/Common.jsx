@@ -1,5 +1,5 @@
 export default {
-	'brand-text': 'GP2040-CE',
+	'brand-text': 'GP-Combine',
 	'button-clear-all-label': '모두 제거',
 	'button-delete-color-label': '색상 제거',
 	'button-dismiss-label': '닫기',

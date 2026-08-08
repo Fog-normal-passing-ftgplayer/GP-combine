@@ -9,7 +9,7 @@ void StatsScreen::init() {
 
     header = new GPLabel();
     header->setRenderer(getRenderer());
-    header->setText("[GP2040-CE Stats]");
+    header->setText("[GP-Combine Stats]");
     header->setPosition(2, 0);
     addElement(header);
 

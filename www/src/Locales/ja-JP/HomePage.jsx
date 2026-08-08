@@ -4,7 +4,7 @@ export default {
 	'build-text': 'ビルド: {{build}}',
 	'current-text': '利用バージョン: {{version}}',
 	'get-update-text': '最新バージョンをダウンロード',
-	'header-text': 'GP2040-CE Web Configurator へようこそ!',
+	'header-text': 'GP-Combine Web Configurator へようこそ!',
 	'latest-text': '最新バージョン: {{version}}',
 	'memory-flash-text': 'フラッシュ',
 	'memory-board-text': '基板フラッシュ',

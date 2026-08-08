@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Add-Ons Configuration',
 	'sub-header-text':
-		'Use the form below to reconfigure add-on options in GP2040-CE.',
+		'Use the form below to reconfigure add-on options in GP-Combine.',
 	'bootsel-header-text': 'BOOTSEL Button Configuration',
 	'bootsel-sub-header-text':
 		'Note: OLED might become unresponsive if button is set, unset to restore.',
@@ -145,7 +145,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'SOCD Slider Mode Default',
 	'ps4-mode-sub-header': 'DISCLAIMER!',
-	'ps4-mode-sub-header-text': 'GP2040-CE WILL NEVER SUPPLY THESE FILES!!!',
+	'ps4-mode-sub-header-text': 'GP-Combine WILL NEVER SUPPLY THESE FILES!!!',
 	'ps4-mode-text':
 		'Please upload the 3 required files and click the "Verify & Save" button to use PS4 Mode.',
 	'ps4-mode-private-key-label': 'Private Key (PEM)',

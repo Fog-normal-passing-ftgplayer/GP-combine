@@ -61,7 +61,7 @@ export default {
 	'debounce-delay-label': 'Debounce Delay in milliseconds',
 	'mini-menu-gamepad-input': 'Use Gamepad Input for Display Mini Menu',
 	'ps4-mode-explanation-text':
-		'PS4 mode allows GP2040-CE to run as an authenticated PS4 controller.',
+		'PS4 mode allows GP-Combine to run as an authenticated PS4 controller.',
 	'ps4-mode-warning-text':
 		'<span>⏳ WARNING ⏳:</span> PS4 will timeout after 8 minutes without authentication.',
 	'ps4-usb-host-mode-text':
@@ -74,7 +74,7 @@ export default {
 		emulation: 'Remote/Emulation',
 	},
 	'ps5-mode-explanation-text':
-		'PS5 mode allows GP2040-CE to run as an authenticated PS5 compatible arcade stick.',
+		'PS5 mode allows GP-Combine to run as an authenticated PS5 compatible arcade stick.',
 	'ps5-mode-warning-text':
 		'<span>⏳ WARNING ⏳:</span> PS5 will timeout after 8 minutes without authentication.',
 	'ps5-usb-host-mode-text':
@@ -135,9 +135,9 @@ export default {
 		'load-profile-4': 'Load Profile #4',
 		'load-profile-5': 'Load Profile #5',
 		'load-profile-6': 'Load Profile #6',
-		'reboot-default': 'Reboot GP2040-CE',
-		'reboot-webconfig': 'Reboot GP2040-CE into web-config mode',
-		'reboot-usb': 'Reboot GP2040-CE into BOOTSEL/USB mode',
+		'reboot-default': 'Reboot GP-Combine',
+		'reboot-webconfig': 'Reboot GP-Combine into web-config mode',
+		'reboot-usb': 'Reboot GP-Combine into BOOTSEL/USB mode',
 		'save-config': 'Save Config',
 		'next-profile': 'Next Profile',
 		'previous-profile': 'Previous Profile',

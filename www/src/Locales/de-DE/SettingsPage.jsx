@@ -76,7 +76,7 @@ export default {
 		'load-profile-5': 'Lade Profil #5',
 		'load-profile-6': 'Lade Profil #6',
 		'next-profile': 'Nächstes Profil',
-		'reboot-default': 'GP2040-CE Neustarten',
+		'reboot-default': 'GP-Combine Neustarten',
 	},
 	'forced-setup-mode-label': 'Erzwungener Einrichtungsmodus',
 	'forced-setup-mode-options': {

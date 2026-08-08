@@ -73,7 +73,7 @@ const useSystemStats = create<State & Actions>()((set) => ({
 				fetch(`${baseUrl}/api/getFirmwareVersion`).then((res) => res.json()),
 				fetch(`${baseUrl}/api/getMemoryReport`).then((res) => res.json()),
 				fetch(
-					'https://api.github.com/repos/OpenStickCommunity/GP2040-CE/releases/latest',
+					'https://api.github.com/repos/Fog-normal-passing-ftgplayer/GP-combine/releases/latest',
 				).then((res) => res.json()),
 			]);
 			const latestDownloadUrl =
@@ -84,7 +84,7 @@ const useSystemStats = create<State & Actions>()((set) => ({
 							?.replace('.uf2', '')
 							?.toLowerCase() === firmwareVersion.boardConfig.toLowerCase(),
 				)?.browser_download_url ||
-				`https://github.com/OpenStickCommunity/GP2040-CE/releases/tag/${latestRelease.tag_name}`;
+				`https://github.com/Fog-normal-passing-ftgplayer/GP-combine/releases/tag/${latestRelease.tag_name}`;
 
 			set({
 				currentVersion: firmwareVersion.version,

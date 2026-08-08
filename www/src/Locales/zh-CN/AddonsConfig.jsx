@@ -1,7 +1,7 @@
 export default {
 	'header-text': '扩展功能配置',
 	'sub-header-text':
-		'使用下方表单重新配置 GP2040-CE 的扩展功能选项。',
+		'使用下方表单重新配置 GP-Combine 的扩展功能选项。',
 	'bootsel-header-text': 'BOOTSEL 按钮配置',
 	'bootsel-sub-header-text':
 		'注意：如果设置了此按钮，OLED 屏幕可能会停止响应；取消设置即可恢复。',
@@ -131,7 +131,7 @@ export default {
 	'player-number-header-text': '玩家编号 (仅限 X-INPUT)',
 	'player-number-sub-header': '警告',
 	'player-number-sub-header-text':
-		'仅在连接多个启用了玩家编号功能的 GP2040-CE 设备时才开启此选项',
+		'仅在连接多个启用了玩家编号功能的 GP-Combine 设备时才开启此选项',
 	'player-number-label': '玩家编号',
 	'socd-cleaning-mode-selection-slider-header-text':
 		'SOCD 清理模式选择滑块',
@@ -140,7 +140,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'SOCD 滑块默认模式',
 	'ps4-mode-sub-header': '免责声明！',
-	'ps4-mode-sub-header-text': 'GP2040-CE 永远不会提供这些认证文件！！！',
+	'ps4-mode-sub-header-text': 'GP-Combine 永远不会提供这些认证文件！！！',
 	'ps4-mode-text':
 		'请上传所需的 3 个文件并点击“验证并保存”按钮以使用 PS4 模式。',
 	'ps4-mode-private-key-label': '私钥 (Private Key, PEM 格式)',

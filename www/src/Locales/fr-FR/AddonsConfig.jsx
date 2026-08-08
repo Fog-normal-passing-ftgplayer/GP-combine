@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Configuration des Modules complémentaires',
 	'sub-header-text':
-		'Activez un module ci-dessous pour afficher et configurer ses options dans GP2040-CE',
+		'Activez un module ci-dessous pour afficher et configurer ses options dans GP-Combine',
 	'bootsel-header-text': 'Configuration du bouton BOOT',
 	'bootsel-sub-header-text':
 		'Remarque : L\'écran OLED peut devenir non réactif si le bouton est activé, désactivez-le pour le restaurer.',
@@ -110,7 +110,7 @@ export default {
 	'player-number-header-text': 'Numéro du joueur (X-INPUT SEULEMENT)',
 	'player-number-sub-header': 'Avertissement',
 	'player-number-sub-header-text':
-		'Activez cette option uniquement si vous connectez plusieurs appareils GP2040-CE avec le numéro du joueur activé',
+		'Activez cette option uniquement si vous connectez plusieurs appareils GP-Combine avec le numéro du joueur activé',
 	'player-number-label': 'Numéro du joueur',
 	'socd-cleaning-mode-selection-slider-header-text':
 		'Sélecteur de mode de nettoyage SOCD',
@@ -119,7 +119,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'Mode par défaut du sélecteur SOCD',
 	'ps4-mode-sub-header': 'AVERTISSEMENT !',
-	'ps4-mode-sub-header-text': 'GP2040-CE NE FOURNIRA JAMAIS CES FICHIERS !!!',
+	'ps4-mode-sub-header-text': 'GP-Combine NE FOURNIRA JAMAIS CES FICHIERS !!!',
 	'ps4-mode-text':
 		'Veuillez télécharger les 3 fichiers requis et cliquer sur le bouton "Vérifier & Sauvegarder" pour utiliser le mode PS4.',
 	'ps4-mode-private-key-label': 'Clé privée (PEM)',

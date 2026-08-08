@@ -32,7 +32,7 @@ endif()
 
 # check for existing cmake files in the event of changing PICO_BOARD or PICO_PLATFORM
 if (GP2040_BOARDCONFIG)
-  message("GP2040-CE board config is set: ${GP2040_BOARDCONFIG}")
+  message("GP-Combine board config is set: ${GP2040_BOARDCONFIG}")
   set(GP2040_BOARD_CONFIG_FILE "${CMAKE_CURRENT_LIST_DIR}/configs/${GP2040_BOARDCONFIG}/${GP2040_BOARDCONFIG}.cmake")
 
   if (EXISTS "${GP2040_BOARD_CONFIG_FILE}")
@@ -75,6 +75,9 @@ execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --abbrev=7
 	OUTPUT_STRIP_TRAILING_WHITESPACE)
 string(REGEX REPLACE "v([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" CMAKE_GIT_REPO_VERSION ${GIT_REPO_VERSION})
 string(REGEX REPLACE "^(.......-.*)|(.......)$" "0.0.0" CMAKE_GIT_REPO_VERSION ${CMAKE_GIT_REPO_VERSION}) # fix if all we have is the git SHA
+# GP-Combine 固定版本号
+set(GIT_REPO_VERSION "0.1.0")
+set(CMAKE_GIT_REPO_VERSION "0.1.0")
 configure_file("headers/version.h.in" "headers/version.h")
 message("GIT_REPO_VERSION is ${GIT_REPO_VERSION}")
 message("CMAKE_GIT_REPO_VERSION is ${CMAKE_GIT_REPO_VERSION}")
@@ -83,7 +86,7 @@ message("GIT_REPO_BUILD_ID is ${GIT_REPO_BUILD_ID}")
 # Uncomment the next line for an unomptimized build for debugging. Use in conjunction with the Debug build type.
 # set(PICO_DEOPTIMIZED_DEBUG 1)
 
-project(GP2040-CE LANGUAGES C CXX ASM VERSION ${CMAKE_GIT_REPO_VERSION})
+project(GP-Combine LANGUAGES C CXX ASM VERSION ${CMAKE_GIT_REPO_VERSION})
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -319,8 +322,8 @@ ${PROTO_OUTPUT_DIR}/config.pb.c
 
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME}_${CMAKE_PROJECT_VERSION}_${GP2040_BOARDCONFIG})
 
-pico_set_program_name(GP2040-CE "GP2040-CE")
-pico_set_program_version(GP2040-CE ${GIT_REPO_VERSION})
+pico_set_program_name(${PROJECT_NAME} "GP-Combine")
+pico_set_program_version(${PROJECT_NAME} ${GIT_REPO_VERSION})
 
 target_link_libraries(${PROJECT_NAME}
 pico_stdlib

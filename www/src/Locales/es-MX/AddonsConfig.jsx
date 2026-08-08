@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Configuración de Complementos',
 	'sub-header-text':
-		'Utilice el formulario siguiente para reconfigurar las opciones de complementos en GP2040-CE.',
+		'Utilice el formulario siguiente para reconfigurar las opciones de complementos en GP-Combine.',
 	'bootsel-header-text': 'Configuración del Botón BOOTSEL',
 	'bootsel-sub-header-text':
 		'Nota: La pantalla OLED podría dejar de responder si se configura este botón, desactívelo para restaurar.',
@@ -116,7 +116,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'Modo Predeterminado Deslizador SOCD',
 	'ps4-mode-sub-header': '¡AVISO LEGAL!',
-	'ps4-mode-sub-header-text': '¡¡¡GP2040-CE NUNCA PROPORCIONARÁ ESTOS ARCHIVOS!!!',
+	'ps4-mode-sub-header-text': '¡¡¡GP-Combine NUNCA PROPORCIONARÁ ESTOS ARCHIVOS!!!',
 	'ps4-mode-text':
 		'Por favor, suba los 3 archivos requeridos y haga clic en el botón "Verificar y Guardar" para usar el Modo PS4.',
 	'ps4-mode-private-key-label': 'Clave Privada (PEM)',

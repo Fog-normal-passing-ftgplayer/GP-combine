@@ -36,7 +36,7 @@
 #define DPAD_MODE_LEFT_ANALOG_NAME "Left Analog"
 #define DPAD_MODE_RIGHT_ANALOG_NAME "Right Analog"
 
-#define MAIN_MENU_NAME "GP2040-CE Mini Menu"
+#define MAIN_MENU_NAME "GP-Combine Mini Menu"
 
 class MainMenuScreen : public GPScreen {
     public:

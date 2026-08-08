@@ -74,7 +74,7 @@ export default {
 		'load-profile-5': 'Carregar Perfil #5',
 		'load-profile-6': 'Carregar Perfil #6',
 		'next-profile': 'Próximo Perfil',
-		'reboot-default': 'Reiniciar GP2040-CE',
+		'reboot-default': 'Reiniciar GP-Combine',
 	},
 	'forced-setup-mode-label': 'Modo de Configuração Forçada',
 	'forced-setup-mode-options': {

@@ -176,7 +176,20 @@ class UploadPage(QWidget):
             self.finished_upload.emit(True)
         else:
             self._phase = "failed"
-            self._set_status("上传失败，请检查端口和下载模式后重试", "#FF7B72")
+            text = self.log.toPlainText()
+            if ("Serial data stream stopped" in text
+                    or "Connecting" in text
+                    or "Failed to connect" in text
+                    or "No serial data received" in text):
+                self._set_status(
+                    "连接失败：按住 BOOT 键再点「开始上传」，"
+                    "出现写入进度后松开 BOOT；并确认是数据线",
+                    "#FFB454",
+                )
+                self._log("提示：若仍失败，先按住 BOOT 键，再点「开始上传」，"
+                          "看到写入进度后再松开 BOOT。")
+            else:
+                self._set_status("上传失败，请检查端口后重试", "#FF7B72")
             self.finished_upload.emit(False)
 
     def cancel(self) -> None:

@@ -26,6 +26,7 @@ class WizardState:
     # GIF 动画（正式版 ESP32）
     gif_src: str = ""
     gif_mode: str = "cover"
+    gif_palette: int = 16
     layout: Layout = field(default_factory=Layout.preset)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +55,10 @@ class WizardState:
         s.led_order = dict(d.get("led_order", {}))
         s.gif_src = str(d.get("gif_src", ""))
         s.gif_mode = str(d.get("gif_mode", "cover"))
+        try:
+            s.gif_palette = int(d.get("gif_palette", 16))
+        except Exception:
+            s.gif_palette = 16
         if isinstance(d.get("layout"), dict):
             try:
                 s.layout = Layout.from_dict(d["layout"])

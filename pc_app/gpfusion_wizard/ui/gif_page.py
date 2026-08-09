@@ -56,6 +56,12 @@ class GifPage(QWidget):
             self.mode_combo.addItem(name, key)
         self.mode_combo.currentIndexChanged.connect(self._on_change)
         row.addWidget(self.mode_combo)
+        row.addWidget(QLabel("调色板"))
+        self.palette_combo = QComboBox()
+        self.palette_combo.addItem("16 色（更小）", 16)
+        self.palette_combo.addItem("32 色（画质更好）", 32)
+        self.palette_combo.currentIndexChanged.connect(self._on_change)
+        row.addWidget(self.palette_combo)
         left.addLayout(row)
 
         self.info = QLabel("未选择 GIF")
@@ -102,6 +108,7 @@ class GifPage(QWidget):
 
     def _on_change(self) -> None:
         self.state.gif_mode = self.MODES[self.mode_combo.currentIndex()][0]
+        self.state.gif_palette = int(self.palette_combo.currentData())
         self.state.save()
         self._update_preview()
         self.generate_now()
@@ -135,6 +142,7 @@ class GifPage(QWidget):
                 self.state.gif_src,
                 out,
                 self.MODES[self.mode_combo.currentIndex()][0],
+                palette_size=int(self.palette_combo.currentData()),
             )
             self.status.setText("✔ 已写入 %s（%d 帧，压缩后 %d KB）"
                                 % (out, frames, data_bytes // 1024))

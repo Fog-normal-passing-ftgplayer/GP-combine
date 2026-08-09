@@ -816,8 +816,10 @@ void drawSaverGif() {
                                            : GIF_USER_DATA_SIZE;
   int x = 0, y = 0;
   for (int i = off; i < end; ) {
-    int run = GIF_USER_DATA[i++] + 1;
-    uint16_t c = ((uint16_t)GIF_USER_DATA[i++] << 8) | GIF_USER_DATA[i++];
+    int run = GIF_USER_DATA[i++];           // 0 表示 256
+    if (run == 0) run = 256;
+    uint8_t idx = GIF_USER_DATA[i++];
+    uint16_t c = (idx < GIF_USER_PALETTE_SIZE) ? GIF_USER_PALETTE[idx] : 0;
     while (run--) {
       if (x < GIF_USER_WIDTH && y < GIF_USER_HEIGHT) lfbSet(x, y, c);
       if (++x >= GIF_USER_WIDTH) { x = 0; y++; }

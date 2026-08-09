@@ -1,4 +1,8 @@
-"""GIF -> 240x135 RGB565 帧 + RLE 压缩 -> gif_user.h（方案三：压缩存储+运行时解码）。"""
+"""GIF -> 240x135 调色板索引 + 行程压缩 -> gif_user.h（方案三：压缩存储+运行时解码）。
+
+v2 格式：全局调色板（默认 16 色）+ 每帧像素索引行程编码 [len][idx]，
+比 RGB565 原值 RLE 通常小 2~4 倍。
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,29 +65,60 @@ def rle_encode_rgb565(pixels: list[int]) -> list[int]:
     return out
 
 
+def rle_encode_indices(indices: list[int]) -> list[int]:
+    """索引行程编码：每段 [len, idx]，len==0 表示 256。"""
+    out: list[int] = []
+    i = 0
+    n = len(indices)
+    while i < n:
+        v = indices[i]
+        run = 1
+        while i + run < n and indices[i + run] == v and run < 256:
+            run += 1
+        out.append(run & 0xFF)      # 256 -> 0
+        out.append(v & 0xFF)
+        i += run
+    return out
+
+
 def generate_gif_header(
     src: str | Path,
     out_path: str | Path,
     mode: str = "cover",
     max_frames: int = 60,
+    palette_size: int = 16,
 ) -> tuple[Path, int, int]:
     frames = load_gif_frames(src, mode, max_frames)
     assert frames, "GIF 没有可用的帧"
     delays = [d for _, d in frames]
+
+    # 全局调色板：对首帧做中位切分量化，其余帧映射到同一调色板（不抖动）
+    pal_img = frames[0][0].quantize(
+        colors=palette_size, method=Image.MEDIANCUT, dither=Image.Dither.NONE)
+    palette = pal_img.getpalette()[:palette_size * 3]
+    rgb_pal = [_rgb565(palette[i * 3], palette[i * 3 + 1], palette[i * 3 + 2])
+               for i in range(palette_size)]
+
     chunks: list[list[int]] = []
     for frame, _ in frames:
-        px = list(frame.getdata())
-        rgb = [_rgb565(*p) for p in px]
-        chunks.append(rle_encode_rgb565(rgb))
+        qi = frame.quantize(colors=palette_size, palette=pal_img,
+                            dither=Image.Dither.NONE)
+        chunks.append(rle_encode_indices(list(qi.getdata())))
 
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as f:
         f.write("#pragma once\n#include <stdint.h>\n\n")
         f.write("// 由 GP-Combine 配置助手生成（GIF 压缩：RLE），请勿手改。\n")
+        f.write("#define GIF_USER_VERSION 2\n")
         f.write("#define GIF_USER_FRAMES %d\n" % len(frames))
         f.write("#define GIF_USER_WIDTH %d\n" % SCREEN_W)
         f.write("#define GIF_USER_HEIGHT %d\n" % SCREEN_H)
+        f.write("#define GIF_USER_PALETTE_SIZE %d\n" % palette_size)
+        f.write("static const uint16_t GIF_USER_PALETTE[%d] = {"
+                % palette_size)
+        f.write(",".join("0x%04X" % v for v in rgb_pal))
+        f.write("};\n")
         f.write("static const uint16_t GIF_USER_DELAYS[%d] = {"
                 % len(delays))
         f.write(",".join(str(d) for d in delays))

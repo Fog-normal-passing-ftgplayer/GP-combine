@@ -118,6 +118,7 @@ unsigned long animStart = 0;
 unsigned long lastFrameTime = 0;
 uint16_t lastButtons = 0;
 uint8_t lastDpad = 0;
+uint8_t prevStickD = 0;              // 左摇杆菜单方向边沿检测
 unsigned long lastActivity = 0;
 bool redrawNeeded = true;
 
@@ -1560,6 +1561,18 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       if (lastLX != olx || lastLY != oly || lastRX != orx || lastRY != ory ||
           lastLT != olt || lastRT != ort) stateChanged = true;
     }
+    // 左摇杆 → 菜单方向（死区 ±12000，中心 32768）
+    int16_t sx = (int16_t)(lastLX - 32768);
+    int16_t sy = (int16_t)(lastLY - 32768);
+    uint8_t stickD = 0;
+    if (sy < -12000) stickD |= 0x01;
+    else if (sy > 12000) stickD |= 0x02;
+    if (sx < -12000) stickD |= 0x04;
+    else if (sx > 12000) stickD |= 0x08;
+    uint8_t stickEdge = stickD & ~prevStickD;
+    prevStickD = stickD;
+    uint8_t uiD = dpad | stickD;      // 菜单用方向（十字键 + 左摇杆）
+    uint8_t uiDEdge = dEdge | stickEdge;
     if (saverActive && stateChanged) { // 任意输入唤醒屏保，这一帧不当作菜单输入
       saverWake();
       lastButtons = buttons;
@@ -1590,8 +1603,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     if (bEdge & 0x2000) pushHist("A2");
 
     if (view == VIEW_MENU) {
-      if (dEdge & 0x04) menuMove(-1); // DPAD LEFT
-      if (dEdge & 0x08) menuMove(+1); // DPAD RIGHT
+      if (uiDEdge & 0x04) menuMove(-1); // DPAD/摇杆 LEFT
+      if (uiDEdge & 0x08) menuMove(+1); // DPAD/摇杆 RIGHT
       eggInput(dEdge);                // 彩蛋：右左...12 连击
       if (bEdge) eggSeq = 0;          // 按键打断彩蛋计数
       if (bEdge & 0x01) { // B1 / A = enter sub-page
@@ -1622,7 +1635,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       }
       s2PressStart = 0;
     } else if (view == VIEW_EASTER) {
-      if (bEdge || dEdge) { // 任意输入退出彩蛋，回到菜单
+      if (bEdge || uiDEdge) { // 任意输入退出彩蛋，回到菜单
         view = VIEW_MENU;
         page = 0;
         animating = false;
@@ -1634,7 +1647,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       SubPageDef &def = subDefs[subPage];
       unsigned long nowMs = millis();
       if (confirmOpen) { // save-confirm dialog
-        if (dEdge & 0x0C) { // LEFT/RIGHT toggles 是/否
+        if (uiDEdge & 0x0C) { // LEFT/RIGHT toggles 是/否
           confirmChoice = 1 - confirmChoice;
           redrawNeeded = true;
         }
@@ -1663,8 +1676,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
         }
       } else if (def.sectionCount > 0) {
         if (subList) { // section list: up/down select, A enter, B back to menu
-          uint8_t heldD = dpad & 0x03;
-          if (heldD && (dEdge & 0x03 || nowMs - lastStepTime >= 250)) {
+          uint8_t heldD = uiD & 0x03;
+          if (heldD && (uiDEdge & 0x03 || nowMs - lastStepTime >= 250)) {
             if (heldD & 0x01) subSection = (subSection + def.sectionCount - 1) % def.sectionCount;
             if (heldD & 0x02) subSection = (subSection + 1) % def.sectionCount;
             clampScroll(subSection, def.sectionCount, 3, secScroll);
@@ -1690,8 +1703,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
           MenuSection &sec = def.sections[subSection];
           if (sliderMode) { // A entered a slider: left/right adjusts, B exits
             MenuOpt *so = &sec.opts[sliderIdx];
-            uint8_t heldLR = dpad & 0x0C;
-            if (heldLR && (dEdge & 0x0C || nowMs - lastStepTime >= 120)) {
+            uint8_t heldLR = uiD & 0x0C;
+            if (heldLR && (uiDEdge & 0x0C || nowMs - lastStepTime >= 120)) {
               if (heldLR & 0x04) stepValue(so, -1);
               if (heldLR & 0x08) stepValue(so, +1);
               if (subPage == 3) applyBgSettings();
@@ -1705,8 +1718,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
               redrawNeeded = true;
             }
           } else {
-            uint8_t heldD = dpad & 0x03; // UP/DOWN
-            if (heldD && (dEdge & 0x03 || nowMs - lastStepTime >= 250)) {
+            uint8_t heldD = uiD & 0x03; // UP/DOWN
+            if (heldD && (uiDEdge & 0x03 || nowMs - lastStepTime >= 250)) {
               if (heldD & 0x01) subSel = (subSel + sec.count - 1) % sec.count;
               if (heldD & 0x02) subSel = (subSel + 1) % sec.count;
               clampScroll(subSel, sec.count, 4, subScroll);
@@ -1715,9 +1728,9 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
               redrawNeeded = true;
             }
             MenuOpt *o = &sec.opts[subSel];
-            uint8_t heldLR = dpad & 0x0C; // LEFT/RIGHT (not for sliders)
+            uint8_t heldLR = uiD & 0x0C; // LEFT/RIGHT (not for sliders)
             if (heldLR && o->type != OPT_SLIDER &&
-                (dEdge & 0x0C || nowMs - lastStepTime >= 250)) {
+                (uiDEdge & 0x0C || nowMs - lastStepTime >= 250)) {
               if (heldLR & 0x04) stepValue(o, -1);
               if (heldLR & 0x08) stepValue(o, +1);
               if (subPage == 3) applyBgSettings();

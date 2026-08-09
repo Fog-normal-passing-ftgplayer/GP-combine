@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
 from ..app_config import APP_NAME, APP_VERSION
 from ..wizard_state import WizardState
 from .background_page import BackgroundPage
+from .gif_page import GifPage
 from .layout_page import LayoutPage
+from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .upload_page import UploadPage
 
@@ -24,6 +26,8 @@ STEPS = [
     "连接与准备",
     "背景图",
     "按键布局",
+    "Pico 配置",
+    "GIF 动画",
     "编译上传",
 ]
 
@@ -78,10 +82,14 @@ class MainWindow(QWidget):
         self.prep_page = PrepPage(self.state)
         self.bg_page = BackgroundPage(self.state)
         self.layout_page = LayoutPage(self.state)
+        self.pico_page = PicoConfigPage(self.state)
+        self.gif_page = GifPage(self.state)
         self.upload_page = UploadPage(self.state)
         self.stack.addWidget(self.prep_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
+        self.stack.addWidget(self.pico_page)
+        self.stack.addWidget(self.gif_page)
         self.stack.addWidget(self.upload_page)
         root.addWidget(self.stack, 1)
         outer.addWidget(body, 1)
@@ -120,7 +128,7 @@ class MainWindow(QWidget):
         if cur >= 0 and row > cur and not self._can_continue(cur):
             return
         self.stack.setCurrentIndex(row)
-        if row == 3:
+        if row == 5:
             self.upload_page.on_shown()
         self._update_nav()
 
@@ -145,7 +153,7 @@ class MainWindow(QWidget):
     def _step_done(self, i: int) -> bool:
         if i == 0:
             return self.prep_page.is_ready()
-        if i in (1, 2):
+        if i in (1, 2, 3, 4):
             return bool(self.state.source_dir)
         return False
 
@@ -154,7 +162,7 @@ class MainWindow(QWidget):
             return self.prep_page.is_ready()
         if idx == 1:
             return bool(self.state.background_src) and bool(self.state.source_dir)
-        if idx == 2:
+        if idx in (2, 3, 4):
             return bool(self.state.source_dir)
         return True
 

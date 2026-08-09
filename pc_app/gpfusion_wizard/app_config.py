@@ -6,7 +6,7 @@ import platform
 from pathlib import Path
 
 APP_NAME = "GP-Fusion 配置向导"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 # ESP32 UI 内容分辨率（横向 240x135，驱动层再旋转到竖屏面板）
 SCREEN_W = 240
@@ -76,3 +76,11 @@ def local_layout_header(source_dir: Path) -> Path:
 
 def local_defaults_header(source_dir: Path) -> Path:
     return local_sketch_dir(source_dir) / "defaults.h"
+
+
+def local_pico_user_header(source_dir: Path) -> Path:
+    return source_dir / "configs" / "GPFusion" / "pico_user.h"
+
+
+def local_gif_header(source_dir: Path) -> Path:
+    return local_sketch_dir(source_dir) / "gif_user.h"

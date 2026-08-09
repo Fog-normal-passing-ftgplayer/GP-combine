@@ -11,6 +11,11 @@
 
 #define BOARD_CONFIG_LABEL "GPFusion"
 
+// 配置助手生成的热键/WS2812B 覆盖（configs/GPFusion/pico_user.h）
+#if __has_include("pico_user.h")
+#include "pico_user.h"
+#endif
+
 // Main pin mapping Configuration (same as stock Pico)
 //                                                  // GP2040 | Xinput | Switch  | PS3/4/5  | Dinput | Arcade |
 #define GPIO_PIN_02 GpioAction::BUTTON_PRESS_UP     // UP     | UP     | UP      | UP       | UP     | UP     |
@@ -68,28 +73,66 @@
 #define UART_LINK_LED_PIN 25
 
 // LED strip (WS2812 on GPIO28)
+#ifndef BOARD_LEDS_PIN
 #define BOARD_LEDS_PIN 28
+#endif
 #define LED_BRIGHTNESS_MAXIMUM 100
 #define LED_BRIGHTNESS_STEPS 5
+#ifndef LED_FORMAT
 #define LED_FORMAT LED_FORMAT_GRB
+#endif
+#ifndef LEDS_PER_PIXEL
 #define LEDS_PER_PIXEL 1
+#endif
 
+#ifndef LEDS_DPAD_LEFT
 #define LEDS_DPAD_LEFT   0
+#endif
+#ifndef LEDS_DPAD_DOWN
 #define LEDS_DPAD_DOWN   1
+#endif
+#ifndef LEDS_DPAD_RIGHT
 #define LEDS_DPAD_RIGHT  2
+#endif
+#ifndef LEDS_DPAD_UP
 #define LEDS_DPAD_UP     3
+#endif
+#ifndef LEDS_BUTTON_B3
 #define LEDS_BUTTON_B3   4
+#endif
+#ifndef LEDS_BUTTON_B4
 #define LEDS_BUTTON_B4   5
+#endif
+#ifndef LEDS_BUTTON_R1
 #define LEDS_BUTTON_R1   6
+#endif
+#ifndef LEDS_BUTTON_L1
 #define LEDS_BUTTON_L1   7
+#endif
+#ifndef LEDS_BUTTON_B1
 #define LEDS_BUTTON_B1   8
+#endif
+#ifndef LEDS_BUTTON_B2
 #define LEDS_BUTTON_B2   9
+#endif
+#ifndef LEDS_BUTTON_R2
 #define LEDS_BUTTON_R2   10
+#endif
+#ifndef LEDS_BUTTON_L2
 #define LEDS_BUTTON_L2   11
+#endif
+#ifndef LEDS_BUTTON_A1
 #define LEDS_BUTTON_A1   12
+#endif
+#ifndef LEDS_BUTTON_L3
 #define LEDS_BUTTON_L3   13
+#endif
+#ifndef LEDS_BUTTON_R3
 #define LEDS_BUTTON_R3   14
+#endif
+#ifndef LEDS_BUTTON_A2
 #define LEDS_BUTTON_A2   15
+#endif
 
 #define BUTTON_LAYOUT BUTTON_LAYOUT_STICKLESS
 #define BUTTON_LAYOUT_RIGHT BUTTON_LAYOUT_STICKLESSB

@@ -18,6 +18,14 @@ class WizardState:
     background_src: str = ""
     background_mode: str = "cover"
     default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
+    # Pico 配置（正式版）
+    hotkeys: list = field(default_factory=list)   # [{action, button}]
+    led_pin: int = 28
+    leds_per_button: int = 1
+    led_order: dict = field(default_factory=dict) # {button: index}
+    # GIF 动画（正式版 ESP32）
+    gif_src: str = ""
+    gif_mode: str = "cover"
     layout: Layout = field(default_factory=Layout.preset)
 
     def to_dict(self) -> dict[str, Any]:
@@ -37,6 +45,15 @@ class WizardState:
             s.default_layout = int(d.get("default_layout", 1))
         except Exception:
             s.default_layout = 1
+        s.hotkeys = list(d.get("hotkeys", [])) or []
+        try:
+            s.led_pin = int(d.get("led_pin", 28))
+            s.leds_per_button = int(d.get("leds_per_button", 1))
+        except Exception:
+            pass
+        s.led_order = dict(d.get("led_order", {}))
+        s.gif_src = str(d.get("gif_src", ""))
+        s.gif_mode = str(d.get("gif_mode", "cover"))
         if isinstance(d.get("layout"), dict):
             try:
                 s.layout = Layout.from_dict(d["layout"])

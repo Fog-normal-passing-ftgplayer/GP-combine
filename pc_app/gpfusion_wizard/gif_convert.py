@@ -88,7 +88,7 @@ def generate_gif_header(
                 % len(delays))
         f.write(",".join(str(d) for d in delays))
         f.write("};\n")
-        f.write("static const uint16_t GIF_USER_OFFSETS[%d] = {" % len(chunks))
+        f.write("static const uint32_t GIF_USER_OFFSETS[%d] = {" % len(chunks))
         off = 0
         offs = []
         for c in chunks:

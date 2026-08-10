@@ -6,7 +6,21 @@
 
 #include "hardware/uart.h"
 #include "hardware/gpio.h"
+#include "hardware/flash.h"
+#include "pico/multicore.h"
 #include "pico/time.h"
+#include "CRC32.h"
+
+// ESP32 侧设置持久化：存在 Pico flash 顶部下方独立 4KB 扇区（避开 GP2040-CE 配置区）
+#define ESP_CFG_XIP_ADDR  0x101F7000
+#define ESP_CFG_FLASH_OFF 0x1F7000
+#define ESP_CFG_MAGIC     0x43504745   // "EGPC"
+
+struct EspCfgBlock {
+    uint32_t magic;
+    uint32_t crc;
+    uint8_t data[12];
+};
 
 // CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF)
 static uint16_t crc16_update(uint16_t crc, uint8_t b) {
@@ -60,8 +74,70 @@ void UARTLinkAddon::setup() {
         rxCrcLo = 0;
         rxLedState = false;
         lastAckTime = 0;
+        espCfgValid = espCfgRead();
         initialized = true;
     }
+}
+
+bool UARTLinkAddon::espCfgRead() {
+    const EspCfgBlock *blk = reinterpret_cast<const EspCfgBlock *>(ESP_CFG_XIP_ADDR);
+    if (blk->magic != ESP_CFG_MAGIC) return false;
+    if (blk->crc != CRC32::calculate(blk->data, 12)) return false;
+    memcpy(espCfg, blk->data, 12);
+    return true;
+}
+
+static int64_t espCfgWriteAlarm(alarm_id_t id, void *user_data) {
+    (void)id;
+    UARTLinkAddon *addon = static_cast<UARTLinkAddon *>(user_data);
+    addon->espCfgCommitNow();
+    return 0;
+}
+
+void UARTLinkAddon::espCfgCommitNow() {
+    EspCfgBlock blk;
+    blk.magic = ESP_CFG_MAGIC;
+    blk.crc = CRC32::calculate(espCfg, 12);
+    memcpy(blk.data, espCfg, 12);
+
+    multicore_lockout_start_blocking();
+    flash_range_erase(ESP_CFG_FLASH_OFF, FLASH_SECTOR_SIZE);
+    flash_range_program(ESP_CFG_FLASH_OFF, reinterpret_cast<uint8_t *>(&blk), FLASH_PAGE_SIZE);
+    multicore_lockout_end_blocking();
+
+    espCfgWritePending = false;
+}
+
+void UARTLinkAddon::espCfgScheduleWrite() {
+    if (espCfgWritePending) return;
+    espCfgWritePending = true;
+    add_alarm_in_ms(60, espCfgWriteAlarm, this, true);
+}
+
+void UARTLinkAddon::sendEspConfigFrame(bool ok, const uint8_t *data) {
+    uint8_t frame[19];
+    frame[0] = LINK_FRAME_MAGIC;
+    frame[1] = LINK_FRAME_VERSION;
+    frame[2] = LINK_FRAME_TYPE_ESP_LOAD;
+    frame[3] = 13; // ok(1) + data(12)
+    frame[4] = ok ? 1 : 0;
+    for (int i = 0; i < 12; i++) frame[5 + i] = data[i];
+    uint16_t crc = 0xFFFF;
+    for (int i = 1; i <= 16; i++) crc = crc16_update(crc, frame[i]);
+    frame[17] = (uint8_t)(crc & 0xFF);
+    frame[18] = (uint8_t)(crc >> 8);
+    uart_write_blocking(uart0, frame, sizeof(frame));
+}
+
+void UARTLinkAddon::onEspSaveFrame(uint8_t *payload, uint8_t len) {
+    if (len < 12) return;
+    memcpy(espCfg, payload, 12);
+    espCfgValid = true;
+    espCfgScheduleWrite();
+}
+
+void UARTLinkAddon::onEspLoadReq() {
+    sendEspConfigFrame(espCfgValid, espCfg);
 }
 
 void UARTLinkAddon::sendInputFrame(uint16_t buttons, uint8_t dpad,
@@ -254,6 +330,14 @@ void UARTLinkAddon::handleRxByte(uint8_t b) {
             rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
             rxType == LINK_FRAME_TYPE_LED) {
             onLedConfigFrame(rxPayload, rxLen);
+        } else if (b == (uint8_t)(rxCrcCalc >> 8) &&
+            rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
+            rxType == LINK_FRAME_TYPE_ESP_SAVE) {
+            onEspSaveFrame(rxPayload, rxLen);
+        } else if (b == (uint8_t)(rxCrcCalc >> 8) &&
+            rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
+            rxType == LINK_FRAME_TYPE_ESP_LOAD_REQ) {
+            onEspLoadReq();
         }
         rxState = 0;
         break;

@@ -47,6 +47,9 @@
 #define FRAME_TYPE_CONFIG 0x04
 #define FRAME_TYPE_CONFIG_ACK 0x05
 #define FRAME_TYPE_LED   0x06
+#define FRAME_TYPE_ESP_SAVE 0x07       // ESP32 -> Pico: 保存 ESP32 侧设置
+#define FRAME_TYPE_ESP_LOAD_REQ 0x08   // ESP32 -> Pico: 请求读取
+#define FRAME_TYPE_ESP_LOAD 0x09       // Pico -> ESP32: 回传设置
 
 // ---- views ----
 #define VIEW_LAYOUT 0   // default: button layout + status
@@ -1348,6 +1351,7 @@ void saveConfigFile() {
   f.printf("wl_hb=%d\n", wlOpts[4].value);
   f.flush();
   f.close();
+  sendEspSave();   // 同时把设置存到 Pico flash，断电后从 Pico 读回
 }
 
 void loadConfigFile() {
@@ -1375,6 +1379,68 @@ void loadConfigFile() {
     else if (k == "wl_hb") wlOpts[4].value = constrain(v, 0, 2);
   }
   f.close();
+  applyBgSettings();
+  applyHistSettings();
+  applyWirelessSettings();
+}
+
+// ---- ESP32 侧设置持久化到 Pico（Pico flash 正常，ESP32 板 flash 写入不可靠） ----
+bool espCfgLoaded = false;
+unsigned long espLoadReqLast = 0;
+
+void sendEspSave() {
+  uint8_t f[18];
+  f[0] = FRAME_MAGIC;
+  f[1] = FRAME_VERSION;
+  f[2] = FRAME_TYPE_ESP_SAVE;
+  f[3] = 12;
+  f[4] = histOpts[0].value;
+  f[5] = histOpts[1].value;
+  f[6] = bgOpts[0].value;
+  f[7] = bgOpts[1].value;
+  f[8] = bgOpts[2].value;
+  f[9] = bgOpts[3].value;
+  f[10] = bgOpts[4].value;
+  f[11] = wlOpts[0].value;
+  f[12] = wlOpts[1].value;
+  f[13] = wlOpts[2].value;
+  f[14] = wlOpts[3].value;
+  f[15] = wlOpts[4].value;
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 15; i++) crc = crc16_update(crc, f[i]);
+  f[16] = (uint8_t)(crc & 0xFF);
+  f[17] = (uint8_t)(crc >> 8);
+  Serial.write(f, sizeof(f));
+}
+
+void sendEspLoadReq() {
+  uint8_t f[6];
+  f[0] = FRAME_MAGIC;
+  f[1] = FRAME_VERSION;
+  f[2] = FRAME_TYPE_ESP_LOAD_REQ;
+  f[3] = 0;
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 3; i++) crc = crc16_update(crc, f[i]);
+  f[4] = (uint8_t)(crc & 0xFF);
+  f[5] = (uint8_t)(crc >> 8);
+  Serial.write(f, sizeof(f));
+}
+
+void applyEspCfg(uint8_t *p, uint8_t len) {
+  if (len < 12) return;
+  histOpts[0].value = constrain(p[0], 0, 1);
+  histOpts[1].value = constrain(p[1], 0, 3);
+  bgOpts[0].value = constrain(p[2], 0, 4);
+  bgOpts[1].value = constrain(p[3], 0, 100);
+  bgOpts[2].value = constrain(p[4], 0, 1);
+  bgOpts[3].value = constrain(p[5], 0, 1);
+  bgOpts[4].value = constrain(p[6], 0, 1);
+  wlOpts[0].value = constrain(p[7], 0, 1);
+  wlOpts[1].value = constrain(p[8], 0, 125);
+  wlOpts[2].value = constrain(p[9], 0, 3);
+  wlOpts[3].value = constrain(p[10], 0, 1);
+  wlOpts[4].value = constrain(p[11], 0, 2);
+  espCfgLoaded = true;
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
@@ -1883,6 +1949,7 @@ void handleRxByte(uint8_t b) {
           configAcked = true;
           savedFlashUntil = millis() + 1200;
         }
+        else if (rxType == FRAME_TYPE_ESP_LOAD) applyEspCfg(rxPayload, rxLen);
       }
       rxState = 0;
       break;
@@ -1922,6 +1989,11 @@ void loop(){
   if (view == VIEW_EASTER && millis() - easterFrameMs >= 40) { // 彩蛋动画 ~25fps
     easterFrameMs = millis();
     redrawNeeded = true;
+  }
+  // 开机从 Pico 回读 ESP32 侧设置（Pico flash 断电保持）
+  if (!espCfgLoaded && millis() - espLoadReqLast >= 500) {
+    espLoadReqLast = millis();
+    sendEspLoadReq();
   }
   // wireless: forward full gamepad state + mode over nRF24
   if (radioUp) {

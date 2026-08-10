@@ -182,6 +182,7 @@ class PrepPage(QWidget):
             self.device_label.setText("未检测到设备（请插入 ESP32-S3）")
             self.device_label.setStyleSheet("font-size: 15px; color: #FFB454;")
         self.state.save()
+        self.ready_changed.emit()
         return self.state.port
 
     def _refresh_all(self) -> None:
@@ -263,6 +264,10 @@ class PrepPage(QWidget):
 
     def is_ready(self) -> bool:
         return bool(self.state.port) and self._cli_ok and self._core_ok and self._source_ok
+
+    def can_proceed(self) -> bool:
+        """未插设备也能浏览/编辑，但不算完全就绪。"""
+        return self._cli_ok and self._core_ok and self._source_ok
 
     # ---------- 自动准备 ----------
 

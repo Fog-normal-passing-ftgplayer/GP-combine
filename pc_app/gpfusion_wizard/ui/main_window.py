@@ -94,6 +94,16 @@ class MainWindow(QWidget):
         root.addWidget(self.stack, 1)
         outer.addWidget(body, 1)
 
+        # 未插设备的提示条
+        self.device_banner = QLabel(
+            "未插入 ESP32-S3：可以预览/编辑，但不会写入固件，插入后重试上传。"
+        )
+        self.device_banner.setStyleSheet(
+            "background: #4A3200; color: #FFD27A; padding: 6px 16px; font-size: 13px;"
+        )
+        self.device_banner.setVisible(False)
+        outer.addWidget(self.device_banner)
+
         # 底部导航（叠加在内容区右侧的独立栏）
         self.nav_bar = QWidget()
         nav_l = QHBoxLayout(self.nav_bar)
@@ -140,6 +150,7 @@ class MainWindow(QWidget):
 
     def _update_nav(self) -> None:
         idx = self.stack.currentIndex()
+        self.device_banner.setVisible(not bool(self.state.port))
         self.back_btn.setEnabled(idx > 0)
         last = idx == 3
         self.next_btn.setVisible(not last)
@@ -159,7 +170,7 @@ class MainWindow(QWidget):
 
     def _can_continue(self, idx: int) -> bool:
         if idx == 0:
-            return self.prep_page.is_ready()
+            return self.prep_page.can_proceed()
         if idx == 1:
             return bool(self.state.background_src) and bool(self.state.source_dir)
         if idx in (2, 3, 4):

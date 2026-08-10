@@ -121,8 +121,8 @@ class UploadPage(QWidget):
             self.finished_upload.emit(False)
             return
         if not self.state.port:
-            self._set_status("未检测到 ESP32-S3，请检查 USB 连接", "#FFB454")
-            self._log("错误：未检测到设备")
+            self._set_status("未插入 ESP32-S3，不写入固件，插入后再试", "#FFB454")
+            self._log("未插入 ESP32-S3：不写入固件，插入后重试上传。")
             self.finished_upload.emit(False)
             return
 

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -45,6 +46,14 @@ class PicoConfigPage(QWidget):
         hint.setWordWrap(True)
         root.addWidget(hint)
 
+        # 可上下滚动的配置区
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll_body = QWidget()
+        scroll_l = QVBoxLayout(scroll_body)
+        scroll_l.setContentsMargins(0, 0, 8, 0)
+
         # 热键
         hot = QGroupBox("热键（单键触发）")
         hot_l = QVBoxLayout(hot)
@@ -52,9 +61,14 @@ class PicoConfigPage(QWidget):
         grid.addWidget(QLabel("槽位"), 0, 0)
         grid.addWidget(QLabel("动作"), 0, 1)
         grid.addWidget(QLabel("触发按键"), 0, 2)
+        grid.addWidget(QLabel("槽位"), 0, 3)
+        grid.addWidget(QLabel("动作"), 0, 4)
+        grid.addWidget(QLabel("触发按键"), 0, 5)
         for i in range(16):
+            col = 0 if i < 8 else 3
+            row = (i % 8) + 1
             slot = QLabel("热键 %02d" % (i + 1))
-            grid.addWidget(slot, i + 1, 0)
+            grid.addWidget(slot, row, col)
             act = QComboBox()
             for name, val in HOTKEY_ACTIONS:
                 act.addItem(name, val)
@@ -66,11 +80,11 @@ class PicoConfigPage(QWidget):
             btn.setCurrentIndex(btn.findData("S2"))
             act.currentIndexChanged.connect(self._on_hotkey_changed)
             btn.currentIndexChanged.connect(self._on_hotkey_changed)
-            grid.addWidget(act, i + 1, 1)
-            grid.addWidget(btn, i + 1, 2)
+            grid.addWidget(act, row, col + 1)
+            grid.addWidget(btn, row, col + 2)
             self._hotkey_combos.append((act, btn))
         hot_l.addLayout(grid)
-        root.addWidget(hot)
+        scroll_l.addWidget(hot)
 
         # LED
         led = QGroupBox("WS2812B 灯带")
@@ -103,12 +117,15 @@ class PicoConfigPage(QWidget):
             grid2.addWidget(sp, row_, col + 1)
             self._led_spins.append((name, sp))
         led_l.addLayout(grid2)
-        root.addWidget(led)
+        scroll_l.addWidget(led)
+        scroll_l.addStretch(1)
+        scroll.setWidget(scroll_body)
+        root.addWidget(scroll, 1)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("Muted")
+        self.status_label.setWordWrap(True)
         root.addWidget(self.status_label)
-        root.addStretch(1)
 
     def _sync_from_state(self) -> None:
         self.led_pin.blockSignals(True)

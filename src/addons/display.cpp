@@ -16,6 +16,8 @@
 #include "class/hid/hid.h"
 #include "display/ui/screens/GPFusionMenuScreen.h"
 
+bool DisplayAddon::menuOpen = false;
+
 bool DisplayAddon::available() {
     const DisplayOptions& options = Storage::getInstance().getDisplayOptions();
     bool result = false;
@@ -94,6 +96,7 @@ void DisplayAddon::setup() {
 }
 
 bool DisplayAddon::updateDisplayScreen() {
+    menuOpen = (currDisplayMode == DisplayMode::MAIN_MENU);
     if ( gpScreen != nullptr ) {
         gpScreen->shutdown();
         delete gpScreen; // Virtual deconstructor

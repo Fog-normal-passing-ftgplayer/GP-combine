@@ -229,6 +229,7 @@ public:
     void handleSystemRestart(GPEvent* e);
     void handleMenuNavigation(GPEvent* e);
     void handleSystemError(GPEvent* e);
+    static bool isMenuOpen() { return menuOpen; }
 private:
     bool updateDisplayScreen();
     void setMenuMappings();
@@ -256,6 +257,7 @@ private:
     GamepadButtonMapping *mapMenuToggle;
     GamepadButtonMapping *mapMenuSelect;
     std::string errorMessage;
+    static bool menuOpen;
 };
 
 #endif

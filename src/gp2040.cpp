@@ -33,6 +33,7 @@
 #include "addons/gamepad_usb_host.h"
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
+#include "addons/display.h"
 
 // Pico includes
 #include "pico/bootrom.h"
@@ -286,6 +287,18 @@ void GP2040::run() {
 
 		// Copy Processed Gamepad for Core1 (race condition otherwise)
 		memcpy(&processedGamepad->state, &gamepad->state, sizeof(GamepadState));
+
+		// 菜单打开时静音 USB 输出；菜单导航读取的是 gamepad->state，不受影响
+		if (DisplayAddon::isMenuOpen()) {
+			gamepad->state.buttons = 0;
+			gamepad->state.dpad = 0;
+			gamepad->state.lx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ly = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.rx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ry = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.lt = 0;
+			gamepad->state.rt = 0;
+		}
 
 		// Process Input Driver
 		bool processed = inputDriver->process(gamepad);

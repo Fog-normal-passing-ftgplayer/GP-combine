@@ -43,6 +43,17 @@ DEFAULT_LED_ORDER: list[tuple[str, int]] = [
     ("A1", 12), ("L3", 13), ("R3", 14), ("A2", 15),
 ]
 
+# 界面按键名 -> 固件 neopicoleds.h 期望的宏名（LEDS_BUTTON_* / LEDS_DPAD_*）
+LED_MACROS: dict[str, str] = {
+    "DPAD_LEFT": "LEDS_DPAD_LEFT", "DPAD_DOWN": "LEDS_DPAD_DOWN",
+    "DPAD_RIGHT": "LEDS_DPAD_RIGHT", "DPAD_UP": "LEDS_DPAD_UP",
+    "B1": "LEDS_BUTTON_B1", "B2": "LEDS_BUTTON_B2", "B3": "LEDS_BUTTON_B3",
+    "B4": "LEDS_BUTTON_B4", "R1": "LEDS_BUTTON_R1", "L1": "LEDS_BUTTON_L1",
+    "R2": "LEDS_BUTTON_R2", "L2": "LEDS_BUTTON_L2", "S1": "LEDS_BUTTON_S1",
+    "S2": "LEDS_BUTTON_S2", "L3": "LEDS_BUTTON_L3", "R3": "LEDS_BUTTON_R3",
+    "A1": "LEDS_BUTTON_A1", "A2": "LEDS_BUTTON_A2",
+}
+
 
 def generate_pico_user_header(
     hotkeys: list[dict],
@@ -82,7 +93,8 @@ def generate_pico_user_header(
     lines.append("")
     for name, default_idx in DEFAULT_LED_ORDER:
         idx = int(led_order.get(name, default_idx))
-        lines.append("#define LEDS_%s %d" % (name, idx))
+        macro = LED_MACROS.get(name, "LEDS_%s" % name)
+        lines.append("#define %s %d" % (macro, idx))
     lines.append("")
     return "\n".join(lines)
 

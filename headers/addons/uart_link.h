@@ -40,6 +40,7 @@
 #define LINK_FRAME_TYPE_ESP_SAVE 0x07      // ESP32 -> Pico: 保存 ESP32 侧设置
 #define LINK_FRAME_TYPE_ESP_LOAD_REQ 0x08  // ESP32 -> Pico: 请求读取
 #define LINK_FRAME_TYPE_ESP_LOAD 0x09      // Pico -> ESP32: 回传设置
+#define LINK_FRAME_TYPE_MUTE 0x0A          // ESP32 -> Pico: 1=静音USB输入 0=恢复
 
 class UARTLinkAddon : public GPAddon {
 public:
@@ -51,6 +52,7 @@ public:
     virtual std::string name() { return "UARTLinkAddon"; }
     virtual void reinit() {}
     void espCfgCommitNow();   // 供 flash 写入定时回调调用
+    static bool isInputMuted() { return inputMuted; }
 private:
     void sendInputFrame(uint16_t buttons, uint8_t dpad,
                         uint16_t lx, uint16_t ly, uint16_t rx, uint16_t ry,
@@ -64,6 +66,7 @@ private:
     void onLedConfigFrame(uint8_t *payload, uint8_t len);
     void onEspSaveFrame(uint8_t *payload, uint8_t len);
     void onEspLoadReq();
+    void onMuteFrame(uint8_t *payload, uint8_t len);
     void sendEspConfigFrame(bool ok, const uint8_t *data);
     bool espCfgRead();
     void espCfgScheduleWrite();
@@ -95,6 +98,7 @@ private:
     uint8_t espCfg[12] = {0};
     bool espCfgValid = false;
     volatile bool espCfgWritePending = false;
+    static bool inputMuted;
 };
 
 #endif

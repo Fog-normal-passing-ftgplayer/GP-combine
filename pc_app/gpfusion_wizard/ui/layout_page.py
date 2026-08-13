@@ -201,6 +201,9 @@ class LayoutPage(QWidget):
         self.canvas.set_selection(GROUP_MOVE, 0)
         self._refresh_panel()
 
+    def reload_state(self) -> None:
+        self._sync_from_state()
+
     @staticmethod
     def _set_combo_by_data(combo: QComboBox, value: int) -> None:
         combo.blockSignals(True)

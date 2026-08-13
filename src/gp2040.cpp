@@ -291,6 +291,18 @@ void GP2040::run() {
 		// Copy Processed Gamepad for Core1 (race condition otherwise)
 		memcpy(&processedGamepad->state, &gamepad->state, sizeof(GamepadState));
 
+		// 菜单打开时静音 USB 输出：processedGamepad 保持真实状态，ESP32 菜单仍可收到 UART 输入帧
+		if (UARTLinkAddon::isInputMuted()) {
+			gamepad->state.buttons = 0;
+			gamepad->state.dpad = 0;
+			gamepad->state.lx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ly = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.rx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ry = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.lt = 0;
+			gamepad->state.rt = 0;
+		}
+
 		// Process Input Driver
 		bool processed = inputDriver->process(gamepad);
 

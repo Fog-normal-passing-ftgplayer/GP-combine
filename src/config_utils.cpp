@@ -511,6 +511,28 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.ledOptions, brightnessSteps, LED_BRIGHTNESS_STEPS);
     INIT_UNSET_PROPERTY(config.ledOptions, turnOffWhenSuspended, LEDS_TURN_OFF_WHEN_SUSPENDED);
 
+#ifdef UART_LINK_ENABLED
+    // 正式版手柄（无 webconfig）：LED 灯序以编译进固件的 pico_user.h 为准，
+    // 每次启动都覆盖已存配置，保证配置助手调整灯序后刷机即生效。
+    config.ledOptions.indexUp = LEDS_DPAD_UP;       config.ledOptions.has_indexUp = true;
+    config.ledOptions.indexDown = LEDS_DPAD_DOWN;   config.ledOptions.has_indexDown = true;
+    config.ledOptions.indexLeft = LEDS_DPAD_LEFT;   config.ledOptions.has_indexLeft = true;
+    config.ledOptions.indexRight = LEDS_DPAD_RIGHT; config.ledOptions.has_indexRight = true;
+    config.ledOptions.indexB1 = LEDS_BUTTON_B1;     config.ledOptions.has_indexB1 = true;
+    config.ledOptions.indexB2 = LEDS_BUTTON_B2;     config.ledOptions.has_indexB2 = true;
+    config.ledOptions.indexB3 = LEDS_BUTTON_B3;     config.ledOptions.has_indexB3 = true;
+    config.ledOptions.indexB4 = LEDS_BUTTON_B4;     config.ledOptions.has_indexB4 = true;
+    config.ledOptions.indexL1 = LEDS_BUTTON_L1;     config.ledOptions.has_indexL1 = true;
+    config.ledOptions.indexR1 = LEDS_BUTTON_R1;     config.ledOptions.has_indexR1 = true;
+    config.ledOptions.indexL2 = LEDS_BUTTON_L2;     config.ledOptions.has_indexL2 = true;
+    config.ledOptions.indexR2 = LEDS_BUTTON_R2;     config.ledOptions.has_indexR2 = true;
+    config.ledOptions.indexS1 = LEDS_BUTTON_S1;     config.ledOptions.has_indexS1 = true;
+    config.ledOptions.indexS2 = LEDS_BUTTON_S2;     config.ledOptions.has_indexS2 = true;
+    config.ledOptions.indexL3 = LEDS_BUTTON_L3;     config.ledOptions.has_indexL3 = true;
+    config.ledOptions.indexR3 = LEDS_BUTTON_R3;     config.ledOptions.has_indexR3 = true;
+    config.ledOptions.indexA1 = LEDS_BUTTON_A1;     config.ledOptions.has_indexA1 = true;
+    config.ledOptions.indexA2 = LEDS_BUTTON_A2;     config.ledOptions.has_indexA2 = true;
+#else
     INIT_UNSET_PROPERTY(config.ledOptions, indexUp, LEDS_DPAD_UP);
     INIT_UNSET_PROPERTY(config.ledOptions, indexDown, LEDS_DPAD_DOWN);
     INIT_UNSET_PROPERTY(config.ledOptions, indexLeft, LEDS_DPAD_LEFT);
@@ -529,6 +551,7 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.ledOptions, indexR3, LEDS_BUTTON_R3);
     INIT_UNSET_PROPERTY(config.ledOptions, indexA1, LEDS_BUTTON_A1);
     INIT_UNSET_PROPERTY(config.ledOptions, indexA2, LEDS_BUTTON_A2);
+#endif
 
     INIT_UNSET_PROPERTY(config.ledOptions, pledType, PLED_TYPE);
     INIT_UNSET_PROPERTY(config.ledOptions, pledPin1, PLED1_PIN);

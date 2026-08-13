@@ -191,6 +191,9 @@ class PrepPage(QWidget):
         self._refresh_core()
         self._refresh_source()
 
+    def reload_state(self) -> None:
+        self._refresh_all()
+
     def _refresh_cli(self) -> None:
         cli = find_arduino_cli()
         if cli:

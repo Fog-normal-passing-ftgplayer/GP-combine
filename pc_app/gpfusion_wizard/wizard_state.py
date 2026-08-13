@@ -85,6 +85,10 @@ class WizardState:
             pass
         return cls()
 
+    def copy_from(self, other: "WizardState") -> None:
+        """把另一份状态原地拷入（页面都持有同一个 state 引用，导入备份时用它）。"""
+        self.__dict__.update(other.__dict__)
+
 
 def source_ready(source_dir: str) -> bool:
     if not source_dir:

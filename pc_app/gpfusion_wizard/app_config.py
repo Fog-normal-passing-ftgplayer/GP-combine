@@ -6,7 +6,7 @@ import platform
 from pathlib import Path
 
 APP_NAME = "GP-Fusion 配置向导"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 # ESP32 UI 内容分辨率（横向 240x135，驱动层再旋转到竖屏面板）
 SCREEN_W = 240

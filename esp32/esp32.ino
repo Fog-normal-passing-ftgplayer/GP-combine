@@ -50,6 +50,7 @@
 #define FRAME_TYPE_ESP_SAVE 0x07       // ESP32 -> Pico: 保存 ESP32 侧设置
 #define FRAME_TYPE_ESP_LOAD_REQ 0x08   // ESP32 -> Pico: 请求读取
 #define FRAME_TYPE_ESP_LOAD 0x09       // Pico -> ESP32: 回传设置
+#define FRAME_TYPE_MUTE 0x0A           // ESP32 -> Pico: 1=静音USB输入 0=恢复
 
 // ---- views ----
 #define VIEW_LAYOUT 0   // default: button layout + status
@@ -967,8 +968,8 @@ static const LayoutBtn RIGHT_CLUSTER[] = {
   {0x0010, 218, 48, 13, "L1", 0, 0},
   {0x0001, 110, 86, 13, "B1", 0, 0},
   {0x0002, 146, 74, 13, "B2", 0, 0},
-  {0x0040, 182, 74, 13, "R2", 0, 0},
-  {0x0080, 218, 86, 13, "L2", 0, 0},
+  {0x0080, 182, 74, 13, "R2", 0, 0},
+  {0x0040, 218, 86, 13, "L2", 0, 0},
 };
 
 void drawLayoutEntry(const LayoutBtn &e, uint16_t b, uint8_t d) {
@@ -1557,6 +1558,21 @@ void sendAck() {
   Serial.write(frame, sizeof(frame));
 }
 
+// 菜单静音：进入菜单时告诉 Pico 停止 USB 手柄输出，退出时恢复
+void sendMuteFrame(bool mute) {
+  uint8_t frame[7];
+  frame[0] = FRAME_MAGIC;
+  frame[1] = FRAME_VERSION;
+  frame[2] = FRAME_TYPE_MUTE;
+  frame[3] = 1;
+  frame[4] = mute ? 1 : 0;
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 4; i++) crc = crc16_update(crc, frame[i]);
+  frame[5] = (uint8_t)(crc & 0xFF);
+  frame[6] = (uint8_t)(crc >> 8);
+  Serial.write(frame, sizeof(frame));
+}
+
 // push the 手柄 (gamepad) section values to the Pico
 void sendGamepadConfig() {
   uint8_t frame[11];
@@ -1697,6 +1713,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       }
       if (bEdge & 0x02) { // B2 / B = cancel -> back to layout
         view = VIEW_LAYOUT;
+        sendMuteFrame(false);
         animating = false;
         pendingDir = 0;
         redrawNeeded = true;
@@ -1857,6 +1874,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
         s2PressStart = 0;
         eggSeq = 0;
         view = VIEW_MENU;
+        sendMuteFrame(true);
         redrawNeeded = true;
       }
       if (inputChanged) redrawNeeded = true;
@@ -1966,6 +1984,7 @@ void setup(){
   cmd(0x3A);dat(0x55);cmd(0x36);dat(0x00);cmd(0x21);cmd(0x13);delay(10);cmd(0x29);delay(10);
   drawPage();
   Serial.begin(UART_BAUD, SERIAL_8N1, ESP_RX, ESP_TX);
+  sendMuteFrame(false); // 开机同步：确保 Pico 端不残留静音状态
   pinMode(48,OUTPUT);
   digitalWrite(48, LOW);
   nrfSpi.begin(16, 18, 17, -1); // SCK, MISO, MOSI (CSN/CE managed by driver)
@@ -1997,18 +2016,28 @@ void loop(){
   }
   // wireless: forward full gamepad state + mode over nRF24
   if (radioUp) {
+    // 菜单打开时无线也发空输入，接收端同样“停止输入”
+    bool menuMute = (view != VIEW_LAYOUT);
+    uint16_t wBtns = menuMute ? 0 : lastButtons;
+    uint8_t wDpad = menuMute ? 0 : lastDpad;
+    uint16_t wLX = menuMute ? 0x8000 : lastLX;
+    uint16_t wLY = menuMute ? 0x8000 : lastLY;
+    uint16_t wRX = menuMute ? 0x8000 : lastRX;
+    uint16_t wRY = menuMute ? 0x8000 : lastRY;
+    uint8_t wLT = menuMute ? 0 : lastLT;
+    uint8_t wRT = menuMute ? 0 : lastRT;
     uint8_t pkt[15];
     pkt[0] = stInputMode;             // mode the receiver should adopt
     pkt[1] = radioSeq++;
-    pkt[2] = lastButtons & 0xFF;
-    pkt[3] = lastButtons >> 8;
-    pkt[4] = lastDpad;
-    pkt[5] = lastLX & 0xFF;  pkt[6] = lastLX >> 8;
-    pkt[7] = lastLY & 0xFF;  pkt[8] = lastLY >> 8;
-    pkt[9] = lastRX & 0xFF;  pkt[10] = lastRX >> 8;
-    pkt[11] = lastRY & 0xFF; pkt[12] = lastRY >> 8;
-    pkt[13] = lastLT;
-    pkt[14] = lastRT;
+    pkt[2] = wBtns & 0xFF;
+    pkt[3] = wBtns >> 8;
+    pkt[4] = wDpad;
+    pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
+    pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
+    pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
+    pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
+    pkt[13] = wLT;
+    pkt[14] = wRT;
     unsigned long now = millis();
     bool changed = memcmp(&pkt[2], radioPrevState, 13) != 0;
     if (changed || now - lastRadioSend >= (unsigned long)radioHeartbeatMs) {

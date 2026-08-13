@@ -59,8 +59,8 @@ class Layout:
             Btn(0x0010, 218, 48, 13, False, "L1", False),
             Btn(0x0001, 110, 86, 13, False, "B1", False),
             Btn(0x0002, 146, 74, 13, False, "B2", False),
-            Btn(0x0040, 182, 74, 13, False, "R2", False),
-            Btn(0x0080, 218, 86, 13, False, "L2", False),
+            Btn(0x0080, 182, 74, 13, False, "R2", False),
+            Btn(0x0040, 218, 86, 13, False, "L2", False),
         ]
         return cls(move=move, cluster=cluster, lever=Lever())
 
@@ -80,13 +80,21 @@ class Layout:
             if not isinstance(x, dict):
                 return None
             try:
+                mask = int(x.get("mask", 0))
+                label = str(x.get("label", ""))
+                # 兼容旧版本：RT/R2 位置带的是 L2 位、LT/L2 位置带的是 R2 位，
+                # 标签位置是对的，纠正掩码（0x40=L2/LT、0x80=R2/RT）
+                if mask == 0x40 and label in ("R2", "RT"):
+                    mask = 0x80
+                elif mask == 0x80 and label in ("L2", "LT"):
+                    mask = 0x40
                 return Btn(
-                    mask=int(x.get("mask", 0)),
+                    mask=mask,
                     x=int(x.get("x", 0)),
                     y=int(x.get("y", 0)),
                     r=int(x.get("r", 10)),
                     square=bool(x.get("square", False)),
-                    label=str(x.get("label", "")),
+                    label=label,
                     dpad=bool(x.get("dpad", False)),
                 )
             except Exception:

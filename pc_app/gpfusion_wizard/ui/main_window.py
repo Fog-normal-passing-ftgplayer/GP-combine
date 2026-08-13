@@ -1,12 +1,16 @@
 """向导主窗口：左侧步骤栏 + 右侧内容页。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -14,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_config import APP_NAME, APP_VERSION
+from ..config_backup import export_config, import_config
 from ..wizard_state import WizardState
 from .background_page import BackgroundPage
 from .gif_page import GifPage
@@ -59,7 +64,7 @@ class MainWindow(QWidget):
         side_l.setContentsMargins(12, 22, 12, 16)
         app_title = QLabel("GP-Fusion")
         app_title.setObjectName("AppTitle")
-        app_sub = QLabel("配置向导 · 平民固件")
+        app_sub = QLabel("配置向导")
         app_sub.setObjectName("AppSub")
         side_l.addWidget(app_title)
         side_l.addWidget(app_sub)
@@ -71,6 +76,13 @@ class MainWindow(QWidget):
             item = QListWidgetItem(name)
             self.step_list.addItem(item)
         side_l.addWidget(self.step_list)
+        side_l.addSpacing(8)
+        export_btn = QPushButton("导出配置…")
+        export_btn.clicked.connect(self._export_config)
+        side_l.addWidget(export_btn)
+        import_btn = QPushButton("导入配置…")
+        import_btn.clicked.connect(self._import_config)
+        side_l.addWidget(import_btn)
         side_l.addStretch(1)
         ver = QLabel("v%s" % APP_VERSION)
         ver.setObjectName("AppSub")
@@ -180,3 +192,48 @@ class MainWindow(QWidget):
     def _on_upload_finished(self, ok: bool) -> None:
         if ok:
             self.finish_btn.setText("完成")
+
+    # ---------- 配置备份 ----------
+
+    def _export_config(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出配置备份",
+            str(Path.home() / "gp-fusion-config.json"),
+            "GP-Fusion 配置 (*.json)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".json"):
+            path += ".json"
+        try:
+            export_config(self.state, path)
+            QMessageBox.information(self, "导出成功", "配置已导出到：\n%s" % path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "导出失败", str(exc))
+
+    def _import_config(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入配置备份",
+            str(Path.home()),
+            "GP-Fusion 配置 (*.json)",
+        )
+        if not path:
+            return
+        try:
+            new_state, notes = import_config(self.state, path)
+            self.state.copy_from(new_state)
+            self.state.save()
+            for page in (
+                self.prep_page,
+                self.bg_page,
+                self.layout_page,
+                self.pico_page,
+                self.gif_page,
+            ):
+                page.reload_state()
+            self._update_nav()
+            QMessageBox.information(self, "导入成功", "\n".join(notes))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "导入失败", "无法读取备份文件：\n%s" % exc)

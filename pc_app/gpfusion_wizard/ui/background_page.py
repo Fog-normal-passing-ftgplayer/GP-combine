@@ -117,6 +117,12 @@ class BackgroundPage(QWidget):
                 self.mode_combo.setCurrentIndex(i)
                 break
 
+    def reload_state(self) -> None:
+        self.path_label.setText("未选择图片")
+        self._load_previous()
+        self._update_preview()
+        self.status_label.setText("")
+
     def _on_change(self) -> None:
         self.state.background_mode = self.MODES[self.mode_combo.currentIndex()][0]
         self.state.save()

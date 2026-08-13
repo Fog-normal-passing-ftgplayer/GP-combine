@@ -94,6 +94,20 @@ class GifPage(QWidget):
             self.info.setText("已选择：%s" % Path(self.state.gif_src).name)
             self._update_preview()
 
+    def reload_state(self) -> None:
+        self.info.setText("未选择 GIF")
+        for i, (key, _name) in enumerate(self.MODES):
+            if key == self.state.gif_mode:
+                self.mode_combo.setCurrentIndex(i)
+                break
+        pi = self.palette_combo.findData(int(self.state.gif_palette))
+        if pi >= 0:
+            self.palette_combo.setCurrentIndex(pi)
+        self._load_previous()
+        if not self.state.gif_src or not Path(self.state.gif_src).is_file():
+            self.preview.setPixmap(QPixmap())
+        self.status.setText("")
+
     def pick_gif(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "选择 GIF 动画", str(Path.home()), "GIF (*.gif)"

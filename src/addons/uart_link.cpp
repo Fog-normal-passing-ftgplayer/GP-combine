@@ -11,6 +11,8 @@
 #include "pico/time.h"
 #include "CRC32.h"
 
+bool UARTLinkAddon::inputMuted = false;
+
 // ESP32 侧设置持久化：存在 Pico flash 顶部下方独立 4KB 扇区（避开 GP2040-CE 配置区）
 #define ESP_CFG_XIP_ADDR  0x101F7000
 #define ESP_CFG_FLASH_OFF 0x1F7000
@@ -138,6 +140,11 @@ void UARTLinkAddon::onEspSaveFrame(uint8_t *payload, uint8_t len) {
 
 void UARTLinkAddon::onEspLoadReq() {
     sendEspConfigFrame(espCfgValid, espCfg);
+}
+
+void UARTLinkAddon::onMuteFrame(uint8_t *payload, uint8_t len) {
+    if (len < 1) return;
+    inputMuted = (payload[0] != 0);
 }
 
 void UARTLinkAddon::sendInputFrame(uint16_t buttons, uint8_t dpad,
@@ -338,6 +345,10 @@ void UARTLinkAddon::handleRxByte(uint8_t b) {
             rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
             rxType == LINK_FRAME_TYPE_ESP_LOAD_REQ) {
             onEspLoadReq();
+        } else if (b == (uint8_t)(rxCrcCalc >> 8) &&
+            rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
+            rxType == LINK_FRAME_TYPE_MUTE) {
+            onMuteFrame(rxPayload, rxLen);
         }
         rxState = 0;
         break;

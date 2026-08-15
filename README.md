@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icons/GP-Combine%20LOGO.png" alt="GP-Combine" width="520">
+  <img src="GP-Combine-logo.png" alt="GP-Combine" width="520">
 </p>
 
 <h1 align="center">GP-Combine</h1>

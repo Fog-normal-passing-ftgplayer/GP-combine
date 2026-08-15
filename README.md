@@ -1,103 +1,135 @@
 <p align="center">
-  <a href="https://gp2040-ce.info">
-    <img alt="GP2040-CE" src="https://raw.githubusercontent.com/OpenStickCommunity/Site/main/docs/assets/images/gp2040-ce-logo.png" />
-  </a>
+  <img src="GP-Combine-logo.png" alt="GP-Combine" width="520">
 </p>
 
-<p align="center">
-  Multi-Platform Gamepad Firmware for RP2040
-</p>
+<h1 align="center">GP-Combine</h1>
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/OpenStickCommunity/GP2040-CE" />
-  <img src="https://img.shields.io/github/actions/workflow/status/OpenStickCommunity/GP2040-CE/cmake.yml" />
-  <br />
-  <img src="https://img.shields.io/badge/inputlag.science-0.86%20ms-blue" />
-  <img src="https://img.shields.io/badge/MiSTer%20latency-0.765%20ms-blue" />
-</p>
+<p align="center">基于 GP2040-CE 的新时代全彩无线格斗手柄固件 · v0.1.0</p>
 
-<p>
-  GP2040-CE (Community Edition) is a gamepad firmware for the Raspberry Pi Pico and other boards based on the RP2040 microcontrollers that combines multi-platform compatibility, low latency and a rich feature set to provide endless customization possibilities without sacrificing performance.
-</p>
+---
 
-<p>
-  GP2040-CE is compatible with PC, PS3, PS4, PS5, Nintendo Switch, Xbox One, Steam Deck, MiSTer and Android.
-</p>
+## 简介
 
-## Links
+GP-Combine 是在 GP2040-CE 基础上深度定制的手柄固件，面向“平民向”玩家：把原版需要电脑/网页才能完成的配置，直接搬到手柄上的一块彩色屏幕里，全程中文引导。项目分为**正式版**（ESP32-S3 + Pico 双芯）与 **Lite 版**（单 Pico）两个版本。
 
-[Downloads](https://gp2040-ce.info/downloads) | [Installation](https://gp2040-ce.info/installation) | [Wiring](https://gp2040-ce.info/controller-build/wiring) | [Usage](https://gp2040-ce.info/usage) | [FAQ](https://gp2040-ce.info/faq/faq-general) | [GitHub](https://github.com/OpenStickCommunity/GP2040-CE)
+### 正式版：相比 GP2040-CE 原版新增
 
-Full documentation can be found at [https://gp2040-ce.info](https://gp2040-ce.info)
+- **双芯架构**：Pico 负责手柄输入与 WS2812B 灯效，ESP32-S3 负责 240×135 全彩屏幕与菜单，两者以 921600 高速 UART 互联
+- **全彩滑动菜单**：6 大页面（设置 / 电池 / 灯光 / 背景 / 休眠 / 无线），程序绘制图标 + 内置中文字库
+- **按键布局可视化**：街机 / HITBOX / WASD / 自定义四套布局，按键按下实时高亮，支持输入历史记录
+- **背景图系统**：5 档透明度、水平/垂直翻转、反色，可自由更换背景
+- **屏保与彩蛋**：新增了嘉豪必备的字母雨，更新了原屏保，支持自定义gif作屏保
 
-## Features
+- **无线手柄模式**：nRF24L01 固定信道 + 固定地址，接收端插电脑即用，配对后自动切换输入模式
+- **电池检测**：Pico 侧 VSYS 采样，屏幕实时显示电量/USB 状态
+- **菜单静音**：进入菜单自动停止 USB 手柄输出，防止对战时误触
+  **配置助手（PC）**：引导式定制——背景图自动转分辨率、按键布局可视化编辑、热键/灯序配置、GIF 压缩、配置备份导入导出.支持windows与linux双平台
 
-- Select from 14 input modes including X-Input, Nintendo Switch, Playstation 4/5, Xbox One, D-Input, and Keyboard
-- Input latency average of 0.76ms in Xinput and 0.91ms for Playstation 5.
-- Multiple SOCD cleaning modes - Up Priority (a.k.a. Stickless), Neutral, and Second Input Priority.
-- Left and Right stick emulation via D-pad inputs as well as dedicated toggle switches.
-- Dual direction via D-pad + LS/RS.
-- Reversed input via a button.
-- [Turbo and Turbo LED](https://gp2040-ce.info/add-ons/turbo) with selectable speed
-- Per-button RGB LED support.
-- PWM Player indicator LED support (XInput only).
-- Multiple LED profiles support.
-- Support for 128x64 monochrome I2C displays - SSD1306, SH1106, and SH1107 compatible.
-- Custom startup splash screen and easy image upload via web configuration.
-- Support for passive buzzer speaker (3v or 5v).
-- [Built-in, embedded web configuration](https://gp2040-ce.info/web-configurator) - No download required!
+	**彩蛋**：菜单两个选项之中还有一个选项...这里有个男人...
 
-Visit the [GP2040-CE Usage](https://gp2040-ce.info/usage) page for more details.
+### Lite 版：相比 GP2040-CE 原版新增
 
-## Performance
+- **128×64 单色 I2C 屏幕** + 中文滑动菜单（设置 / 显示 / 灯光 / 休眠 / 系统）
+- 移植正式版滑动菜单交互：上下滑动动画、滚动条、滑块调节、保存确认弹窗
+- **屏保**（含 MATRIX）与**流水灯效**
+- **菜单静音**：进菜单停止 USB 输出
+- 保留原版全部输入能力、RGB 灯效与 **Web 配置**
 
-Input latency is tested using the methodology outlined at [WydD's inputlag.science website](https://inputlag.science/controller/methodology), using the default 1000 Hz (1 ms) polling rate in the firmware. You can read more about the setup we use to conduct latency testing [HERE](https://github.com/OpenStickCommunity/Site/blob/main/latency_testing/README.md) if you are interested in testing for yourself or would just like to know more about the devices used to do the testing.
+## 滑动菜单（正式版）
 
-| Version | Mode    | Poll Rate | Min     | Max     | Avg     | Stdev   | % on time | %1f skip | %2f skip |
-| ------- | ------- | --------- | ------- | ------- | ------- | ------- | --------- | -------- | -------- |
-| v0.7.12 | Xinput  | 1 ms      | 0.45 ms | 1.28 ms | 0.76 ms | 0.24 ms | 98.48%    | 1.52%    | 0%       |
-| v0.7.12 | Switch  | 1 ms      | 0.41 ms | 1.22 ms | 0.72 ms | 0.24 ms | 98.53%    | 1.47%    | 0%       |
-| v0.7.12 | HID USB | 1 ms      | 0.42 ms | 1.25 ms | 0.73 ms | 0.24 ms | 98.52%    | 1.48%    | 0%       |
-| v0.7.12 | PS3     | 1 ms      | 0.52 ms | 1.46 ms | 0.83 ms | 0.24 ms | 98.37%    | 1.63%    | 0%       |
-| v0.7.12 | PS4     | 1 ms      | 0.55 ms | 2.33 ms | 0.90 ms | 0.32 ms | 98.19%    | 1.81%    | 0%       |
-| v0.7.12 | PS5     | 1 ms      | 0.55 ms | 2.38 ms | 0.91 ms | 0.32 ms | 98.18%    | 1.82%    | 0%       |
+- 长按 **S2 3 秒**进入菜单，十字键 / 左摇杆左右滑动页面，**A 确定、B 返回**
+- 6 大页面：设置 / 电池 / 灯光 / 背景 / 休眠 / 无线，底部缩略方块同步指示当前位置
+- 子页面支持上下滑动 + 滚动条 + 丝滑动画；滑块选项按 A 进入调节、B 退出，右侧实时显示数值
+- 修改后按 B 返回会弹出「是否立即保存」确认框
+- 彩蛋：菜单内右-左交替 12 连击触发
 
-Full results can be found in the [GP2040-CE v0.7.12 Firmware Latency Test Results](https://github.com/OpenStickCommunity/Site/raw/main/latency_testing/GP2040-CE_Firmware_Latency_Test_Results_v0.7.12.xlsx) .xlsx Sheet.
+## 输入延迟
 
-Results from v0.7.11 can be found [HERE](https://github.com/OpenStickCommunity/Site/raw/main/latency_testing/GP2040-CE_Firmware_Latency_Test_Results_v0.7.11.xlsx). Previous results can be found in the `latency_testing` folder.
+有线延迟采用 GP2040-CE 官方实测数据（v0.7.12，默认 1000 Hz 轮询）。GP-Combine 保留原版完整输入路径，有线延迟与原版一致。
 
-## Support
+### 有线连接
 
-If you would like to discuss features, issues or anything else related to GP2040-CE please [create an issue](https://github.com/OpenStickCommunity/GP2040-CE/issues/new) or join the [OpenStick GP2040-CE Discord](https://discord.gg/k2pxhke7q8) support channel.
+| 输入模式 | 轮询率 | 最小 | 最大 | 平均 |
+| --- | --- | --- | --- | --- |
+| XInput | 1000 Hz | 0.45 ms | 1.28 ms | 0.76 ms |
+| Switch | 1000 Hz | 0.41 ms | 1.22 ms | 0.72 ms |
+| HID | 1000 Hz | 0.42 ms | 1.25 ms | 0.73 ms |
+| PS3 | 1000 Hz | 0.52 ms | 1.46 ms | 0.83 ms |
+| PS4 | 1000 Hz | 0.55 ms | 2.33 ms | 0.90 ms |
+| PS5 | 1000 Hz | 0.55 ms | 2.38 ms | 0.91 ms |
 
-## Contributing
+### 无线连接（nRF24L01，估算）
 
-Want to help improve GP2040-CE? There are a bunch of ways to contribute!
+无线链路：Pico → UART(921600) → ESP32-S3 → nRF24(2 Mbps) → 接收端 Pico → USB。按键按下时立即发送，无需等待心跳周期，链路附加延迟约 1 ms。
 
-### Community Participation
+| 输入模式 | 有线平均 | 无线附加（估算） | 无线总延迟（估算） |
+| --- | --- | --- | --- |
+| XInput | 0.76 ms | ≈1 ms | ≈1.8 ms |
+| Switch | 0.72 ms | ≈1 ms | ≈1.7 ms |
+| HID | 0.73 ms | ≈1 ms | ≈1.7 ms |
+| PS3 | 0.83 ms | ≈1 ms | ≈1.8 ms |
+| PS4 | 0.90 ms | ≈1 ms | ≈1.9 ms |
+| PS5 | 0.91 ms | ≈1 ms | ≈1.9 ms |
 
-Have an idea for a cool new feature, or just want to discuss some technical details with the developers? Join the [OpenStick GP2040-CE Discord](https://discord.gg/k2pxhke7q8) server to participate in our active and ever-growing community!
+> 说明：无线延迟为链路估算（UART 帧约 0.2 ms + nRF24 传输/ACK 约 0.4–0.6 ms + 接收端一个轮询周期内上报），实际以使用环境为准。心跳档位（50 / 20 / 10 ms）只影响静止状态的刷新频率，不影响按键按下时的即时发送。
 
-### Pull Requests
+## 引脚占用
 
-Pull requests are welcome and encouraged for enhancements, bug fixes and documentation updates.
+### ESP32-S3（正式版 · 显示 / 菜单 / 无线主机）
 
-Please respect the coding style of the file(s) you are working in, and enforce the use of the `.editorconfig` file when present.
+| 引脚 | 功能 | 说明 |
+| --- | --- | --- |
+| GPIO8 | 屏幕 RST | ST7789 复位 |
+| GPIO9 | 屏幕 DC | ST7789 数据/命令 |
+| GPIO10 | 屏幕 CS | ST7789 片选 |
+| GPIO11 | SPI MOSI | 屏幕数据（写） |
+| GPIO12 | SPI SCK | 屏幕时钟 |
+| GPIO13 | 屏幕背光 BL | PWM 调光 |
+| GPIO43 | UART0 TX | → Pico RX（GPIO1） |
+| GPIO44 | UART0 RX | ← Pico TX（GPIO0） |
+| GPIO14 | nRF24 CSN | 无线片选 |
+| GPIO15 | nRF24 CE | 无线使能 |
+| GPIO16 | nRF24 SCK | 无线时钟 |
+| GPIO17 | nRF24 MOSI | 无线数据（写） |
+| GPIO18 | nRF24 MISO | 无线数据（读） |
+| GPIO48 | 板载活动指示 | 板载 WS2812 数据脚，固件按普通 LED 驱动 |
 
-## Acknowledgements
+### Pico（正式版 · 手柄端）
 
-- [FeralAI](https://github.com/FeralAI) for building [GP2040](https://github.com/FeralAI/GP2040) and laying the foundation for this community project
-- Ha Thach's excellent [TinyUSB library](https://github.com/hathach/tinyusb) examples
-- fluffymadness's [tinyusb-xinput](https://github.com/fluffymadness/tinyusb-xinput) sample
-- Kevin Boone's [blog post on using RP2040 flash memory as emulated EEPROM](https://kevinboone.me/picoflash.html)
-- [bitbank2](https://github.com/bitbank2) for the [OneBitDisplay](https://github.com/bitbank2/OneBitDisplay) and [BitBang_I2C](https://github.com/bitbank2/BitBang_I2C) libraries, which were ported for use with the Pico SDK
-- [arntsonl](https://github.com/arntsonl) for the amazing cleanup and feature additions that brought us to v0.5.0
-- [alirin222](https://github.com/alirin222) for the awesome turbo code ([@alirin222](https://twitter.com/alirin222) on Twitter)
-- [deeebug](https://github.com/deeebug) for improvements to the web-UI and fixing the PS3 home button issue
-- [TheTrain](https://github.com/TheTrainGoes/GP2040-Projects) and [Fortinbra](https://github.com/Fortinbra) for helping keep our community chugging along
-- [PassingLink](https://github.com/passinglink/passinglink) for the technical details and code for PS4 implementation
-- [Youssef Habchi](https://youssef-habchi.com/) for allowing us to purchase a license to use Road Rage font for the project
-- [tamanegitaro](https://github.com/tamanegitaro/) and [alirin222](https://github.com/alirin222) for the basis of the mini/classic controller work
-- [Ryzee119](https://github.com/Ryzee119) for the wonderful [ogx360_t4](https://github.com/Ryzee119/ogx360_t4/) and xid_driver library for Original Xbox support
-- [Santroller](https://github.com/Santroller/Santroller) and [GIMX](https://github.com/matlo/GIMX) for technical examples of Xbox One authentication using pass-through
-- [Santroller](https://github.com/Santroller/Santroller) for the code necessary to have Xbox 360 run without a dongle
+| 引脚 | 功能 | 说明 |
+| --- | --- | --- |
+| GPIO0 | UART0 TX | → ESP32 RX（GPIO44） |
+| GPIO1 | UART0 RX | ← ESP32 TX（GPIO43） |
+| GPIO2–5 | 十字键 | UP / DOWN / RIGHT / LEFT |
+| GPIO6–13 | 动作键 | B1 / B2 / R2 / L2 / B3 / B4 / R1 / L1 |
+| GPIO15 | 保留 | addon 占用 |
+| GPIO16–21 | 功能键 | S1 / S2 / L3 / R3 / A1 / A2 |
+| GPIO25 | 链路指示灯 | UART ACK 时点亮 |
+| GPIO28 | WS2812B 数据 | RGB 灯带 |
+| GPIO29 | 电池检测 | ADC（VSYS/3） |
+| USB | 手柄输出 | 连接电脑/主机 |
+
+### Pico（无线接收端）
+
+| 引脚 | 功能 | 说明 |
+| --- | --- | --- |
+| GPIO2 | nRF24 SCK | 无线时钟 |
+| GPIO3 | nRF24 MOSI | 无线数据（写） |
+| GPIO4 | nRF24 MISO | 无线数据（读） |
+| GPIO5 | nRF24 CSN | 无线片选 |
+| GPIO6 | nRF24 CE | 无线使能 |
+| GPIO25 | 链路/配对指示灯 | 状态指示 |
+| USB | 手柄输出 | 连接电脑/主机 |
+
+### Pico（Lite 版 · 单 Pico + 单色屏）
+
+| 引脚 | 功能 | 说明 |
+| --- | --- | --- |
+| GPIO0 / GPIO1 | I2C 屏幕 | SDA / SCL（128×64 单色屏） |
+| GPIO2–5 | 十字键 | UP / DOWN / RIGHT / LEFT |
+| GPIO6–13 | 动作键 | B1 / B2 / R2 / L2 / B3 / B4 / R1 / L1 |
+| GPIO14 | TURBO | 连发键 |
+| GPIO15 | TURBO LED | 连发指示灯 |
+| GPIO16–21 | 功能键 | S1 / S2 / L3 / R3 / A1 / A2 |
+| GPIO28 | WS2812B 数据 | RGB 灯带 |
+| USB | 手柄输出 | 连接电脑/主机（保留 Web 配置） |

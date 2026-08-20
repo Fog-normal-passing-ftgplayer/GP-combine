@@ -60,13 +60,13 @@ public:
   }
 
   void startListening() {
-    writeReg(0x00, 0x03); // PWR_UP | PRIM_RX
+    writeReg(0x00, 0x0F); // PWR_UP | PRIM_RX | 2字节CRC
     digitalWrite(_ce, HIGH);
     delayMicroseconds(130);
   }
 
   void powerUpTx() {
-    writeReg(0x00, 0x02); // PWR_UP, PRIM_RX=0
+    writeReg(0x00, 0x0E); // PWR_UP, PRIM_RX=0, 2字节CRC
     digitalWrite(_ce, LOW);
     delayMicroseconds(130);
   }
@@ -78,7 +78,7 @@ public:
     writeReg(0x06, (rate2M ? 0x08 : 0x00) | ((pwrCode & 0x03) << 1));
   }
 
-  void powerUp() { writeReg(0x00, 0x02); }
+  void powerUp() { writeReg(0x00, 0x0E); }
   void powerDown() { writeReg(0x00, 0x00); }
 
   void resetLink() {

@@ -9,7 +9,7 @@
 #define HOTKEY_02_AUX_MASK 0
 #define HOTKEY_02_BUTTONS_MASK 0x0200  // S2
 #define HOTKEY_02_DPAD_MASK 0
-#define HOTKEY_02_ACTION 0
+#define HOTKEY_02_ACTION 42
 
 #define HOTKEY_03_AUX_MASK 0
 #define HOTKEY_03_BUTTONS_MASK 0x0200  // S2
@@ -82,22 +82,22 @@
 #define HOTKEY_16_ACTION 0
 
 #define BOARD_LEDS_PIN 28
-#define LEDS_PER_PIXEL 1
+#define LEDS_PER_PIXEL 2
 #define LED_FORMAT LED_FORMAT_GRB
 
 #define LEDS_DPAD_LEFT 0
 #define LEDS_DPAD_DOWN 1
 #define LEDS_DPAD_RIGHT 2
 #define LEDS_DPAD_UP 3
-#define LEDS_B3 4
-#define LEDS_B4 5
-#define LEDS_R1 6
-#define LEDS_L1 7
-#define LEDS_B1 8
-#define LEDS_B2 9
-#define LEDS_R2 10
-#define LEDS_L2 11
-#define LEDS_A1 12
-#define LEDS_L3 13
-#define LEDS_R3 14
-#define LEDS_A2 15
+#define LEDS_BUTTON_B3 4
+#define LEDS_BUTTON_B4 5
+#define LEDS_BUTTON_R1 6
+#define LEDS_BUTTON_L1 7
+#define LEDS_BUTTON_B1 8
+#define LEDS_BUTTON_B2 9
+#define LEDS_BUTTON_R2 10
+#define LEDS_BUTTON_L2 11
+#define LEDS_BUTTON_A1 12
+#define LEDS_BUTTON_L3 13
+#define LEDS_BUTTON_R3 14
+#define LEDS_BUTTON_A2 15

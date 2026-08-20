@@ -26,6 +26,9 @@
 #ifndef WIRELESS_RX_LED_PIN
 #define WIRELESS_RX_LED_PIN 25
 #endif
+#ifndef WIRELESS_RX_RGB_LED_PIN
+#define WIRELESS_RX_RGB_LED_PIN -1   // >=0 时用单颗 WS2812（如 RP2040-Zero 板载灯）当状态灯
+#endif
 
 class WirelessReceiverAddon : public GPAddon {
 public:

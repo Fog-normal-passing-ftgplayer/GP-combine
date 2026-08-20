@@ -210,14 +210,13 @@ static const char *const WL_RATE_NAMES[] = {"2M高速", "1M远距"};
 static const char *const WL_HB_NAMES[] = {"省电", "标准", "高速"};
 static MenuOpt wlOpts[] = {
   {"无线开关", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
-  {"信道", OPT_INT, 120, 0, 125, 1, NULL, 0, ""},
   {"发射功率", OPT_ENUM, 3, 0, 3, 1, WL_PWR_NAMES, 4, ""},
   {"数据速率", OPT_ENUM, 0, 0, 1, 1, WL_RATE_NAMES, 2, ""},
   {"心跳频率", OPT_ENUM, 1, 0, 2, 1, WL_HB_NAMES, 3, ""},
   {"重新配对", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
 };
 static MenuSection wlSections[] = {
-  {"无线", wlOpts, 6},
+  {"无线", wlOpts, 5},
 };
 
 static SubPageDef subDefs[NUM_PAGES] = {
@@ -259,6 +258,7 @@ static int histHead = 0;    // ring index of the newest slot
 uint8_t stSocd = 0;
 uint8_t stDpadMode = 0;
 uint8_t stInputMode = 0;
+bool stInputModeValid = false;   // 收到过 Pico 状态帧后才有真实输入模式
 uint8_t stFlags = 0;
 uint16_t stBattMv = 0;
 uint8_t stBattFlags = 0;
@@ -1320,11 +1320,11 @@ void applyHistSettings() {
 void applyWirelessSettings() {
   radioUp = wlOpts[0].value != 0;
   static const int hb[] = {50, 20, 10};
-  radioHeartbeatMs = hb[wlOpts[4].value];
+  radioHeartbeatMs = hb[wlOpts[3].value];
   if (radioUp) {
     radio.powerUp();
-    radio.setChannel((uint8_t)wlOpts[1].value);
-    radio.setRfConfig(wlOpts[3].value == 0, (uint8_t)wlOpts[2].value);
+    radio.setChannel(120);   // 与接收端一致：固定信道，不做可选项
+    radio.setRfConfig(wlOpts[2].value == 0, (uint8_t)wlOpts[1].value);
   } else {
     radio.powerDown();
   }
@@ -1345,14 +1345,8 @@ void saveConfigFile() {
   f.printf("hflip=%d\n", bgOpts[2].value);
   f.printf("vflip=%d\n", bgOpts[3].value);
   f.printf("inv=%d\n", bgOpts[4].value);
-  f.printf("wl_on=%d\n", wlOpts[0].value);
-  f.printf("wl_ch=%d\n", wlOpts[1].value);
-  f.printf("wl_pwr=%d\n", wlOpts[2].value);
-  f.printf("wl_rate=%d\n", wlOpts[3].value);
-  f.printf("wl_hb=%d\n", wlOpts[4].value);
   f.flush();
   f.close();
-  sendEspSave();   // 同时把设置存到 Pico flash，断电后从 Pico 读回
 }
 
 void loadConfigFile() {
@@ -1373,75 +1367,8 @@ void loadConfigFile() {
     else if (k == "hflip") bgOpts[2].value = constrain(v, 0, 1);
     else if (k == "vflip") bgOpts[3].value = constrain(v, 0, 1);
     else if (k == "inv")  bgOpts[4].value = constrain(v, 0, 1);
-    else if (k == "wl_on") wlOpts[0].value = constrain(v, 0, 1);
-    else if (k == "wl_ch") wlOpts[1].value = constrain(v, 0, 125);
-    else if (k == "wl_pwr") wlOpts[2].value = constrain(v, 0, 3);
-    else if (k == "wl_rate") wlOpts[3].value = constrain(v, 0, 1);
-    else if (k == "wl_hb") wlOpts[4].value = constrain(v, 0, 2);
   }
   f.close();
-  applyBgSettings();
-  applyHistSettings();
-  applyWirelessSettings();
-}
-
-// ---- ESP32 侧设置持久化到 Pico（Pico flash 正常，ESP32 板 flash 写入不可靠） ----
-bool espCfgLoaded = false;
-unsigned long espLoadReqLast = 0;
-
-void sendEspSave() {
-  uint8_t f[18];
-  f[0] = FRAME_MAGIC;
-  f[1] = FRAME_VERSION;
-  f[2] = FRAME_TYPE_ESP_SAVE;
-  f[3] = 12;
-  f[4] = histOpts[0].value;
-  f[5] = histOpts[1].value;
-  f[6] = bgOpts[0].value;
-  f[7] = bgOpts[1].value;
-  f[8] = bgOpts[2].value;
-  f[9] = bgOpts[3].value;
-  f[10] = bgOpts[4].value;
-  f[11] = wlOpts[0].value;
-  f[12] = wlOpts[1].value;
-  f[13] = wlOpts[2].value;
-  f[14] = wlOpts[3].value;
-  f[15] = wlOpts[4].value;
-  uint16_t crc = 0xFFFF;
-  for (int i = 1; i <= 15; i++) crc = crc16_update(crc, f[i]);
-  f[16] = (uint8_t)(crc & 0xFF);
-  f[17] = (uint8_t)(crc >> 8);
-  Serial.write(f, sizeof(f));
-}
-
-void sendEspLoadReq() {
-  uint8_t f[6];
-  f[0] = FRAME_MAGIC;
-  f[1] = FRAME_VERSION;
-  f[2] = FRAME_TYPE_ESP_LOAD_REQ;
-  f[3] = 0;
-  uint16_t crc = 0xFFFF;
-  for (int i = 1; i <= 3; i++) crc = crc16_update(crc, f[i]);
-  f[4] = (uint8_t)(crc & 0xFF);
-  f[5] = (uint8_t)(crc >> 8);
-  Serial.write(f, sizeof(f));
-}
-
-void applyEspCfg(uint8_t *p, uint8_t len) {
-  if (len < 12) return;
-  histOpts[0].value = constrain(p[0], 0, 1);
-  histOpts[1].value = constrain(p[1], 0, 3);
-  bgOpts[0].value = constrain(p[2], 0, 4);
-  bgOpts[1].value = constrain(p[3], 0, 100);
-  bgOpts[2].value = constrain(p[4], 0, 1);
-  bgOpts[3].value = constrain(p[5], 0, 1);
-  bgOpts[4].value = constrain(p[6], 0, 1);
-  wlOpts[0].value = constrain(p[7], 0, 1);
-  wlOpts[1].value = constrain(p[8], 0, 125);
-  wlOpts[2].value = constrain(p[9], 0, 3);
-  wlOpts[3].value = constrain(p[10], 0, 1);
-  wlOpts[4].value = constrain(p[11], 0, 2);
-  espCfgLoaded = true;
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
@@ -1842,7 +1769,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   subDirty = false;
                   redrawNeeded = true;
                 }
-                else if (subPage == 5 && subSel == 5) { // 无线 > 重新配对
+                else if (subPage == 5 && subSel == 4) { // 无线 > 重新配对
                   radio.resetLink();
                   savedFlashUntil = millis() + 1200;
                 }
@@ -1891,6 +1818,7 @@ void onStatusFrame(uint8_t *payload, uint8_t len) {
     stSocd = payload[0];
     stDpadMode = payload[1];
     stInputMode = payload[2];
+    stInputModeValid = true;
     stFlags = payload[3];
     uint8_t anim = payload[5];
     uint8_t brightness = payload[6];
@@ -1967,7 +1895,6 @@ void handleRxByte(uint8_t b) {
           configAcked = true;
           savedFlashUntil = millis() + 1200;
         }
-        else if (rxType == FRAME_TYPE_ESP_LOAD) applyEspCfg(rxPayload, rxLen);
       }
       rxState = 0;
       break;
@@ -1989,7 +1916,7 @@ void setup(){
   digitalWrite(48, LOW);
   nrfSpi.begin(16, 18, 17, -1); // SCK, MISO, MOSI (CSN/CE managed by driver)
   radio.begin(nrfSpi, NRF_CSN, NRF_CE);
-  radioUp = true;
+  radioUp = true;  // 初版行为：无线默认开启
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
 }
@@ -2009,11 +1936,6 @@ void loop(){
     easterFrameMs = millis();
     redrawNeeded = true;
   }
-  // 开机从 Pico 回读 ESP32 侧设置（Pico flash 断电保持）
-  if (!espCfgLoaded && millis() - espLoadReqLast >= 500) {
-    espLoadReqLast = millis();
-    sendEspLoadReq();
-  }
   // wireless: forward full gamepad state + mode over nRF24
   if (radioUp) {
     // 菜单打开时无线也发空输入，接收端同样“停止输入”
@@ -2027,7 +1949,7 @@ void loop(){
     uint8_t wLT = menuMute ? 0 : lastLT;
     uint8_t wRT = menuMute ? 0 : lastRT;
     uint8_t pkt[15];
-    pkt[0] = stInputMode;             // mode the receiver should adopt
+    pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
     pkt[1] = radioSeq++;
     pkt[2] = wBtns & 0xFF;
     pkt[3] = wBtns >> 8;

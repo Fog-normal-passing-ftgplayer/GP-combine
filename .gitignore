@@ -7,8 +7,10 @@ configs/MyBoard
 build/
 build_fusion/
 build_receiver/
+build_receiver_zero/
 esp32/build/
 pico/build/
+tools/*/build/
 
 .*.sw*
 compile_commands.json

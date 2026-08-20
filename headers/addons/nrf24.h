@@ -69,18 +69,18 @@ public:
   }
 
   void startListening() {
-    writeReg(0x00, 0x03); // PWR_UP | PRIM_RX
+    writeReg(0x00, 0x0F); // PWR_UP | PRIM_RX | 2字节CRC
     gpio_put(_ce, 1);
     busy_wait_us(130);
   }
 
   void powerUpTx() {
-    writeReg(0x00, 0x02); // PWR_UP, PRIM_RX=0
+    writeReg(0x00, 0x0E); // PWR_UP, PRIM_RX=0, 2字节CRC
     gpio_put(_ce, 0);
     busy_wait_us(130);
   }
 
-  void powerUp() { writeReg(0x00, 0x02); }
+  void powerUp() { writeReg(0x00, 0x0E); }
   void powerDown() { writeReg(0x00, 0x00); }
   void setChannel(uint8_t ch) { writeReg(0x05, ch); }
   void setRfConfig(bool rate2M, uint8_t pwrCode) {

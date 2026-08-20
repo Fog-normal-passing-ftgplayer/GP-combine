@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.13)
+include(pico_sdk_import.cmake)
+project(receiver_nrf24_test C CXX ASM)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+pico_sdk_init()
+
+add_executable(receiver_nrf24_test main.c)
+pico_enable_stdio_usb(receiver_nrf24_test 1)
+pico_enable_stdio_uart(receiver_nrf24_test 0)
+target_compile_definitions(receiver_nrf24_test PRIVATE PICO_STDIO_USB_CONNECT_WITHOUT_DTR=1)
+target_link_libraries(receiver_nrf24_test pico_stdlib hardware_spi hardware_gpio)
+pico_add_extra_outputs(receiver_nrf24_test)

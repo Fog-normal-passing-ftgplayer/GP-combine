@@ -1,6 +1,8 @@
 """步骤 0：连接 ESP32-S3 + 准备编译工具 + 准备固件源码。"""
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Signal
@@ -31,6 +33,8 @@ from ..toolchain import (
     config_init_cmd,
     core_install_cmd,
     core_installed,
+    core_staging_dirs,
+    core_uninstall_cmd,
     find_arduino_cli,
     git_available,
     git_clone_cmd,
@@ -123,7 +127,16 @@ class PrepPage(QWidget):
         self.core_btn = QPushButton("安装")
         self.core_btn.clicked.connect(self.manual_install_core)
         core_row.addWidget(self.core_btn)
+        self.core_force_btn = QPushButton("强制重新下载")
+        self.core_force_btn.setVisible(False)
+        self.core_force_btn.clicked.connect(self.force_redownload_core)
+        core_row.addWidget(self.core_force_btn)
         tools_l.addLayout(core_row)
+        core_hint = QLabel("下载 esp32:esp32 需要科学上网/代理；若下载中断，"
+                           "点「强制重新下载」清缓存重来。")
+        core_hint.setObjectName("Muted")
+        core_hint.setWordWrap(True)
+        tools_l.addWidget(core_hint)
         self.core_bar = QProgressBar()
         self.core_bar.setVisible(False)
         tools_l.addWidget(self.core_bar)
@@ -219,6 +232,7 @@ class PrepPage(QWidget):
             self.core_status.setText("已安装 esp32:esp32")
             self.core_status.setStyleSheet("color: #64E0A0;")
             self.core_btn.setText("重新安装")
+            self.core_force_btn.setVisible(False)
         else:
             self._core_ok = False
             self.core_status.setText("未安装")
@@ -304,7 +318,37 @@ class PrepPage(QWidget):
         self._busy = False
         self._queue.clear()
         self._log("✘ %s（退出码 %d）" % (label, code))
+        show_force = ("ESP32 核心" in label) or ("板卡索引" in label)
         self._refresh_all()
+        if show_force:
+            self.core_force_btn.setVisible(True)
+
+    def force_redownload_core(self) -> None:
+        if self._busy:
+            return
+        cli = find_arduino_cli()
+        if not cli:
+            self._log("请先安装 arduino-cli")
+            return
+        self.core_force_btn.setVisible(False)
+        self._log("强制重新下载：卸载 esp32:esp32 并清理下载缓存…")
+        try:
+            subprocess.run(
+                core_uninstall_cmd(cli),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        for d in core_staging_dirs():
+            try:
+                if d.is_dir():
+                    shutil.rmtree(d, ignore_errors=True)
+                    self._log("已清理缓存：%s" % d)
+            except Exception:  # noqa: BLE001
+                pass
+        self._install_core(force=True)
 
     def _start_job(
         self,
@@ -402,7 +446,8 @@ class PrepPage(QWidget):
         if not force and core_installed(cli):
             self._finish_step("ESP32 核心已就绪")
             return
-        self._log("安装 ESP32 核心 esp32:esp32（首次约 300MB，请耐心等待）…")
+        self._log("安装 ESP32 核心 esp32:esp32（首次约 300MB，"
+                  "需科学上网/代理，请耐心等待）…")
         self._queue = [
             (config_init_cmd(cli), self.core_bar, "初始化 arduino-cli 配置"),
             (add_index_cmd(cli), self.core_bar, "添加 ESP32 下载源"),

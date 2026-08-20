@@ -116,6 +116,22 @@ def core_install_cmd(cli: Path) -> list[str]:
     return [str(cli), "core", "install", ESP32_CORE]
 
 
+def core_uninstall_cmd(cli: Path) -> list[str]:
+    return [str(cli), "core", "uninstall", ESP32_CORE]
+
+
+def core_staging_dirs() -> list[Path]:
+    """arduino-cli 下载缓存目录（下载中断残留就在这里）。"""
+    dirs: list[Path] = []
+    if is_windows():
+        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Arduino15"
+    else:
+        base = Path.home() / ".arduino15"
+    for sub in ("staging", "staging/packages"):
+        dirs.append(base / sub)
+    return dirs
+
+
 __all__ = [
     "find_arduino_cli",
     "git_available",

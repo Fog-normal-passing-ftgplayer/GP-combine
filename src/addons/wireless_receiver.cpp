@@ -39,6 +39,7 @@ void WirelessReceiverAddon::setup() {
     rxrx = GAMEPAD_JOYSTICK_MID; rxry = GAMEPAD_JOYSTICK_MID;
     rxlt = 0; rxrt = 0;
     lastPacketTime = 0;
+    lastRadioReinit = 0;
     if (!paired) {
         tud_disconnect(); // no gamepad identity until paired
     }
@@ -114,12 +115,20 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
 
 void WirelessReceiverAddon::preprocess() {
     uint8_t pkt[NRF24_PAYLOAD];
+    bool got = false;
     while (radio.readPacket(pkt)) {
+        got = true;
         handlePacket(pkt);
+    }
+    // 看门狗：长时间无包则重新初始化射频，自动恢复卡死
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if (!got && now - lastPacketTime > 1000 && now - lastRadioReinit > 3000) {
+        lastRadioReinit = now;
+        radio.begin(spi0, WIRELESS_RX_CSN_PIN, WIRELESS_RX_CE_PIN);
+        radio.startListening();
     }
     // gamepad->read() clears the state every frame, so re-inject the cached
     // state each preprocess; release everything after 1000ms without a packet
-    uint32_t now = to_ms_since_boot(get_absolute_time());
     if (paired && now - lastPacketTime < 1000) {
         Gamepad *g = Storage::getInstance().GetGamepad();
         g->state.buttons = rxButtons;

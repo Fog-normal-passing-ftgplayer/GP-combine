@@ -4,6 +4,7 @@
 #include <string.h>
 #include "driver/usb_serial_jtag.h"
 
+#define NRF24_CHANNEL 100
 #define CSN  14
 #define CE   15
 #define SCK  16
@@ -93,7 +94,7 @@ void setup() {
   writeReg(0x02, 0x03);
   writeReg(0x03, 0x03);
   writeReg(0x04, 0x15);
-  writeReg(0x05, 120);
+  writeReg(0x05, NRF24_CHANNEL);
   writeReg(0x06, 0x0E);
   static const uint8_t addr[5] = {0x46, 0x55, 0x53, 0x49, 0x4F}; // "FUSIO"
   writeRegs(0x10, addr, 5);  // TX_ADDR

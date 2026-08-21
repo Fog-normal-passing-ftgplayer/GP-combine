@@ -49,6 +49,7 @@ private:
     uint8_t rxlt, rxrt;
     uint32_t lastPacketTime;
     uint32_t lastLedToggle;
+    uint32_t lastRadioReinit;
     bool ledOn;
 };
 

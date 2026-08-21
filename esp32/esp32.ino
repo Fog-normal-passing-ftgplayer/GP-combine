@@ -1,6 +1,8 @@
 #include <SPI.h>
 #include <string.h>
 #include <LittleFS.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "background.h"
 #include "font.h"
 #include "cn_font.h"
@@ -112,7 +114,7 @@ void setWin(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1) {
 }
 
 // ---- state ----
-int view = VIEW_LAYOUT;
+volatile int view = VIEW_LAYOUT;
 int page = 0;
 int subPage = 0;
 bool animating = false;
@@ -120,8 +122,8 @@ int animDir = 0;          // +1 = next (slide left), -1 = prev (slide right)
 int pendingDir = 0;       // direction queued while an animation is running
 unsigned long animStart = 0;
 unsigned long lastFrameTime = 0;
-uint16_t lastButtons = 0;
-uint8_t lastDpad = 0;
+volatile uint16_t lastButtons = 0;
+volatile uint8_t lastDpad = 0;
 uint8_t prevStickD = 0;              // 左摇杆菜单方向边沿检测
 unsigned long lastActivity = 0;
 bool redrawNeeded = true;
@@ -205,18 +207,12 @@ static MenuSection bgSections[] = {
 };
 
 // ---- wireless page (无线) ----
-static const char *const WL_PWR_NAMES[] = {"低", "中", "高", "最高"};
-static const char *const WL_RATE_NAMES[] = {"2M高速", "1M远距"};
-static const char *const WL_HB_NAMES[] = {"省电", "标准", "高速"};
 static MenuOpt wlOpts[] = {
   {"无线开关", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
-  {"发射功率", OPT_ENUM, 3, 0, 3, 1, WL_PWR_NAMES, 4, ""},
-  {"数据速率", OPT_ENUM, 0, 0, 1, 1, WL_RATE_NAMES, 2, ""},
-  {"心跳频率", OPT_ENUM, 1, 0, 2, 1, WL_HB_NAMES, 3, ""},
   {"重新配对", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
 };
 static MenuSection wlSections[] = {
-  {"无线", wlOpts, 5},
+  {"无线", wlOpts, 2},
 };
 
 static SubPageDef subDefs[NUM_PAGES] = {
@@ -257,8 +253,8 @@ static int histHead = 0;    // ring index of the newest slot
 // status received from the Pico (STATUS frames)
 uint8_t stSocd = 0;
 uint8_t stDpadMode = 0;
-uint8_t stInputMode = 0;
-bool stInputModeValid = false;   // 收到过 Pico 状态帧后才有真实输入模式
+volatile uint8_t stInputMode = 0;
+volatile bool stInputModeValid = false;   // 收到过 Pico 状态帧后才有真实输入模式
 uint8_t stFlags = 0;
 uint16_t stBattMv = 0;
 uint8_t stBattFlags = 0;
@@ -268,19 +264,16 @@ NRF24 radio;
 SPIClass nrfSpi(HSPI);
 #define NRF_CSN 14
 #define NRF_CE  15
-bool radioUp = false;
+volatile bool radioUp = false;
 uint8_t radioSeq = 0;
-unsigned long lastRadioSend = 0;
-int radioHeartbeatMs = 20;
-static uint8_t radioPrevState[13];
 // link quality: ACK results over the last 100 packets
-uint8_t radioHist[100];
+volatile uint8_t radioHist[100];
 uint8_t radioHistIdx = 0;
-uint8_t radioHistOk = 0;
-bool radioLinked = false;
+volatile uint8_t radioHistOk = 0;
+volatile bool radioLinked = false;
 // full gamepad state received from the Pico over UART
-uint16_t lastLX = 0x8000, lastLY = 0x8000, lastRX = 0x8000, lastRY = 0x8000;
-uint8_t lastLT = 0, lastRT = 0;
+volatile uint16_t lastLX = 0x8000, lastLY = 0x8000, lastRX = 0x8000, lastRY = 0x8000;
+volatile uint8_t lastLT = 0, lastRT = 0;
 
 
 // S2 hold-to-enter-menu
@@ -1319,12 +1312,9 @@ void applyHistSettings() {
 // ---- wireless settings (nRF24 on the ESP32) ----
 void applyWirelessSettings() {
   radioUp = wlOpts[0].value != 0;
-  static const int hb[] = {50, 20, 10};
-  radioHeartbeatMs = hb[wlOpts[3].value];
   if (radioUp) {
     radio.powerUp();
-    radio.setChannel(120);   // 与接收端一致：固定信道，不做可选项
-    radio.setRfConfig(wlOpts[2].value == 0, (uint8_t)wlOpts[1].value);
+    radio.setChannel(NRF24_CHANNEL);   // 与接收端一致：固定信道
   } else {
     radio.powerDown();
   }
@@ -1769,7 +1759,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   subDirty = false;
                   redrawNeeded = true;
                 }
-                else if (subPage == 5 && subSel == 4) { // 无线 > 重新配对
+                else if (subPage == 5 && subSel == 1) { // 无线 > 重新配对
                   radio.resetLink();
                   savedFlashUntil = millis() + 1200;
                 }
@@ -1855,6 +1845,56 @@ void onStatusFrame(uint8_t *payload, uint8_t len) {
   }
 }
 
+// 无线发送任务：跑在另一个核，每 2ms 发一包，与屏幕渲染解耦，保证低延迟
+void radioTask(void *) {
+  uint32_t failCount = 0;
+  for (;;) {
+    if (radioUp) {
+      // 菜单打开时无线也发空输入，接收端同样“停止输入”
+      bool menuMute = (view != VIEW_LAYOUT);
+      uint16_t wBtns = menuMute ? 0 : lastButtons;
+      uint8_t wDpad = menuMute ? 0 : lastDpad;
+      uint16_t wLX = menuMute ? 0x8000 : lastLX;
+      uint16_t wLY = menuMute ? 0x8000 : lastLY;
+      uint16_t wRX = menuMute ? 0x8000 : lastRX;
+      uint16_t wRY = menuMute ? 0x8000 : lastRY;
+      uint8_t wLT = menuMute ? 0 : lastLT;
+      uint8_t wRT = menuMute ? 0 : lastRT;
+      uint8_t pkt[15];
+      pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
+      pkt[1] = radioSeq++;
+      pkt[2] = wBtns & 0xFF;
+      pkt[3] = wBtns >> 8;
+      pkt[4] = wDpad;
+      pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
+      pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
+      pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
+      pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
+      pkt[13] = wLT;
+      pkt[14] = wRT;
+      bool acked = radio.writePacket(pkt);
+      if (radioHist[radioHistIdx]) radioHistOk--;
+      radioHist[radioHistIdx] = acked ? 1 : 0;
+      if (acked) radioHistOk++;
+      radioHistIdx = (radioHistIdx + 1) % 100;
+      radioLinked = (radioHistOk >= 10);
+      if (acked) {
+        failCount = 0;
+      } else {
+        failCount++;
+        if (failCount > 500) { // 连续失败看门狗：重新初始化模块
+          radio.begin(nrfSpi, NRF_CSN, NRF_CE);
+          radioUp = true;
+          failCount = 0;
+          for (int i = 0; i < 100; i++) radioHist[i] = 0;
+          radioHistOk = 0;
+        }
+      }
+    }
+    vTaskDelay(2 / portTICK_PERIOD_MS);
+  }
+}
+
 void handleRxByte(uint8_t b) {
   switch (rxState) {
     case 0:
@@ -1917,6 +1957,7 @@ void setup(){
   nrfSpi.begin(16, 18, 17, -1); // SCK, MISO, MOSI (CSN/CE managed by driver)
   radio.begin(nrfSpi, NRF_CSN, NRF_CE);
   radioUp = true;  // 初版行为：无线默认开启
+  xTaskCreatePinnedToCore(radioTask, "radio", 4096, NULL, 1, NULL, 0); // 发送跑在核0
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
 }
@@ -1935,43 +1976,6 @@ void loop(){
   if (view == VIEW_EASTER && millis() - easterFrameMs >= 40) { // 彩蛋动画 ~25fps
     easterFrameMs = millis();
     redrawNeeded = true;
-  }
-  // wireless: forward full gamepad state + mode over nRF24
-  if (radioUp) {
-    // 菜单打开时无线也发空输入，接收端同样“停止输入”
-    bool menuMute = (view != VIEW_LAYOUT);
-    uint16_t wBtns = menuMute ? 0 : lastButtons;
-    uint8_t wDpad = menuMute ? 0 : lastDpad;
-    uint16_t wLX = menuMute ? 0x8000 : lastLX;
-    uint16_t wLY = menuMute ? 0x8000 : lastLY;
-    uint16_t wRX = menuMute ? 0x8000 : lastRX;
-    uint16_t wRY = menuMute ? 0x8000 : lastRY;
-    uint8_t wLT = menuMute ? 0 : lastLT;
-    uint8_t wRT = menuMute ? 0 : lastRT;
-    uint8_t pkt[15];
-    pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
-    pkt[1] = radioSeq++;
-    pkt[2] = wBtns & 0xFF;
-    pkt[3] = wBtns >> 8;
-    pkt[4] = wDpad;
-    pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
-    pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
-    pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
-    pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
-    pkt[13] = wLT;
-    pkt[14] = wRT;
-    unsigned long now = millis();
-    bool changed = memcmp(&pkt[2], radioPrevState, 13) != 0;
-    if (changed || now - lastRadioSend >= (unsigned long)radioHeartbeatMs) {
-      memcpy(radioPrevState, &pkt[2], 13);
-      bool acked = radio.writePacket(pkt);
-      if (radioHist[radioHistIdx]) radioHistOk--;
-      radioHist[radioHistIdx] = acked ? 1 : 0;
-      if (acked) radioHistOk++;
-      radioHistIdx = (radioHistIdx + 1) % 100;
-      radioLinked = (radioHistOk >= 40); // majority of the last 100 ACKed
-      lastRadioSend = now;
-    }
   }
   // refresh status bar / wireless page periodically (no input events needed)
   static unsigned long lastUiRefresh = 0;

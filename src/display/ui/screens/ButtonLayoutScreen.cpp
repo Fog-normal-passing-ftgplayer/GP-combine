@@ -25,7 +25,8 @@ void ButtonLayoutScreen::init() {
     historyString = "";
     inputHistory.clear();
 
-    setViewport((isInputHistoryEnabled ? 8 : 0), 0, (isInputHistoryEnabled ? 56 : getRenderer()->getDriver()->getMetrics()->height), getRenderer()->getDriver()->getMetrics()->width);
+    // 输入历史占顶部两行（状态栏 + 历史）：视口从 16 开始，避免文字压进布局
+    setViewport((isInputHistoryEnabled ? 16 : 0), 0, getRenderer()->getDriver()->getMetrics()->height, getRenderer()->getDriver()->getMetrics()->width);
 
 	// load layout (drawElement pushes element to the display list)
     uint16_t elementCtr = 0;

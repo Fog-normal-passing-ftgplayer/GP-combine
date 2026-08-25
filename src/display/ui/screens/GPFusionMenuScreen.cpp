@@ -446,7 +446,8 @@ int8_t GPFusionMenuScreen::update() {
   R = getRenderer();
   Gamepad* gamepad = Storage::getInstance().GetGamepad();
   uint16_t b = gamepad->state.buttons;
-  uint8_t d = gamepad->state.dpad;
+  // 用原始物理方向：D-Pad 被设为摇杆模式时 state.dpad 会被清空，菜单就收不到左右
+  uint8_t d = gamepad->state.dpadOriginal;
   uint16_t bEdge = b & ~prevB;
   uint8_t dEdge = d & ~prevD;
   bool anyEdge = (bEdge || dEdge);
@@ -458,7 +459,7 @@ int8_t GPFusionMenuScreen::update() {
   // slide animation tick
   if (animating) {
     unsigned long dt = now - animStart;
-    if (dt >= 180) {
+    if (dt >= 140) {
       animating = false;
     }
   }
@@ -573,7 +574,7 @@ static void drawMenuPages() {
   int off = 0;
   if (animating) {
     unsigned long dt = getMillis() - animStart;
-    float t = (dt >= 180) ? 1.0f : (float)dt / 180.0f;
+    float t = (dt >= 140) ? 1.0f : (float)dt / 140.0f;
     float e = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
     off = animFrom + (int)((animTo - animFrom) * e);
   }

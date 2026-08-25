@@ -242,6 +242,7 @@ private:
     float displaySaverTimer = 0;
     uint8_t displayIsPowerOn = 1;
     uint32_t prevMillis;
+    uint32_t lastRenderMs = 0;
     std::string statusBar;
     bool configMode;
     GPGFX* gpDisplay;

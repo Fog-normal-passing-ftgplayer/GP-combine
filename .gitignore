@@ -25,3 +25,5 @@ build_lite/
 www/node_modules/
 www/build/
 lib/httpd/fsdata.c
+configs/GPFusionLite/layout_user.h
+configs/GPFusionLite/lite_display.h

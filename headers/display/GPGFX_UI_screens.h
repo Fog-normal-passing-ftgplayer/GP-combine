@@ -16,6 +16,7 @@ enum DisplayMode {
 #include "ui/screens/ButtonLayoutScreen.h"
 #include "ui/screens/ConfigScreen.h"
 #include "ui/screens/DisplaySaverScreen.h"
+#include "ui/screens/LiteCustomLayoutScreen.h"
 #include "ui/screens/MainMenuScreen.h"
 #include "ui/screens/PinViewerScreen.h"
 #include "ui/screens/RestartScreen.h"

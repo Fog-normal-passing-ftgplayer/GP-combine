@@ -16,6 +16,10 @@
 #include "class/hid/hid.h"
 #include "display/ui/screens/GPFusionMenuScreen.h"
 
+#if __has_include("lite_display.h")
+#include "lite_display.h"
+#endif
+
 bool DisplayAddon::menuOpen = false;
 
 bool DisplayAddon::available() {
@@ -54,6 +58,9 @@ void DisplayAddon::setup() {
     // Setup GPGFX Options
     if (gpOptions.displayType != GPGFX_DisplayType::DISPLAY_TYPE_NONE) {
         gpOptions.size = options.size;
+#ifdef LITE_DISPLAY_SIZE
+        gpOptions.size = LITE_DISPLAY_SIZE;  // 配置助手选定的屏幕尺寸
+#endif
         gpOptions.orientation = options.flip;
         gpOptions.inverted = options.invert;
         gpOptions.font.fontData = GP_Font_Standard;
@@ -113,7 +120,11 @@ bool DisplayAddon::updateDisplayScreen() {
             gpScreen = new GPFusionMenuScreen(gpDisplay);
             break;
         case BUTTONS:
+#if __has_include("layout_user.h")
+            gpScreen = new LiteCustomLayoutScreen(gpDisplay);
+#else
             gpScreen = new ButtonLayoutScreen(gpDisplay);
+#endif
             break;
         case PIN_VIEWER:
             gpScreen = new PinViewerScreen(gpDisplay);
@@ -239,7 +250,12 @@ void DisplayAddon::process() {
     }
 
     int8_t screenReturn = gpScreen->update();
-    gpScreen->draw();
+    // 帧率限制：最多每 16ms 推一帧，避免每循环全量推 I2C 导致滑动卡顿
+    uint32_t nowMs = getMillis();
+    if (nowMs - lastRenderMs >= 16) {
+        lastRenderMs = nowMs;
+        gpScreen->draw();
+    }
 
     if (!configMode && screenReturn < 0) {
         Mask_t values = Storage::getInstance().GetGamepad()->debouncedGpio;

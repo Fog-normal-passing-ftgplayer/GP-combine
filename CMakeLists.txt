@@ -76,8 +76,8 @@ execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --abbrev=7
 string(REGEX REPLACE "v([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" CMAKE_GIT_REPO_VERSION ${GIT_REPO_VERSION})
 string(REGEX REPLACE "^(.......-.*)|(.......)$" "0.0.0" CMAKE_GIT_REPO_VERSION ${CMAKE_GIT_REPO_VERSION}) # fix if all we have is the git SHA
 # GP-Combine 固定版本号
-set(GIT_REPO_VERSION "0.1.0")
-set(CMAKE_GIT_REPO_VERSION "0.1.0")
+set(GIT_REPO_VERSION "0.1.1")
+set(CMAKE_GIT_REPO_VERSION "0.1.1")
 configure_file("headers/version.h.in" "headers/version.h")
 message("GIT_REPO_VERSION is ${GIT_REPO_VERSION}")
 message("CMAKE_GIT_REPO_VERSION is ${CMAKE_GIT_REPO_VERSION}")
@@ -251,6 +251,7 @@ src/display/ui/elements/GPShape.cpp
 src/display/ui/elements/GPSprite.cpp
 src/display/ui/screens/ButtonLayoutScreen.cpp
 src/display/ui/screens/ConfigScreen.cpp
+src/display/ui/screens/LiteCustomLayoutScreen.cpp
 src/display/ui/screens/GPFusionMenuScreen.cpp
 src/display/ui/screens/MainMenuScreen.cpp
 src/display/ui/screens/PinViewerScreen.cpp

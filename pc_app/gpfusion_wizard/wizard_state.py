@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .app_config import state_file
-from .layout_model import Layout
+from .layout_model import Layout, fit_layout_to_screen
 
 
 @dataclass
@@ -15,6 +15,9 @@ class WizardState:
     port: str = ""
     cli_path: str = ""
     source_dir: str = ""
+    lite_source_dir: str = ""
+    pico_sdk_dir: str = ""
+    lite_screen_size: str = "0.96"
     background_src: str = ""
     background_mode: str = "cover"
     default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
@@ -28,6 +31,9 @@ class WizardState:
     gif_mode: str = "cover"
     gif_palette: int = 16
     layout: Layout = field(default_factory=Layout.preset)
+    lite_layout: Layout = field(
+        default_factory=lambda: fit_layout_to_screen(Layout.preset())
+    )
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -40,6 +46,9 @@ class WizardState:
         s.port = str(d.get("port", ""))
         s.cli_path = str(d.get("cli_path", ""))
         s.source_dir = str(d.get("source_dir", ""))
+        s.lite_source_dir = str(d.get("lite_source_dir", ""))
+        s.pico_sdk_dir = str(d.get("pico_sdk_dir", ""))
+        s.lite_screen_size = str(d.get("lite_screen_size", "0.96"))
         s.background_src = str(d.get("background_src", ""))
         s.background_mode = str(d.get("background_mode", "cover"))
         try:
@@ -64,6 +73,21 @@ class WizardState:
                 s.layout = Layout.from_dict(d["layout"])
             except Exception:
                 s.layout = Layout.preset()
+        if isinstance(d.get("lite_layout"), dict):
+            try:
+                s.lite_layout = Layout.from_dict(d["lite_layout"])
+                # 旧数据可能存的是 240x135 原始坐标：越界则重新适配
+                pts = (
+                    [(b.x, b.y) for b in s.lite_layout.move]
+                    + [(b.x, b.y) for b in s.lite_layout.cluster]
+                )
+                if any(x > 127 or y > 63 for x, y in pts):
+                    s.lite_layout = fit_layout_to_screen(s.lite_layout)
+            except Exception:
+                s.lite_layout = fit_layout_to_screen(s.layout)
+        else:
+            # 旧配置没有 lite_layout：用正式版布局适配一份到 128x64
+            s.lite_layout = fit_layout_to_screen(s.layout)
         return s
 
     def save(self) -> None:

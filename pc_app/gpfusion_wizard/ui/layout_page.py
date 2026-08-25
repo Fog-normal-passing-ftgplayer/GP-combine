@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from ..app_config import SCREEN_H, SCREEN_W, local_defaults_header, local_layout_header
 from ..defaults_header import write_defaults_header
+from ..lite_layout_header import write_lite_layout_header
 from ..layout_header import write_layout_header
 from ..layout_model import (
     GROUP_CLUSTER,
@@ -40,9 +41,15 @@ from .layout_canvas import LayoutCanvas
 class LayoutPage(QWidget):
     changed = Signal()
 
-    def __init__(self, state: WizardState, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        state: WizardState,
+        parent: QWidget | None = None,
+        lite: bool = False,
+    ) -> None:
         super().__init__(parent)
         self.state = state
+        self.lite = lite
         self._build_ui()
         self._sync_from_state()
 
@@ -85,7 +92,8 @@ class LayoutPage(QWidget):
         toolbar.addWidget(self.reset_btn)
         left.addLayout(toolbar)
 
-        self.canvas = LayoutCanvas()
+        lw, lh = (128, 64) if self.lite else (240, 135)
+        self.canvas = LayoutCanvas(logical_size=(lw, lh))
         self.canvas.item_moved.connect(self._on_item_moved)
         self.canvas.lever_moved.connect(self._on_lever_moved)
         self.canvas.item_selected.connect(self._on_item_selected)
@@ -123,12 +131,12 @@ class LayoutPage(QWidget):
         xy_row = QHBoxLayout()
         xy_row.addWidget(QLabel("X"))
         self.x_spin = QSpinBox()
-        self.x_spin.setRange(1, SCREEN_W - 1)
+        self.x_spin.setRange(1, lw - 1)
         self.x_spin.valueChanged.connect(self._on_x_changed)
         xy_row.addWidget(self.x_spin)
         xy_row.addWidget(QLabel("Y"))
         self.y_spin = QSpinBox()
-        self.y_spin.setRange(1, SCREEN_H - 1)
+        self.y_spin.setRange(1, lh - 1)
         self.y_spin.valueChanged.connect(self._on_y_changed)
         xy_row.addWidget(self.y_spin)
         right_l.addLayout(xy_row)
@@ -193,16 +201,19 @@ class LayoutPage(QWidget):
     # ---------- 状态 ----------
 
     def _sync_from_state(self) -> None:
-        self.canvas.set_layout(self.state.layout)
+        self.canvas.set_layout(self._layout())
         self._set_combo_by_data(self.default_combo, self.state.default_layout)
         self.lever_check.blockSignals(True)
-        self.lever_check.setChecked(self.state.layout.show_lever)
+        self.lever_check.setChecked(self._layout().show_lever)
         self.lever_check.blockSignals(False)
         self.canvas.set_selection(GROUP_MOVE, 0)
         self._refresh_panel()
 
     def reload_state(self) -> None:
         self._sync_from_state()
+
+    def _layout(self) -> Layout:
+        return self.state.lite_layout if self.lite else self.state.layout
 
     @staticmethod
     def _set_combo_by_data(combo: QComboBox, value: int) -> None:
@@ -213,7 +224,7 @@ class LayoutPage(QWidget):
         combo.blockSignals(False)
 
     def _on_lever_toggled(self, checked: bool) -> None:
-        self.state.layout.show_lever = checked
+        self._layout().show_lever = checked
         self.canvas.update()
         if checked and self.canvas.sel_group == GROUP_MOVE:
             self.canvas.set_selection(GROUP_CLUSTER, 0)
@@ -233,16 +244,16 @@ class LayoutPage(QWidget):
 
     def _group_items(self, group: str) -> list[Btn]:
         if group == GROUP_MOVE:
-            return self.state.layout.move
+            return self._layout().move
         if group == GROUP_CLUSTER:
-            return self.state.layout.cluster
+            return self._layout().cluster
         return []
 
     def _refresh_panel(self) -> None:
         group = self.canvas.sel_group
         index = self.canvas.sel_index
         if group == GROUP_LEVER:
-            lv = self.state.layout.lever
+            lv = self._layout().lever
             self.name_label.setText("街机摇杆")
             self.lever_box.setVisible(True)
             self.shape_combo.setEnabled(False)
@@ -343,14 +354,14 @@ class LayoutPage(QWidget):
         self._write_and_save()
 
     def _on_lever_moved(self, x: int, y: int) -> None:
-        self.state.layout.lever.x, self.state.layout.lever.y = x, y
+        self._layout().lever.x, self._layout().lever.y = x, y
         self._set_spin(self.x_spin, x)
         self._set_spin(self.y_spin, y)
         self._write_and_save()
 
     def _on_x_changed(self, value: int) -> None:
         if self.canvas.sel_group == GROUP_LEVER:
-            self.state.layout.lever.x = value
+            self._layout().lever.x = value
         else:
             b = self._selected_btn()
             if b:
@@ -360,7 +371,7 @@ class LayoutPage(QWidget):
 
     def _on_y_changed(self, value: int) -> None:
         if self.canvas.sel_group == GROUP_LEVER:
-            self.state.layout.lever.y = value
+            self._layout().lever.y = value
         else:
             b = self._selected_btn()
             if b:
@@ -386,13 +397,13 @@ class LayoutPage(QWidget):
             self._write_and_save()
 
     def _on_ring_changed(self, value: int) -> None:
-        self.state.layout.lever.ring = value
+        self._layout().lever.ring = value
         self.ring_value.setText(str(value))
         self.canvas.update()
         self._write_and_save()
 
     def _on_knob_changed(self, value: int) -> None:
-        self.state.layout.lever.knob = value
+        self._layout().lever.knob = value
         self.knob_value.setText(str(value))
         self.canvas.update()
         self._write_and_save()
@@ -407,12 +418,12 @@ class LayoutPage(QWidget):
         if not chosen:
             return
         label, mask = chosen
-        x, y = find_free_spot(self.state.layout)
-        self.state.layout.cluster.append(
-            Btn(mask, x, y, 13, False, label, False)
+        x, y = find_free_spot(self._layout(), self.canvas._lw, self.canvas._lh)
+        self._layout().cluster.append(
+            Btn(mask, x, y, 6 if self.lite else 13, False, label, False)
         )
         self.canvas.set_selection(
-            GROUP_CLUSTER, len(self.state.layout.cluster) - 1
+            GROUP_CLUSTER, len(self._layout().cluster) - 1
         )
         self.canvas.update()
         self._refresh_panel()
@@ -422,7 +433,7 @@ class LayoutPage(QWidget):
         group = self.canvas.sel_group
         if group == GROUP_LEVER:
             # 删除摇杆 = 隐藏，之后可通过「显示街机摇杆」重新打开
-            self.state.layout.show_lever = False
+            self._layout().show_lever = False
             self.lever_check.blockSignals(True)
             self.lever_check.setChecked(False)
             self.lever_check.blockSignals(False)
@@ -450,8 +461,11 @@ class LayoutPage(QWidget):
     # ---------- 写入 ----------
 
     def reset_defaults(self) -> None:
-        self.state.layout = Layout.preset()
-        self.canvas.set_layout(self.state.layout)
+        if self.lite:
+            self.state.lite_layout = Layout.preset()
+        else:
+            self.state.layout = Layout.preset()
+        self.canvas.set_layout(self._layout())
         self.lever_check.blockSignals(True)
         self.lever_check.setChecked(False)
         self.lever_check.blockSignals(False)
@@ -462,13 +476,18 @@ class LayoutPage(QWidget):
 
     def _write_and_save(self) -> None:
         self.state.save()
-        if not self.state.source_dir:
+        src = self.state.lite_source_dir if self.lite else self.state.source_dir
+        if not src:
             self.status_label.setText("源码目录未就绪，布局改动未写入固件")
             self.status_label.setStyleSheet("color: #FFB454;")
             return
         try:
-            out = local_layout_header(Path(self.state.source_dir))
-            write_layout_header(self.state.layout, out)
+            if self.lite:
+                out = Path(src) / "configs" / "GPFusionLite" / "layout_user.h"
+                write_lite_layout_header(self._layout(), out)
+            else:
+                out = local_layout_header(Path(src))
+                write_layout_header(self._layout(), out)
             self.status_label.setText("✔ 已实时写入 %s" % out)
             self.status_label.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
@@ -477,6 +496,8 @@ class LayoutPage(QWidget):
             self.status_label.setStyleSheet("color: #FF7B72;")
 
     def _write_defaults(self) -> None:
+        if self.lite:
+            return  # Lite 不生成 defaults.h
         if not self.state.source_dir:
             self.status_label.setText("源码目录未就绪，默认布局未写入固件")
             self.status_label.setStyleSheet("color: #FFB454;")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -23,17 +24,27 @@ from ..wizard_state import WizardState
 from .background_page import BackgroundPage
 from .gif_page import GifPage
 from .layout_page import LayoutPage
+from .lite_source_page import LiteSourcePage
+from .lite_uf2_page import LiteUf2Page
+from .lite_webconfig_page import LiteWebConfigPage
 from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .upload_page import UploadPage
 
-STEPS = [
+FULL_STEPS = [
     "连接与准备",
     "背景图",
     "按键布局",
     "Pico 配置",
     "GIF 动画",
     "编译上传",
+]
+
+LITE_STEPS = [
+    "源码文件夹",
+    "网页配置",
+    "自定义布局",
+    "生成 UF2",
 ]
 
 
@@ -68,13 +79,17 @@ class MainWindow(QWidget):
         app_sub.setObjectName("AppSub")
         side_l.addWidget(app_title)
         side_l.addWidget(app_sub)
-        side_l.addSpacing(22)
+        side_l.addSpacing(10)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("正式版", "full")
+        self.mode_combo.addItem("Lite 版本", "lite")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        side_l.addWidget(self.mode_combo)
+        side_l.addSpacing(10)
 
         self.step_list = QListWidget()
         self.step_list.setObjectName("Steps")
-        for name in STEPS:
-            item = QListWidgetItem(name)
-            self.step_list.addItem(item)
         side_l.addWidget(self.step_list)
         side_l.addSpacing(8)
         export_btn = QPushButton("导出配置…")
@@ -97,12 +112,20 @@ class MainWindow(QWidget):
         self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
         self.upload_page = UploadPage(self.state)
+        self.lite_source_page = LiteSourcePage(self.state)
+        self.lite_webconfig_page = LiteWebConfigPage()
+        self.lite_layout_page = LayoutPage(self.state, lite=True)
+        self.lite_uf2_page = LiteUf2Page(self.state)
         self.stack.addWidget(self.prep_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
         self.stack.addWidget(self.pico_page)
         self.stack.addWidget(self.gif_page)
         self.stack.addWidget(self.upload_page)
+        self.stack.addWidget(self.lite_source_page)
+        self.stack.addWidget(self.lite_webconfig_page)
+        self.stack.addWidget(self.lite_layout_page)
+        self.stack.addWidget(self.lite_uf2_page)
         root.addWidget(self.stack, 1)
         outer.addWidget(body, 1)
 
@@ -137,43 +160,77 @@ class MainWindow(QWidget):
         outer.addWidget(self.nav_bar)
 
         self.prep_page.ready_changed.connect(self._update_nav)
+        self.lite_source_page.ready_changed.connect(self._update_nav)
         self.upload_page.finished_upload.connect(self._on_upload_finished)
+        self.lite_uf2_page.finished_build.connect(self._on_lite_build_finished)
         self.step_list.currentRowChanged.connect(self._go_to)
-        self.step_list.setCurrentRow(0)
+        self._mode = "full"
+        self._cur_row = 0
+        self._apply_mode_steps()
         self._update_nav()
 
     # ---------- 导航 ----------
 
+    def _mode_offset(self) -> int:
+        return 0 if self._mode == "full" else 6
+
+    def _mode_page_count(self) -> int:
+        return len(FULL_STEPS) if self._mode == "full" else len(LITE_STEPS)
+
+    def _apply_mode_steps(self) -> None:
+        self.step_list.blockSignals(True)
+        self.step_list.clear()
+        for name in (FULL_STEPS if self._mode == "full" else LITE_STEPS):
+            self.step_list.addItem(QListWidgetItem(name))
+        self.step_list.blockSignals(False)
+
+    def _on_mode_changed(self) -> None:
+        self._mode = str(self.mode_combo.currentData())
+        self._apply_mode_steps()
+        self._go_to(0)
+
     def _go_to(self, row: int) -> None:
-        row = max(0, min(row, self.stack.count() - 1))
-        cur = self.stack.currentIndex()
-        if cur >= 0 and row > cur and not self._can_continue(cur):
+        row = max(0, min(row, self._mode_page_count() - 1))
+        idx = self._mode_offset() + row
+        cur_row = self._cur_row
+        if cur_row >= 0 and row > cur_row and not self._can_continue(cur_row):
             return
-        self.stack.setCurrentIndex(row)
-        if row == 5:
+        self._cur_row = row
+        self.stack.setCurrentIndex(idx)
+        if self._mode == "full" and row == 5:
             self.upload_page.on_shown()
+        if self._mode == "lite" and row == 3:
+            self.lite_uf2_page.on_shown()
         self._update_nav()
 
     def _go_back(self) -> None:
-        self._go_to(self.stack.currentIndex() - 1)
+        self._go_to(self._cur_row - 1)
 
     def _go_next(self) -> None:
-        self._go_to(self.stack.currentIndex() + 1)
+        self._go_to(self._cur_row + 1)
 
     def _update_nav(self) -> None:
-        idx = self.stack.currentIndex()
-        self.device_banner.setVisible(not bool(self.state.port))
-        self.back_btn.setEnabled(idx > 0)
-        last = idx == 3
+        row = self._cur_row
+        self.back_btn.setEnabled(row > 0)
+        last = row == self._mode_page_count() - 1
         self.next_btn.setVisible(not last)
         self.finish_btn.setVisible(last)
-        self.next_btn.setEnabled(self._can_continue(idx))
+        self.next_btn.setEnabled(self._can_continue(row))
+        if self._mode == "lite":
+            self.device_banner.setVisible(False)
+        else:
+            self.device_banner.setVisible(not bool(self.state.port))
+        steps = FULL_STEPS if self._mode == "full" else LITE_STEPS
         for i in range(self.step_list.count()):
             self.step_list.item(i).setText(
-                ("✓ " if (i < idx and self._step_done(i)) else "") + STEPS[i]
+                ("✓ " if (i < row and self._step_done(i)) else "") + steps[i]
             )
 
     def _step_done(self, i: int) -> bool:
+        if self._mode == "lite":
+            if i == 0:
+                return self.lite_source_page.can_proceed()
+            return bool(self.state.lite_source_dir)
         if i == 0:
             return self.prep_page.is_ready()
         if i in (1, 2, 3, 4):
@@ -181,6 +238,10 @@ class MainWindow(QWidget):
         return False
 
     def _can_continue(self, idx: int) -> bool:
+        if self._mode == "lite":
+            if idx == 0:
+                return self.lite_source_page.can_proceed()
+            return bool(self.state.lite_source_dir)
         if idx == 0:
             return self.prep_page.can_proceed()
         if idx == 1:
@@ -190,6 +251,10 @@ class MainWindow(QWidget):
         return True
 
     def _on_upload_finished(self, ok: bool) -> None:
+        if ok:
+            self.finish_btn.setText("完成")
+
+    def _on_lite_build_finished(self, ok: bool) -> None:
         if ok:
             self.finish_btn.setText("完成")
 
@@ -231,6 +296,10 @@ class MainWindow(QWidget):
                 self.layout_page,
                 self.pico_page,
                 self.gif_page,
+                self.lite_source_page,
+                self.lite_webconfig_page,
+                self.lite_layout_page,
+                self.lite_uf2_page,
             ):
                 page.reload_state()
             self._update_nav()

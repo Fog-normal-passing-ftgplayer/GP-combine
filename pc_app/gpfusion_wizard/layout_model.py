@@ -130,6 +130,66 @@ class Layout:
                 pass
         p.show_lever = bool(d.get("show_lever", False))
         return p
+
+
+def fit_layout_to_screen(
+    layout: Layout,
+    width: int = 128,
+    height: int = 64,
+    status_h: int = 8,
+) -> Layout:
+    """把 240x135 布局按包围盒等比适配到指定屏幕（如 Lite 128x64）。
+
+    返回新的 Layout，坐标已是目标屏幕空间（可直接 1:1 写入固件头文件）。
+    """
+    xs: list[int] = []
+    ys: list[int] = []
+    for b in list(layout.move) + list(layout.cluster):
+        xs += [b.x - b.r, b.x + b.r]
+        ys += [b.y - b.r, b.y + b.r]
+    if layout.show_lever:
+        xs += [layout.lever.x - layout.lever.ring, layout.lever.x + layout.lever.ring]
+        ys += [layout.lever.y - layout.lever.ring, layout.lever.y + layout.lever.ring]
+    if not xs:
+        return Layout(
+            move=layout.move,
+            cluster=layout.cluster,
+            lever=layout.lever,
+            show_lever=layout.show_lever,
+        )
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    bw, bh = max(1, maxx - minx), max(1, maxy - miny)
+    s = min(width / bw, (height - status_h) / bh)
+    ox = (width - bw * s) / 2.0 - minx * s
+    oy = status_h + ((height - status_h) - bh * s) / 2.0 - miny * s
+
+    def t(v: float) -> int:
+        return int(round(v))
+
+    def fit_btn(b: Btn) -> Btn:
+        return Btn(
+            mask=b.mask,
+            x=t(b.x * s + ox),
+            y=t(b.y * s + oy),
+            r=max(2, t(b.r * s)),
+            square=b.square,
+            label=b.label,
+            dpad=b.dpad,
+        )
+
+    lv = layout.lever
+    return Layout(
+        move=[fit_btn(b) for b in layout.move],
+        cluster=[fit_btn(b) for b in layout.cluster],
+        lever=Lever(
+            x=t(lv.x * s + ox),
+            y=t(lv.y * s + oy),
+            ring=max(2, t(lv.ring * s)),
+            knob=max(1, t(lv.knob * s)),
+        ),
+        show_lever=layout.show_lever,
+    )
 GROUP_MOVE = "move"
 GROUP_CLUSTER = "cluster"
 GROUP_LEVER = "lever"
@@ -147,14 +207,18 @@ EXTRA_BUTTONS: list[tuple[str, int]] = [
 ]
 
 
-def find_free_spot(layout: Layout) -> tuple[int, int]:
-    """在右侧区域找一个不与现有按键重叠的默认放置点。"""
+def find_free_spot(layout: Layout, width: int = 240, height: int = 135) -> tuple[int, int]:
+    """在右侧区域找一个不与现有按键重叠的默认放置点。
+
+    width/height 限定搜索范围（Lite 用 128x64）。"""
     occupied = (
         [(b.x, b.y) for b in layout.move]
         + [(b.x, b.y) for b in layout.cluster]
     )
-    for y in (105, 80, 55, 120, 90, 70):
-        for x in (110, 134, 158, 182, 206, 226):
+    ys = [y for y in (height - 30, height - 55, height - 80) if y > 12]
+    xs = [x for x in (width // 2 - 40, width // 2 - 10, width - 90, width - 60, width - 30) if x > 6]
+    for y in ys:
+        for x in xs:
             if all((x - ox) ** 2 + (y - oy) ** 2 > 24 ** 2 for ox, oy in occupied):
                 return x, y
-    return 110, 105
+    return xs[0] if xs else 8, ys[0] if ys else 16

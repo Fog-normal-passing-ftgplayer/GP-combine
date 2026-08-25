@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt, QRectF, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from ..app_config import SCREEN_H, SCREEN_W
 from ..layout_model import GROUP_CLUSTER, GROUP_LEVER, GROUP_MOVE, Btn, Layout
 
 COL_RING = QColor(150, 160, 175)
@@ -22,9 +21,14 @@ class LayoutCanvas(QWidget):
     lever_moved = Signal(int, int)               # x, y
     item_selected = Signal(str, int)             # group, index
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        logical_size: tuple[int, int] = (240, 135),
+    ) -> None:
         super().__init__(parent)
-        self.setMinimumSize(SCREEN_W * 2, SCREEN_H * 2)
+        self._lw, self._lh = logical_size
+        self.setMinimumSize(self._lw * 2, self._lh * 2)
         self.layout_data: Layout = Layout.preset()
         self.sel_group: str = GROUP_MOVE
         self.sel_index: int = 0
@@ -63,13 +67,13 @@ class LayoutCanvas(QWidget):
         return self.layout_data.show_lever
 
     def _scale(self) -> float:
-        return min(self.width() / SCREEN_W, self.height() / SCREEN_H)
+        return min(self.width() / self._lw, self.height() / self._lh)
 
     def _origin(self) -> tuple[int, int]:
         s = self._scale()
         return (
-            int((self.width() - SCREEN_W * s) / 2),
-            int((self.height() - SCREEN_H * s) / 2),
+            int((self.width() - self._lw * s) / 2),
+            int((self.height() - self._lh * s) / 2),
         )
 
     def _to_logic(self, pos) -> tuple[int, int]:
@@ -108,8 +112,8 @@ class LayoutCanvas(QWidget):
         if group == GROUP_LEVER:
             lv = self.layout_data.lever
             margin = 2
-            x = max(lv.ring + margin, min(SCREEN_W - 1 - lv.ring - margin, x))
-            y = max(lv.ring + margin, min(SCREEN_H - 1 - lv.ring - margin, y))
+            x = max(lv.ring + margin, min(self._lw - 1 - lv.ring - margin, x))
+            y = max(lv.ring + margin, min(self._lh - 1 - lv.ring - margin, y))
             lv.x, lv.y = x, y
             self.lever_moved.emit(x, y)
             self.update()
@@ -118,8 +122,8 @@ class LayoutCanvas(QWidget):
         if idx >= len(items):
             return
         b = items[idx]
-        x = max(b.r + 1, min(SCREEN_W - 1 - b.r, x))
-        y = max(b.r + 1, min(SCREEN_H - 1 - b.r, y))
+        x = max(b.r + 1, min(self._lw - 1 - b.r, x))
+        y = max(b.r + 1, min(self._lh - 1 - b.r, y))
         b.x, b.y = x, y
         self.item_moved.emit(group, idx, x, y)
         self.update()
@@ -139,7 +143,7 @@ class LayoutCanvas(QWidget):
         painter.fillRect(self.rect(), QColor(10, 14, 20))
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        content = QRectF(ox, oy, SCREEN_W * s, SCREEN_H * s)
+        content = QRectF(ox, oy, self._lw * s, self._lh * s)
         painter.fillRect(content, COL_BG)
         painter.setPen(QPen(QColor(49, 65, 91), 1))
         painter.drawRect(content)

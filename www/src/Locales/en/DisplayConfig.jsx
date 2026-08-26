@@ -68,6 +68,7 @@ export default {
 			bounce: 'Logo Bounce',
 			pipes: 'Pipes',
 			toast: 'Toast',
+			matrix: 'Digital Rain (MATRIX)',
 		},
 		'layout-modes': {
 			standard: 'Default',

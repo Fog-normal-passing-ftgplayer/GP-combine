@@ -51,12 +51,12 @@ const Navigation = () => {
 
 	return (
 		<Navbar collapseOnSelect expand="md" fixed="top">
-			<Navbar.Brand title={`GP2040-CE ${t('Navigation:home-label')}`}>
+			<Navbar.Brand title={`GP-Combine ${t('Navigation:home-label')}`}>
 				<Nav.Link as={NavLink} to="/" eventKey={eventKey++}>
 					<img
 						src="images/logo.png"
 						className="title-logo"
-						alt="GP2040-CE logo"
+						alt="GP-Combine logo"
 					/>
 				</Nav.Link>
 			</Navbar.Brand>
@@ -133,7 +133,7 @@ const Navigation = () => {
 							{t('Navigation:docs-label')}
 						</NavDropdown.Item>
 						<NavDropdown.Item
-							href="https://github.com/OpenStickCommunity/GP2040-CE"
+							href="https://github.com/Fog-normal-passing-ftgplayer/GP-combine"
 							target="_blank"
 						>
 							{t('Navigation:github-label')}

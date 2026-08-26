@@ -4,7 +4,7 @@ export default {
 	'build-text': 'Sürüm: {{build}}',
 	'current-text': 'Mevcut Sürüm: {{version}}',
 	'get-update-text': 'Son sürüme yükselt',
-	'header-text': 'GP2040-CE Web Konfigüratörüne Hoş Geldiniz!',
+	'header-text': 'GP-Combine Web Konfigüratörüne Hoş Geldiniz!',
 	'latest-text': 'Güncel sürüm: {{version}}',
 	'memory-flash-text': 'Hafıza',
 	'memory-board-text': 'Kart Hafızası',

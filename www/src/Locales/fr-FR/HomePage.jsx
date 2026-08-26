@@ -4,7 +4,7 @@ export default {
 	'build-text': 'Build: {{build}}',
 	'current-text': 'Actuelle : {{version}}',
 	'get-update-text': 'Obtenir la dernière version',
-	'header-text': 'Bienvenue dans le configurateur web GP2040-CE !',
+	'header-text': 'Bienvenue dans le configurateur web GP-Combine !',
 	'latest-text': 'Dernière : {{version}}',
 	'memory-flash-text': 'Flash',
 	'memory-board-text': 'Flash de la carte',

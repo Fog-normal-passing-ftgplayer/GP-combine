@@ -60,7 +60,7 @@ export default {
 	'debounce-delay-label': 'Geri Tepme Gecikmesi (milisaniye)',
 	'mini-menu-gamepad-input': 'Mini Menüyü Görüntülemek İçin Gamepad Girişini Kullanın',
 	'ps4-mode-explanation-text':
-		'PS4 modu, GP2040-CE kimliği doğrulanmış bir PS4 kontrolcüsü olarak çalışmasına olanak tanır.',
+		'PS4 modu, GP-Combine kimliği doğrulanmış bir PS4 kontrolcüsü olarak çalışmasına olanak tanır.',
 	'ps4-mode-warning-text':
 		'<span>⏳ UYARI ⏳:</span> PS4, kimlik doğrulaması yapılmadığı takdirde 8 dakika sonra zaman aşımına uğrayacaktır.',
 	'ps4-usb-host-mode-text':
@@ -73,7 +73,7 @@ export default {
 		emulation: 'Uzaktan/Emülasyon',
 	},
 	'ps5-mode-explanation-text':
-		'PS5 modu, GP2040-CE kimliği doğrulanmış bir PS5 uyumlu arcade stick olarak çalışmasını sağlar.',
+		'PS5 modu, GP-Combine kimliği doğrulanmış bir PS5 uyumlu arcade stick olarak çalışmasını sağlar.',
 	'ps5-mode-warning-text':
 		'<span>⏳ UYARI ⏳:</span> PS5, kimlik doğrulaması yapılmadan 8 dakika sonra zaman aşımına uğrayacaktır.',
 	'ps5-usb-host-mode-text':
@@ -132,7 +132,7 @@ export default {
 		'load-profile-4': 'Profil #4 Yükle',
 		'load-profile-5': 'Profil #5 Yükle',
 		'load-profile-6': 'Profil #6 Yükle',
-		'reboot-default': 'GP2040-CE yeniden başlatın',
+		'reboot-default': 'GP-Combine yeniden başlatın',
 		'save-config': 'Yapılandırmayı Kaydet',
 		'next-profile': 'Sonraki Profil',
 		'previous-profile': 'Önceki Profil',

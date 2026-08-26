@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Eklenti Ayarları',
 	'sub-header-text':
-		'GP2040-CE eklenti seçeneklerini yeniden yapılandırmak için aşağıdaki formu kullanın.',
+		'GP-Combine eklenti seçeneklerini yeniden yapılandırmak için aşağıdaki formu kullanın.',
 	'bootsel-header-text': 'BOOTSEL Tuşu Ayaları',
 	'bootsel-sub-header-text':
 		'Not: Geri yüklemeye ayarlı değil ise OLED tepkisiz hale gelebilir',
@@ -119,7 +119,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'SOCD Kaydırıcı Modu Varsayılanı',
 	'ps4-mode-sub-header': 'SORUMLULUK REDDİ!',
-	'ps4-mode-sub-header-text': 'GP2040-CE ASLA BU DOSYALARI SAĞLAMAYACAKTIR!!!',
+	'ps4-mode-sub-header-text': 'GP-Combine ASLA BU DOSYALARI SAĞLAMAYACAKTIR!!!',
 	'ps4-mode-text':
 		'Lütfen gerekli 3 dosyayı yükleyin ve PS4 Modunu kullanmak için "Doğrula ve Kaydet" butonuna tıklayın.',
 	'ps4-mode-private-key-label': 'Private Anahtarı (PEM)',

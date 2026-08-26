@@ -36,7 +36,7 @@ class UploadPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
 
-        title = QLabel("第 4 步：编译并上传")
+        title = QLabel("第 7 步：编译并上传")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel("上传前请保持 ESP32-S3 通过 USB 连接。首次编译需要几分钟，请稍候。")
@@ -116,7 +116,7 @@ class UploadPage(QWidget):
             return
         bg_h = Path(self.state.source_dir, "esp32", "background.h")
         if not bg_h.is_file():
-            self._set_status("缺少 background.h，请先在第 2 步生成背景图", "#FFB454")
+            self._set_status("缺少 background.h，请先在第 3 步生成背景图", "#FFB454")
             self._log("错误：%s 不存在" % bg_h)
             self.finished_upload.emit(False)
             return

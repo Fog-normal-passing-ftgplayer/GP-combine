@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Daten-Backup und Wiederherstellung',
 	'sub-header-text':
-		'Backups die von verschiedenen GP2040-CE-Versionen erstellt wurden, können verwendet werden.',
+		'Backups die von verschiedenen GP-Combine-Versionen erstellt wurden, können verwendet werden.',
 	'saved-success-message': 'Gespeichert als: {{name}}',
 	'save-header-text': 'Backup in Datei',
 	'save-export-option-label': 'Exportiere {{api}} Optionen',

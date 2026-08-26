@@ -1,5 +1,5 @@
 export default {
-	'brand-text': 'GP2040-CE',
+	'brand-text': 'GP-Combine',
 	'button-clear-all-label': 'Tümünü Temizle',
 	'button-delete-color-label': 'Rengi Sil',
 	'button-dismiss-label': 'İptal',

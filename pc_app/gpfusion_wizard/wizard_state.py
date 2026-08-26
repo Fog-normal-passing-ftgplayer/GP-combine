@@ -22,7 +22,6 @@ class WizardState:
     background_mode: str = "cover"
     default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
     # Pico 配置（正式版）
-    hotkeys: list = field(default_factory=list)   # [{action, button}]
     led_pin: int = 28
     leds_per_button: int = 1
     led_order: dict = field(default_factory=dict) # {button: index}
@@ -55,7 +54,6 @@ class WizardState:
             s.default_layout = int(d.get("default_layout", 1))
         except Exception:
             s.default_layout = 1
-        s.hotkeys = list(d.get("hotkeys", [])) or []
         try:
             s.led_pin = int(d.get("led_pin", 28))
             s.leds_per_button = int(d.get("leds_per_button", 1))

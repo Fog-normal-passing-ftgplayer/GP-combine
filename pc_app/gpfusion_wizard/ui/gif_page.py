@@ -36,7 +36,7 @@ class GifPage(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
         left = QVBoxLayout()
-        title = QLabel("步骤：GIF 动画")
+        title = QLabel("第 6 步：GIF 动画")
         title.setObjectName("StepTitle")
         left.addWidget(title)
         hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率（240×135）并做行程压缩，"

@@ -30,9 +30,11 @@ from .lite_webconfig_page import LiteWebConfigPage
 from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .upload_page import UploadPage
+from .webconfig_page import WebConfigPage
 
 FULL_STEPS = [
     "连接与准备",
+    "网页配置",
     "背景图",
     "按键布局",
     "Pico 配置",
@@ -107,6 +109,14 @@ class MainWindow(QWidget):
         # 右侧内容区
         self.stack = QStackedWidget()
         self.prep_page = PrepPage(self.state)
+        self.webconfig_page = WebConfigPage(
+            title="正式版 · 第 2 步：网页配置",
+            hint=(
+                "正式版 Pico 固件插电脑后，在游戏手柄状态下同时按住 "
+                "S2 + B3 + B4（Start + X + Y）约 3 秒，会重启进入网页配置模式，"
+                "USB 虚拟出 192.168.7.1 网卡。这里直接显示它的网页配置界面。"
+            ),
+        )
         self.bg_page = BackgroundPage(self.state)
         self.layout_page = LayoutPage(self.state)
         self.pico_page = PicoConfigPage(self.state)
@@ -117,6 +127,7 @@ class MainWindow(QWidget):
         self.lite_layout_page = LayoutPage(self.state, lite=True)
         self.lite_uf2_page = LiteUf2Page(self.state)
         self.stack.addWidget(self.prep_page)
+        self.stack.addWidget(self.webconfig_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
         self.stack.addWidget(self.pico_page)
@@ -172,7 +183,7 @@ class MainWindow(QWidget):
     # ---------- 导航 ----------
 
     def _mode_offset(self) -> int:
-        return 0 if self._mode == "full" else 6
+        return 0 if self._mode == "full" else 7
 
     def _mode_page_count(self) -> int:
         return len(FULL_STEPS) if self._mode == "full" else len(LITE_STEPS)
@@ -197,7 +208,7 @@ class MainWindow(QWidget):
             return
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
-        if self._mode == "full" and row == 5:
+        if self._mode == "full" and row == 6:
             self.upload_page.on_shown()
         if self._mode == "lite" and row == 3:
             self.lite_uf2_page.on_shown()
@@ -233,7 +244,7 @@ class MainWindow(QWidget):
             return bool(self.state.lite_source_dir)
         if i == 0:
             return self.prep_page.is_ready()
-        if i in (1, 2, 3, 4):
+        if i in (1, 2, 3, 4, 5):
             return bool(self.state.source_dir)
         return False
 
@@ -245,8 +256,10 @@ class MainWindow(QWidget):
         if idx == 0:
             return self.prep_page.can_proceed()
         if idx == 1:
+            return bool(self.state.source_dir)
+        if idx == 2:
             return bool(self.state.background_src) and bool(self.state.source_dir)
-        if idx in (2, 3, 4):
+        if idx in (3, 4, 5):
             return bool(self.state.source_dir)
         return True
 
@@ -292,6 +305,7 @@ class MainWindow(QWidget):
             self.state.save()
             for page in (
                 self.prep_page,
+                self.webconfig_page,
                 self.bg_page,
                 self.layout_page,
                 self.pico_page,

@@ -1,4 +1,7 @@
-"""步骤：正式版 Pico 配置（热键单键引脚映射 + WS2812B 灯键顺序/每键灯数）。"""
+"""步骤：正式版 Pico 配置（WS2812B 灯键顺序/每键灯数）。
+
+热键配置已移至网页配置步骤（192.168.7.1），不再由本页生成。
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,9 +9,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
-    QFileDialog,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_config import local_pico_user_header
-from ..pico_config import BUTTONS, DEFAULT_LED_ORDER, HOTKEY_ACTIONS, write_pico_user_header
+from ..pico_config import DEFAULT_LED_ORDER, write_pico_user_header
 from ..wizard_state import WizardState
 
 
@@ -32,19 +32,19 @@ class PicoConfigPage(QWidget):
     def __init__(self, state: WizardState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.state = state
-        self._hotkey_combos: list[tuple[QComboBox, QComboBox]] = []
         self._build_ui()
         self._sync_from_state()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
-        title = QLabel("步骤：Pico 配置（正式版）")
+        title = QLabel("第 5 步：Pico 配置（正式版）")
         title.setObjectName("StepTitle")
         root.addWidget(title)
-        hint = QLabel("配置正式版 Pico 的热键单键引脚映射与 WS2812B 灯带。"
+        hint = QLabel("配置正式版 Pico 的 WS2812B 灯带。"
                       "灯带按「排序模式」排列：列表里从上到下就是 LED 索引 0、1、2…，"
-                      "可拖拽或点上下按钮调整，改动实时写入 pico_user.h。")
+                      "可拖拽或点上下按钮调整，改动实时写入 pico_user.h。"
+                      "热键与按键映射请在「网页配置」步骤连接 192.168.7.1 设置。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -56,38 +56,6 @@ class PicoConfigPage(QWidget):
         scroll_body = QWidget()
         scroll_l = QVBoxLayout(scroll_body)
         scroll_l.setContentsMargins(0, 0, 8, 0)
-
-        # 热键
-        hot = QGroupBox("热键（单键触发）")
-        hot_l = QVBoxLayout(hot)
-        grid = QGridLayout()
-        grid.addWidget(QLabel("槽位"), 0, 0)
-        grid.addWidget(QLabel("动作"), 0, 1)
-        grid.addWidget(QLabel("触发按键"), 0, 2)
-        grid.addWidget(QLabel("槽位"), 0, 3)
-        grid.addWidget(QLabel("动作"), 0, 4)
-        grid.addWidget(QLabel("触发按键"), 0, 5)
-        for i in range(16):
-            col = 0 if i < 8 else 3
-            row = (i % 8) + 1
-            slot = QLabel("热键 %02d" % (i + 1))
-            grid.addWidget(slot, row, col)
-            act = QComboBox()
-            for name, val in HOTKEY_ACTIONS:
-                act.addItem(name, val)
-            act.addItem("（禁用）", 0)
-            act.setCurrentIndex(act.count() - 1)
-            btn = QComboBox()
-            for label, _m, _p in BUTTONS:
-                btn.addItem(label, label)
-            btn.setCurrentIndex(btn.findData("S2"))
-            act.currentIndexChanged.connect(self._on_hotkey_changed)
-            btn.currentIndexChanged.connect(self._on_hotkey_changed)
-            grid.addWidget(act, row, col + 1)
-            grid.addWidget(btn, row, col + 2)
-            self._hotkey_combos.append((act, btn))
-        hot_l.addLayout(grid)
-        scroll_l.addWidget(hot)
 
         # LED
         led = QGroupBox("WS2812B 灯带")
@@ -145,17 +113,6 @@ class PicoConfigPage(QWidget):
         self.leds_per.blockSignals(True)
         self.leds_per.setValue(self.state.leds_per_button)
         self.leds_per.blockSignals(False)
-        for i, (act, btn) in enumerate(self._hotkey_combos):
-            entry = self.state.hotkeys[i] if i < len(self.state.hotkeys) else {}
-            act.blockSignals(True)
-            idx = act.findData(int(entry.get("action", 0)))
-            act.setCurrentIndex(idx if idx >= 0 else act.count() - 1)
-            act.blockSignals(False)
-            btn.blockSignals(True)
-            b = str(entry.get("button", "S2"))
-            bi = btn.findData(b)
-            btn.setCurrentIndex(bi if bi >= 0 else 0)
-            btn.blockSignals(False)
         self._rebuild_led_list()
 
     def reload_state(self) -> None:
@@ -197,20 +154,11 @@ class PicoConfigPage(QWidget):
         return order
 
     def _collect(self) -> None:
-        self.state.hotkeys = []
-        for act, btn in self._hotkey_combos:
-            self.state.hotkeys.append({
-                "action": int(act.currentData()),
-                "button": str(btn.currentData()),
-            })
         self.state.led_pin = self.led_pin.value()
         self.state.leds_per_button = self.leds_per.value()
         self.state.led_order = self._led_order_from_list()
         self.state.save()
         self._write()
-
-    def _on_hotkey_changed(self) -> None:
-        self._collect()
 
     def _on_led_changed(self) -> None:
         self._collect()
@@ -234,20 +182,13 @@ class PicoConfigPage(QWidget):
             out = local_pico_user_header(Path(self.state.source_dir))
             write_pico_user_header(
                 out,
-                hotkeys=self.state.hotkeys,
                 led_pin=self.state.led_pin,
                 leds_per_button=self.state.leds_per_button,
                 led_order=self.state.led_order,
             )
             msg = "✔ 已写入 %s" % out
-            used = [h["button"] for h in self.state.hotkeys
-                    if int(h.get("action", 0)) != 0]
-            if used:
-                msg += "\n⚠ 单键热键会占用按键：%s 按下时不再作为普通手柄按键输出" % "、".join(sorted(set(used)))
             self.status_label.setText(msg)
-            self.status_label.setStyleSheet(
-                "color: #64E0A0;" if not used else "color: #FFB454;"
-            )
+            self.status_label.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
         except Exception as exc:  # noqa: BLE001
             self.status_label.setText("写入失败：%s" % exc)

@@ -60,7 +60,7 @@ export default {
 	'debounce-delay-label': 'Délai d\'antirebond en millisecondes',
 	'mini-menu-gamepad-input': 'Utiliser la manette de jeu pour afficher le mini-menu',
 	'ps4-mode-explanation-text':
-		'Le mode PS4 permet à GP2040-CE de fonctionner comme un contrôleur PS4 authentifié.',
+		'Le mode PS4 permet à GP-Combine de fonctionner comme un contrôleur PS4 authentifié.',
 	'ps4-mode-warning-text':
 		'<span>⏳ ATTENTION ⏳:</span> La PS4 déconnectera le contrôleur après 8 minutes sans authentification.',
 	'ps4-usb-host-mode-text':
@@ -73,7 +73,7 @@ export default {
 		emulation: 'Remote/Emulation',
 	},
 	'ps5-mode-explanation-text':
-		'Le mode PS5 permet à GP2040-CE de fonctionner comme un stick Arcade compatible PS5 authentifié.',
+		'Le mode PS5 permet à GP-Combine de fonctionner comme un stick Arcade compatible PS5 authentifié.',
 	'ps5-mode-warning-text':
 		'<span>⏳ ATTENTION ⏳:</span> La PS5 déconnectera le contrôleur après 8 minutes sans authentification.',
 	'ps5-usb-host-mode-text':
@@ -132,7 +132,7 @@ export default {
 		'load-profile-4': 'Charger le profil #4',
 		'load-profile-5': 'Charger le profil #5',
 		'load-profile-6': 'Charger le profile #6',
-		'reboot-default': 'Redémarrer GP2040-CE',
+		'reboot-default': 'Redémarrer GP-Combine',
 		'save-config': 'Sauvegarder la configuration',
 		'next-profile': 'Profil suivant',
 		'previous-profile': 'Profil précédent',

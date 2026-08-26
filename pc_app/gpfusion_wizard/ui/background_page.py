@@ -40,7 +40,7 @@ class BackgroundPage(QWidget):
 
         # 左列：控制
         left = QVBoxLayout()
-        title = QLabel("第 2 步：背景图")
+        title = QLabel("第 3 步：背景图")
         title.setObjectName("StepTitle")
         left.addWidget(title)
         hint = QLabel("选择一张图片，会自动转换成屏幕分辨率（240×135），"

@@ -1,7 +1,7 @@
 export default {
 	'header-text': '애드-온 구성',
 	'sub-header-text':
-		'아래 양식을 통해 GP2040-CE의 애드-온 옵션을 설정할 수 있습니다.',
+		'아래 양식을 통해 GP-Combine의 애드-온 옵션을 설정할 수 있습니다.',
 	'bootsel-header-text': 'BOOTSEL 버튼 설정',
 	'bootsel-sub-header-text':
 		'참고: 버튼을 설정하면 OLED가 응답하지 않을 수 있습니다. 복구하려면 설정을 해제하십시오.',
@@ -110,7 +110,7 @@ export default {
 	'player-number-header-text': '플레이어 번호 (X-INPUT 전용)',
 	'player-number-sub-header': '경고',
 	'player-number-sub-header-text':
-		'플레이어 번호가 활성화된 여러개의 GP2040-CE 장치를 연결하는 경우에만 이 옵션을 활성화하십시오.',
+		'플레이어 번호가 활성화된 여러개의 GP-Combine 장치를 연결하는 경우에만 이 옵션을 활성화하십시오.',
 	'player-number-label': '플레이어 번호',
 	'socd-cleaning-mode-selection-slider-header-text':
 		'SOCD 모드 선택 슬라이더',
@@ -119,7 +119,7 @@ export default {
 	'socd-cleaning-mode-selection-slider-mode-default-label':
 		'SOCD 슬라이더 모드 기본값',
 	'ps4-mode-sub-header': '주의!',
-	'ps4-mode-sub-header-text':'어떠한 경우에도 GP2040-CE에서는 다음의 파일을 제공하지 않습니다!!!',
+	'ps4-mode-sub-header-text':'어떠한 경우에도 GP-Combine에서는 다음의 파일을 제공하지 않습니다!!!',
 	'ps4-mode-text':
 		'3개의 필수 파일을 업로드하고 "확인 및 저장" 버튼을 클릭하여 PS4 모드를 사용하십시오.',
 	'ps4-mode-private-key-label': 'Private Key (PEM)',

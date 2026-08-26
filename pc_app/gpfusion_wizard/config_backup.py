@@ -75,14 +75,13 @@ def import_config(
         try:
             write_pico_user_header(
                 local_pico_user_header(src),
-                hotkeys=new_state.hotkeys,
                 led_pin=new_state.led_pin,
                 leds_per_button=new_state.leds_per_button,
                 led_order=new_state.led_order,
             )
             write_defaults_header(new_state.default_layout, local_defaults_header(src))
             write_layout_header(new_state.layout, local_layout_header(src))
-            notes.append("热键 / 灯序 / 布局 / 默认布局已写回源码目录")
+            notes.append("灯序 / 布局 / 默认布局已写回源码目录")
         except Exception as exc:  # noqa: BLE001
             notes.append("写回源码目录失败：%s" % exc)
 

@@ -59,7 +59,7 @@ class LayoutPage(QWidget):
 
         # 左列：画布
         left = QVBoxLayout()
-        title = QLabel("第 3 步：按键布局（自定义）")
+        title = QLabel("第 4 步：按键布局（自定义）")
         title.setObjectName("StepTitle")
         left.addWidget(title)
         hint = QLabel("在这里设计的布局对应机内第 4 个「自定义」布局选项。"

@@ -60,7 +60,7 @@ export default {
 	'debounce-delay-label': '디바운스 지연(ms)',
 	'mini-menu-gamepad-input': '미니 메뉴에 게임패드 입력 사용',
 	'ps4-mode-explanation-text':
-		'PS4 모드는 GP2040-CE를 인증된 PS4 컨트롤러로 실행합니다.',
+		'PS4 모드는 GP-Combine를 인증된 PS4 컨트롤러로 실행합니다.',
 	'ps4-mode-warning-text':
 		'<span>⏳ 경고 ⏳:</span> 인증없이는 8분 후 PS4 연결이 해제됩니다.',
 	'ps4-usb-host-mode-text':
@@ -73,7 +73,7 @@ export default {
 		emulation: '리모트/에뮬레이션',
 	},
 	'ps5-mode-explanation-text':
-		'PS5 모드는 GP2040-CE를 인증된 PS5 호환 아케이드 스틱으로 실행합니다.',
+		'PS5 모드는 GP-Combine를 인증된 PS5 호환 아케이드 스틱으로 실행합니다.',
 	'ps5-mode-warning-text':
 		'<span>⏳ 경고 ⏳:</span> 인증없이는 8분 후 PS5 연결이 해제됩니다.',
 	'ps5-usb-host-mode-text':
@@ -132,7 +132,7 @@ export default {
 		'load-profile-4': '프로필 불러오기 #4',
 		'load-profile-5': '프로필 불러오기 #5',
 		'load-profile-6': '프로필 불러오기 #6',
-		'reboot-default': 'GP2040-CE 재시작',
+		'reboot-default': 'GP-Combine 재시작',
 		'save-config': '설정 저장',
 		'next-profile': '다음 프로필',
 		'previous-profile': '이전 프로필',

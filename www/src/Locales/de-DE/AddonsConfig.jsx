@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Add-On Konfiguration',
 	'sub-header-text':
-		'Verwenden Sie das unten stehende Formular, um die Add-On-Optionen in GP2040-CE neu zu konfigurieren.',
+		'Verwenden Sie das unten stehende Formular, um die Add-On-Optionen in GP-Combine neu zu konfigurieren.',
 	'bootsel-header-text': 'BOOTSEL Taste Konfiguration',
 	'bootsel-sub-header-text':
 		'Hinweis: OLED könnte nicht reagieren, falls die Taste eingestellt ist. Setzen Sie sie zurück, um die Funktion wiederherzustellen.',
@@ -106,7 +106,7 @@ export default {
 		'SOCD Schieberegler Modus Standard',
 	'ps4-mode-sub-header': 'HAFTUNGSAUSSCHLUSS!',
 	'ps4-mode-sub-header-text':
-		'GP2040-CE WIRD NIEMALS DIESE DATEIEN ZUR VERFÜGUNG STELLEN!!!',
+		'GP-Combine WIRD NIEMALS DIESE DATEIEN ZUR VERFÜGUNG STELLEN!!!',
 	'ps4-mode-text':
 		'Bitte laden Sie die 3 benötigten Dateien hoch und klicken Sie die "Verifizieren & Speichern" Schaltfläche, um den PS4 Modus zu benutzen.',
 	'ps4-mode-private-key-label': 'Privater Schlüssel (PEM)',

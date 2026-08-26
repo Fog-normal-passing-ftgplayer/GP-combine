@@ -1,5 +1,5 @@
 export default {
-	'brand-text': 'GP2040-CE',
+	'brand-text': 'GP-Combine',
 	'button-clear-all-label': 'Tout effacer',
 	'button-delete-color-label': 'Supprimer la couleur',
 	'button-dismiss-label': 'Ignorer',

@@ -14,7 +14,6 @@ tools/*/build/
 
 .*.sw*
 compile_commands.json
-lib/httpd/fsdata.c
 modules/Custom.cmake
 .idea
 cmake-*

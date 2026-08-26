@@ -1,7 +1,7 @@
 export default {
 	'header-text': 'Add-Ons 設定',
 	'sub-header-text':
-		'以下のフォームでGP2040-CEのAdd-onに関する設定を変更できます。',
+		'以下のフォームでGP-CombineのAdd-onに関する設定を変更できます。',
 	'bootsel-header-text': 'BOOTSEL ボタン設定',
 	'bootsel-sub-header-text':
 		'注：ボタンが割り当てられている場合OLEDの反応が悪くなる可能性があります。元に戻す場合は解除してください。',
@@ -108,7 +108,7 @@ export default {
 	'player-number-header-text': 'プレイヤー番号 (X-INPUTのみ)',
 	'player-number-sub-header': '警告',
 	'player-number-sub-header-text':
-		'このオプションは同時にプレイヤー番号を有効化した複数のGP2040-CEデバイスを接続する場合のみ利用してください。',
+		'このオプションは同時にプレイヤー番号を有効化した複数のGP-Combineデバイスを接続する場合のみ利用してください。',
 	'player-number-label': 'プレイヤー番号',
 	'socd-cleaning-mode-selection-slider-header-text':
 		'SOCD クリーナモード選択スライダー',
@@ -118,7 +118,7 @@ export default {
 		'SOCDクリーナ標準モード',
 	'ps4-mode-sub-header': '免責事項',
 	'ps4-mode-sub-header-text':
-		'いかなる場合においてもGP2040-CEから以下のファイルは提供いたしません！！',
+		'いかなる場合においてもGP-Combineから以下のファイルは提供いたしません！！',
 	'ps4-mode-text':
 		'PS4モードを利用するには以下3種類のファイルをアップロードし、「検証して保存」をクリックしてください。',
 	'ps4-mode-private-key-label': '秘密鍵 (PEM)',

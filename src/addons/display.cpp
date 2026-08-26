@@ -268,12 +268,24 @@ void DisplayAddon::process() {
 
     if (!configMode && screenReturn < 0) {
         Mask_t values = Storage::getInstance().GetGamepad()->debouncedGpio;
-        if (prevValues != values) {
-            if ((values & mapMenuToggle->pinMask) || (values & mapMenuSelect->pinMask)) {
-                if (currDisplayMode != DisplayMode::MAIN_MENU) {
-                    screenReturn = DisplayMode::MAIN_MENU;
-                }
+        uint32_t nowMs = getMillis();
+
+        // 菜单切换键（S2）：长按 3000ms 才进入菜单
+        bool togglePressed = (values & mapMenuToggle->pinMask) != 0;
+        if (togglePressed) {
+            if (!menuToggleHeld) {
+                menuToggleHeld = true;
+                menuToggleHoldStart = nowMs;
+            } else if (currDisplayMode != DisplayMode::MAIN_MENU &&
+                       (nowMs - menuToggleHoldStart) >= 3000) {
+                screenReturn = DisplayMode::MAIN_MENU;
             }
+        } else if (menuToggleHeld) {
+            menuToggleHeld = false;
+            menuToggleHoldStart = 0;
+        }
+
+        if (prevValues != values) {
             prevValues = values;
         }
     }

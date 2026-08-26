@@ -242,6 +242,10 @@ static int16_t optSnap[MAX_SUB_OPTS];
 unsigned long lastConfigSent = 0;   // suppress stale STATUS sync right after push
 unsigned long savedFlashUntil = 0;   // "已保存" toast
 bool configAcked = false;            // Pico confirmed the config apply
+// ---- ESP32 侧设置持久化到 Pico flash（Pico flash 断电保持，与 web config 并行互不冲突） ----
+bool espCfgLoaded = false;           // 已从 Pico 读回设置
+unsigned long espLoadReqLast = 0;    // 上次发送读取请求的时间
+#define ESP_CFG_FORMAT 1              // Pico flash 镜像格式版本
 float layoutScale = 1.0f;            // 0.78 when input history strip is shown
 
 // ---- input history (recent button presses on the layout view) ----
@@ -1335,8 +1339,13 @@ void saveConfigFile() {
   f.printf("hflip=%d\n", bgOpts[2].value);
   f.printf("vflip=%d\n", bgOpts[3].value);
   f.printf("inv=%d\n", bgOpts[4].value);
+  f.printf("saver=%d\n", sleepOpts[0].value);
+  f.printf("saver_ms=%d\n", sleepOpts[1].value);
+  f.printf("screenoff=%d\n", sleepOpts[2].value);
+  f.printf("wl=%d\n", wlOpts[0].value);
   f.flush();
   f.close();
+  sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
 }
 
 void loadConfigFile() {
@@ -1357,11 +1366,86 @@ void loadConfigFile() {
     else if (k == "hflip") bgOpts[2].value = constrain(v, 0, 1);
     else if (k == "vflip") bgOpts[3].value = constrain(v, 0, 1);
     else if (k == "inv")  bgOpts[4].value = constrain(v, 0, 1);
+    else if (k == "saver") sleepOpts[0].value = constrain(v, 0, 6);
+    else if (k == "saver_ms") sleepOpts[1].value = constrain(v, 0, 600);
+    else if (k == "screenoff") sleepOpts[2].value = constrain(v, 0, 1);
+    else if (k == "wl")   wlOpts[0].value = constrain(v, 0, 1);
   }
   f.close();
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
+}
+
+// ---- 镜像到 Pico flash：16 字节载荷（格式版本 + 全部 ESP32 侧菜单设置） ----
+void sendEspSave() {
+  uint8_t f[22];
+  f[0] = FRAME_MAGIC;
+  f[1] = FRAME_VERSION;
+  f[2] = FRAME_TYPE_ESP_SAVE;
+  f[3] = 16;
+  f[4] = ESP_CFG_FORMAT;
+  f[5] = histOpts[0].value;   // 输入历史
+  f[6] = histOpts[1].value;   // 按键布局
+  f[7] = bgOpts[0].value;     // 背景透明度
+  f[8] = bgOpts[1].value;     // 背光亮度
+  f[9] = bgOpts[2].value;     // 水平翻转
+  f[10] = bgOpts[3].value;    // 垂直翻转
+  f[11] = bgOpts[4].value;    // 反色
+  f[12] = sleepOpts[0].value; // 屏保模式
+  f[13] = sleepOpts[1].value & 0xFF;
+  f[14] = (sleepOpts[1].value >> 8) & 0xFF; // 屏保时间
+  f[15] = sleepOpts[2].value; // 关屏
+  f[16] = wlOpts[0].value;    // 无线开关
+  f[17] = 0;                  // 保留
+  f[18] = 0;                  // 保留
+  f[19] = 0;                  // 保留
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 19; i++) crc = crc16_update(crc, f[i]);
+  f[20] = (uint8_t)(crc & 0xFF);
+  f[21] = (uint8_t)(crc >> 8);
+  Serial.write(f, sizeof(f));
+}
+
+void sendEspLoadReq() {
+  uint8_t f[6];
+  f[0] = FRAME_MAGIC;
+  f[1] = FRAME_VERSION;
+  f[2] = FRAME_TYPE_ESP_LOAD_REQ;
+  f[3] = 0;
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 3; i++) crc = crc16_update(crc, f[i]);
+  f[4] = (uint8_t)(crc & 0xFF);
+  f[5] = (uint8_t)(crc >> 8);
+  Serial.write(f, sizeof(f));
+}
+
+// 开机回读：Pico flash 的镜像优先于 LittleFS（Pico flash 断电保持可靠）
+// 载荷 = [ok(1), 格式版本(1), 设置(16)]；ok 为 0 表示 Pico 侧无有效数据
+void applyEspCfg(uint8_t *p, uint8_t len) {
+  if (len < 17) return;
+  if (p[0] != 1 || p[1] != ESP_CFG_FORMAT) {
+    // Pico 无有效镜像/旧格式：用当前（LittleFS）设置重建镜像
+    espCfgLoaded = true;
+    sendEspSave();
+    return;
+  }
+  histOpts[0].value = constrain(p[2], 0, 1);
+  histOpts[1].value = constrain(p[3], 0, 3);
+  bgOpts[0].value = constrain(p[4], 0, 4);
+  bgOpts[1].value = constrain(p[5], 0, 100);
+  bgOpts[2].value = constrain(p[6], 0, 1);
+  bgOpts[3].value = constrain(p[7], 0, 1);
+  bgOpts[4].value = constrain(p[8], 0, 1);
+  sleepOpts[0].value = constrain(p[9], 0, 6);
+  sleepOpts[1].value = constrain(p[10] | ((uint16_t)p[11] << 8), 0, 600);
+  sleepOpts[2].value = constrain(p[12], 0, 1);
+  wlOpts[0].value = constrain(p[13], 0, 1);
+  espCfgLoaded = true;
+  applyBgSettings();
+  applyHistSettings();
+  applyWirelessSettings();
+  redrawNeeded = true;
 }
 
 void renderScene(int16_t outX, int16_t inX) {
@@ -1661,6 +1745,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
             else if (subPage == 2) sendLedConfig();                   // 灯光 > 彩灯
             else if (subPage == 3) saveBgSettings();                  // 背景 > NVS
             else if (subPage == 0 && subSection == 1) saveHistSettings(); // 设置 > 显示
+            else if (subPage == 4) saveConfigFile();                  // 休眠 > 屏保设置
             else if (subPage == 5) saveWirelessSettings();            // 无线 > NVS
             savedFlashUntil = millis() + 1200;
             snapshotOpts();
@@ -1935,6 +2020,7 @@ void handleRxByte(uint8_t b) {
           configAcked = true;
           savedFlashUntil = millis() + 1200;
         }
+        else if (rxType == FRAME_TYPE_ESP_LOAD) applyEspCfg(rxPayload, rxLen);
       }
       rxState = 0;
       break;
@@ -1965,6 +2051,11 @@ void setup(){
 void loop(){
   while (Serial.available()) {
     handleRxByte((uint8_t)Serial.read());
+  }
+  // 开机从 Pico 回读 ESP32 侧设置（Pico flash 断电保持；与 web config 并存互不影响）
+  if (!espCfgLoaded && millis() - espLoadReqLast >= 500) {
+    espLoadReqLast = millis();
+    sendEspLoadReq();
   }
   if (animating) updateAnimation();
   if (listAnimating) updateListAnim();

@@ -95,7 +95,7 @@ private:
     uint8_t rxCrcLo;
     bool rxLedState;
     uint32_t lastAckTime;
-    uint8_t espCfg[12] = {0};
+    uint8_t espCfg[16] = {0};
     bool espCfgValid = false;
     volatile bool espCfgWritePending = false;
     static bool inputMuted;

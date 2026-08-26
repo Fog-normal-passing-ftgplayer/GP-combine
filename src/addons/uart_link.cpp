@@ -21,7 +21,7 @@ bool UARTLinkAddon::inputMuted = false;
 struct EspCfgBlock {
     uint32_t magic;
     uint32_t crc;
-    uint8_t data[12];
+    uint8_t data[16];
 };
 
 // CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF)
@@ -84,8 +84,8 @@ void UARTLinkAddon::setup() {
 bool UARTLinkAddon::espCfgRead() {
     const EspCfgBlock *blk = reinterpret_cast<const EspCfgBlock *>(ESP_CFG_XIP_ADDR);
     if (blk->magic != ESP_CFG_MAGIC) return false;
-    if (blk->crc != CRC32::calculate(blk->data, 12)) return false;
-    memcpy(espCfg, blk->data, 12);
+    if (blk->crc != CRC32::calculate(blk->data, 16)) return false;
+    memcpy(espCfg, blk->data, 16);
     return true;
 }
 
@@ -99,8 +99,8 @@ static int64_t espCfgWriteAlarm(alarm_id_t id, void *user_data) {
 void UARTLinkAddon::espCfgCommitNow() {
     EspCfgBlock blk;
     blk.magic = ESP_CFG_MAGIC;
-    blk.crc = CRC32::calculate(espCfg, 12);
-    memcpy(blk.data, espCfg, 12);
+    blk.crc = CRC32::calculate(espCfg, 16);
+    memcpy(blk.data, espCfg, 16);
 
     multicore_lockout_start_blocking();
     flash_range_erase(ESP_CFG_FLASH_OFF, FLASH_SECTOR_SIZE);
@@ -117,23 +117,23 @@ void UARTLinkAddon::espCfgScheduleWrite() {
 }
 
 void UARTLinkAddon::sendEspConfigFrame(bool ok, const uint8_t *data) {
-    uint8_t frame[19];
+    uint8_t frame[23];
     frame[0] = LINK_FRAME_MAGIC;
     frame[1] = LINK_FRAME_VERSION;
     frame[2] = LINK_FRAME_TYPE_ESP_LOAD;
-    frame[3] = 13; // ok(1) + data(12)
+    frame[3] = 17; // ok(1) + data(16)
     frame[4] = ok ? 1 : 0;
-    for (int i = 0; i < 12; i++) frame[5 + i] = data[i];
+    for (int i = 0; i < 16; i++) frame[5 + i] = data[i];
     uint16_t crc = 0xFFFF;
-    for (int i = 1; i <= 16; i++) crc = crc16_update(crc, frame[i]);
-    frame[17] = (uint8_t)(crc & 0xFF);
-    frame[18] = (uint8_t)(crc >> 8);
+    for (int i = 1; i <= 20; i++) crc = crc16_update(crc, frame[i]);
+    frame[21] = (uint8_t)(crc & 0xFF);
+    frame[22] = (uint8_t)(crc >> 8);
     uart_write_blocking(uart0, frame, sizeof(frame));
 }
 
 void UARTLinkAddon::onEspSaveFrame(uint8_t *payload, uint8_t len) {
-    if (len < 12) return;
-    memcpy(espCfg, payload, 12);
+    if (len < 16) return;
+    memcpy(espCfg, payload, 16);
     espCfgValid = true;
     espCfgScheduleWrite();
 }

@@ -234,6 +234,15 @@ void DisplayAddon::setMenuMappings()
             default:    break;
         }
     }
+    // 兜底：没有配置菜单切换键时，用 S2（Start）当菜单开关
+    if (mapMenuToggle->pinMask == 0) {
+        for (Pin_t pin = 0; pin < (Pin_t)NUM_BANK0_GPIOS; pin++) {
+            if (pinMappings[pin].action == GpioAction::BUTTON_PRESS_S2) {
+                mapMenuToggle->pinMask |= 1 << pin;
+                break;
+            }
+        }
+    }
 }
 
 void DisplayAddon::process() {

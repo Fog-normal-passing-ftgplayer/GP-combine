@@ -239,8 +239,15 @@ class PicoConfigPage(QWidget):
                 leds_per_button=self.state.leds_per_button,
                 led_order=self.state.led_order,
             )
-            self.status_label.setText("✔ 已写入 %s" % out)
-            self.status_label.setStyleSheet("color: #64E0A0;")
+            msg = "✔ 已写入 %s" % out
+            used = [h["button"] for h in self.state.hotkeys
+                    if int(h.get("action", 0)) != 0]
+            if used:
+                msg += "\n⚠ 单键热键会占用按键：%s 按下时不再作为普通手柄按键输出" % "、".join(sorted(set(used)))
+            self.status_label.setText(msg)
+            self.status_label.setStyleSheet(
+                "color: #64E0A0;" if not used else "color: #FFB454;"
+            )
             self.changed.emit()
         except Exception as exc:  # noqa: BLE001
             self.status_label.setText("写入失败：%s" % exc)

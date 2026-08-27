@@ -76,13 +76,35 @@
 #define LIST_ANIM_MS   140
 
 #define RGB565(r,g,b)  ((((uint16_t)(r)>>3)<<11)|(((uint16_t)(g)>>2)<<5)|((uint16_t)(b)>>3))
-#define COL_BG         RGB565(21,27,39)
-#define COL_THUMB_ON   RGB565(64,160,255)
-#define COL_THUMB_OFF  RGB565(64,72,86)
-#define COL_TEXT       RGB565(215,222,235)
-#define COL_RING       RGB565(150,160,175)
-#define COL_HI         0xFFFF
-#define COL_TEXT_ON    0x0000
+
+// ---- UI 主题色（设置 > 显示 > 主题，运行时变量） ----
+uint16_t colBg      = RGB565(21, 27, 39);
+uint16_t colText    = RGB565(215, 222, 235);
+uint16_t colRing    = RGB565(150, 160, 175);
+uint16_t colHi      = 0xFFFF;
+uint16_t colTextOn  = 0x0000;
+uint16_t colThumbOn  = RGB565(64, 160, 255);
+uint16_t colThumbOff = RGB565(64, 72, 86);
+
+struct Theme {
+  uint16_t bg, text, ring, hi, textOn, thumbOn, thumbOff;
+};
+static const Theme THEMES[] = {
+  // 默认（深蓝）
+  { RGB565(21, 27, 39),   RGB565(215, 222, 235), RGB565(150, 160, 175), 0xFFFF,           0x0000, RGB565(64, 160, 255), RGB565(64, 72, 86) },
+  // 品牌橙
+  { RGB565(28, 20, 14),   RGB565(240, 228, 216), RGB565(176, 144, 122), RGB565(255, 122, 0), 0x0000, RGB565(255, 122, 0), RGB565(96, 72, 56) },
+  // 绯红
+  { RGB565(30, 16, 20),   RGB565(240, 217, 220), RGB565(176, 126, 134), RGB565(255, 64, 80), 0x0000, RGB565(255, 64, 80), RGB565(100, 58, 64) },
+  // 翠绿
+  { RGB565(14, 26, 20),   RGB565(216, 232, 220), RGB565(127, 168, 139), RGB565(46, 230, 111), 0x0000, RGB565(46, 230, 111), RGB565(52, 92, 66) },
+  // 紫罗兰
+  { RGB565(22, 16, 30),   RGB565(227, 217, 238), RGB565(154, 135, 176), RGB565(164, 108, 255), 0x0000, RGB565(164, 108, 255), RGB565(84, 62, 104) },
+  // 青蓝
+  { RGB565(12, 24, 32),   RGB565(214, 230, 238), RGB565(127, 160, 176), RGB565(48, 200, 255), 0x0000, RGB565(48, 200, 255), RGB565(44, 78, 94) },
+};
+#define THEME_COUNT ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
+
 #define FONT_SCALE     2
 #define ACC_SETTINGS   RGB565(80,200,255)
 #define ACC_BATTERY    RGB565(80,220,120)
@@ -173,14 +195,16 @@ static MenuOpt sysOpts[] = {
 };
 
 static const char *const LAYOUT_NAMES[] = {"街机", "HITBOX", "WASD", "自定义"};
+static const char *const THEME_NAMES[] = {"默认", "品牌橙", "绯红", "翠绿", "紫罗兰", "青蓝"};
 static MenuOpt histOpts[] = {
   {"输入历史", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
   {"按键布局", OPT_ENUM, DEFAULT_LAYOUT, 0, 3, 1, LAYOUT_NAMES, 4, ""},
+  {"主题", OPT_ENUM, 0, 0, THEME_COUNT - 1, 1, THEME_NAMES, THEME_COUNT, ""},
 };
 
 static MenuSection settingsSections[] = {
   {"手柄", gpOpts, 7},
-  {"显示", histOpts, 2},
+  {"显示", histOpts, 3},
   {"系统", sysOpts, 3},
 };
 static MenuSection sleepSections[] = {
@@ -440,18 +464,18 @@ void iconSettings(int x, int y) { // sliders
   int ys[3] = {y+20, y+43, y+66};
   int kn[3] = {x+32, x+54, x+40};
   for (int i = 0; i < 3; i++) {
-    for (int t = 0; t < 3; t++) drawLine(x+14, ys[i]-1+t, x+72, ys[i]-1+t, COL_RING);
+    for (int t = 0; t < 3; t++) drawLine(x+14, ys[i]-1+t, x+72, ys[i]-1+t, colRing);
     drawDisc(kn[i], ys[i], 7, ACC_SETTINGS);
   }
 }
 
 void iconBattery(int x, int y) { // landscape battery, cap on the right
-  lfbRect(x+70, y+38, 6, 10, COL_RING);            // terminal (right side)
+  lfbRect(x+70, y+38, 6, 10, colRing);            // terminal (right side)
   for (int t = 0; t < 3; t++) {                    // body outline
-    drawLine(x+10+t, y+28, x+70, y+28, COL_RING);
-    drawLine(x+10, y+28, x+10, y+58, COL_RING);
-    drawLine(x+70, y+28, x+70, y+58, COL_RING);
-    drawLine(x+10+t, y+58, x+70, y+58, COL_RING);
+    drawLine(x+10+t, y+28, x+70, y+28, colRing);
+    drawLine(x+10, y+28, x+10, y+58, colRing);
+    drawLine(x+70, y+28, x+70, y+58, colRing);
+    drawLine(x+10+t, y+58, x+70, y+58, colRing);
   }
   lfbRect(x+14, y+32, 34, 22, ACC_BATTERY);        // ~60% charge
 }
@@ -467,16 +491,16 @@ void iconLight(int x, int y) { // lightbulb
   }
   drawDisc(x+43, y+34, 18, ACC_LIGHT);             // bulb
   drawDisc(x+37, y+28, 5, RGB565(255,240,180));    // highlight
-  lfbRect(x+36, y+52, 14, 8, COL_RING);            // base
-  lfbRect(x+41, y+60, 4, 6, COL_RING);
+  lfbRect(x+36, y+52, 14, 8, colRing);            // base
+  lfbRect(x+41, y+60, 4, 6, colRing);
 }
 
 void iconPicture(int x, int y) { // framed landscape
   for (int t = 0; t < 3; t++) {
-    drawLine(x+12+t, y+12, x+74, y+12, COL_RING);
-    drawLine(x+12, y+12, x+12, y+74, COL_RING);
-    drawLine(x+74, y+12, x+74, y+74, COL_RING);
-    drawLine(x+12+t, y+74, x+74, y+74, COL_RING);
+    drawLine(x+12+t, y+12, x+74, y+12, colRing);
+    drawLine(x+12, y+12, x+12, y+74, colRing);
+    drawLine(x+74, y+12, x+74, y+74, colRing);
+    drawLine(x+12+t, y+74, x+74, y+74, colRing);
   }
   drawDisc(x+58, y+28, 6, ACC_LIGHT);              // sun
   fillTriangle(x+16, y+72, x+38, y+40, x+60, y+72, ACC_MOUNTAIN);
@@ -485,7 +509,7 @@ void iconPicture(int x, int y) { // framed landscape
 
 void iconMoon(int x, int y) { // crescent + stars
   drawDisc(x+46, y+40, 20, ACC_MOON);
-  drawDisc(x+56, y+32, 18, COL_BG);                // cut out the crescent
+  drawDisc(x+56, y+32, 18, colBg);                // cut out the crescent
   drawLine(x+26, y+18, x+26, y+26, ACC_MOON);      // stars (plus marks)
   drawLine(x+22, y+22, x+30, y+22, ACC_MOON);
   drawLine(x+66, y+56, x+66, y+64, ACC_MOON);
@@ -518,7 +542,7 @@ void lfbThumbs(int active) {
   int x = (240 - (NUM_PAGES*(THUMB_SIZE+THUMB_GAP) - THUMB_GAP)) / 2;
   for (int i = 0; i < NUM_PAGES; i++) {
     lfbRect(x, THUMB_Y, THUMB_SIZE, THUMB_SIZE,
-            (i == active) ? COL_THUMB_ON : COL_THUMB_OFF);
+            (i == active) ? colThumbOn : colThumbOff);
     x += THUMB_SIZE + THUMB_GAP;
   }
 }
@@ -602,11 +626,11 @@ void drawRing(int cx, int cy, int r, uint16_t color) {
 
 void drawBtn(int cx, int cy, int r, bool pressed, const char *label) {
   if (pressed) {
-    drawDisc(cx, cy, r, COL_HI);
-    drawTextCentered(cx, cy, label, COL_TEXT_ON);
+    drawDisc(cx, cy, r, colHi);
+    drawTextCentered(cx, cy, label, colTextOn);
   } else {
-    drawRing(cx, cy, r, COL_RING);
-    drawTextCentered(cx, cy, label, COL_RING);
+    drawRing(cx, cy, r, colRing);
+    drawTextCentered(cx, cy, label, colRing);
   }
 }
 
@@ -623,16 +647,16 @@ void layoutSquare(int cx, int cy, int size, bool pressed, const char *label) {
   int sx = lx(cx - size / 2), sy = ly(cy - size / 2), ss = lr(size);
   if (ss < 2) return;
   if (pressed) {
-    lfbRect(sx, sy, ss, ss, COL_HI);
-    drawTextCentered(sx + ss / 2, sy + ss / 2, label, COL_TEXT_ON);
+    lfbRect(sx, sy, ss, ss, colHi);
+    drawTextCentered(sx + ss / 2, sy + ss / 2, label, colTextOn);
   } else {
     for (int t = 0; t < 2; t++) {
-      drawLine(sx + t, sy, sx + ss - 1, sy, COL_RING);
-      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, COL_RING);
-      drawLine(sx, sy + t, sx, sy + ss - 1, COL_RING);
-      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, COL_RING);
+      drawLine(sx + t, sy, sx + ss - 1, sy, colRing);
+      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, colRing);
+      drawLine(sx, sy + t, sx, sy + ss - 1, colRing);
+      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, colRing);
     }
-    drawTextCentered(sx + ss / 2, sy + ss / 2, label, COL_RING);
+    drawTextCentered(sx + ss / 2, sy + ss / 2, label, colRing);
   }
 }
 
@@ -728,12 +752,12 @@ void drawSaverSnow() {
 
 static int bbX = 60, bbY = 40, bbVX = 3, bbVY = 2;
 void drawSaverBounce() {
-  lfbFill(COL_BG);
+  lfbFill(colBg);
   bbX += bbVX; bbY += bbVY;
   if (bbX < 10 || bbX > 229) bbVX = -bbVX;
   if (bbY < 10 || bbY > 124) bbVY = -bbVY;
   drawDisc(bbX, bbY, 10, ACC_SETTINGS);
-  drawDisc(bbX - 3, bbY - 3, 2, COL_HI);
+  drawDisc(bbX - 3, bbY - 3, 2, colHi);
 }
 
 #define PIPE_N 6
@@ -752,7 +776,7 @@ void drawSaverPipe() {
                      60 + (int)(saverRand() % 60));
     }
   }
-  lfbFill(COL_BG);
+  lfbFill(colBg);
   for (int i = 0; i < PIPE_N; i++) {
     pY[i] += pS[i];
     if (pY[i] > 135) {
@@ -838,7 +862,7 @@ void drawSaverGif() {
     }
   }
 #else
-  lfbFill(COL_BG);
+  lfbFill(colBg);
 #endif
 }
 
@@ -850,7 +874,7 @@ void renderSaver() {
     case 4: drawSaverToast(); break;
     case 5: drawSaverMatrix(); break;
     case 6: drawSaverGif(); break;
-    default: lfbFill(COL_BG);
+    default: lfbFill(colBg);
   }
 }
 
@@ -943,14 +967,14 @@ void drawStatusBar() {
   char buf[40];
   snprintf(buf, sizeof(buf), "SOCD:%s DP:%s MODE:%s",
            socdName(stSocd), dpadName(stDpadMode), modeName(stInputMode));
-  drawText(4, 3, buf, COL_TEXT);
+  drawText(4, 3, buf, colText);
   // power indicator: USB icon or battery icon + percent
   if (stBattFlags & 0x02) {
     drawUsbIcon(206, 7, ACC_SETTINGS);
   } else {
     int pct = battPercent(stBattMv);
     if (pct >= 0) {
-      drawMiniBattery(198, 2, 18, 10, pct, COL_TEXT);
+      drawMiniBattery(198, 2, 18, 10, pct, colText);
     }
   }
   if (radioUp) drawMiniWireless(232, 11, radioLinked);
@@ -989,7 +1013,7 @@ void drawLayoutEntry(const LayoutBtn &e, uint16_t b, uint8_t d) {
 void drawLever() {
   // big ring + a blue dot that follows the dpad direction
   int cx = lx(USER_LEVER_X), cy = ly(USER_LEVER_Y);
-  drawRing(cx, cy, lr(USER_LEVER_RING), COL_RING);
+  drawRing(cx, cy, lr(USER_LEVER_RING), colRing);
   int dx = 0, dy = 0;
   uint8_t d = lastDpad;
   if (d & 0x01) dy -= lr(8); // UP
@@ -1051,7 +1075,7 @@ void drawInputHistory() {
   for (int i = 0; i < histCount; i++) {
     int idx = (histHead - histCount + i + HIST_MAX) % HIST_MAX; // oldest first
     bool newest = (i == histCount - 1);
-    drawTextBig(x, 124, histLabels[idx], newest ? COL_HI : RGB565(130,140,155), 1);
+    drawTextBig(x, 124, histLabels[idx], newest ? colHi : RGB565(130,140,155), 1);
     x += (int)strlen(histLabels[idx]) * 4 + 6;
     if (x > 216) break;
   }
@@ -1059,15 +1083,15 @@ void drawInputHistory() {
 
 // ---- scene render ----
 void drawPageContent(int x, int p) {
-  drawCJKTextCentered(x + ICON_W / 2, TITLE_Y, PAGE_TITLES[p], COL_TEXT, 1);
+  drawCJKTextCentered(x + ICON_W / 2, TITLE_Y, PAGE_TITLES[p], colText, 1);
   drawMenuIcon(x, ICON_Y, p);
 }
 
 void renderSub() {
-  lfbFill(COL_BG);
+  lfbFill(colBg);
   SubPageDef &def = subDefs[subPage];
   if (subPage == 1) { // 电池: custom status page
-    drawCJKTextCentered(120, 6, "电池", COL_TEXT, 1);
+    drawCJKTextCentered(120, 6, "电池", colText, 1);
     int pct = battPercent(stBattMv);
     char buf[16];
     bool usb = (stBattFlags & 0x02) != 0;
@@ -1078,20 +1102,20 @@ void renderSub() {
     }
     drawTextBig(120 - ((int)strlen(buf) * 12 - 3) / 2, 34, buf, ACC_BATTERY, 3);
     snprintf(buf, sizeof(buf), "电压 %d.%02dV", stBattMv / 1000, (stBattMv % 1000) / 10);
-    drawCJKTextCentered(120, 78, buf, COL_TEXT, 1);
+    drawCJKTextCentered(120, 78, buf, colText, 1);
     drawCJKTextCentered(120, 104, usb ? "USB连接" : "电池供电",
                         RGB565(120,132,150), 1);
     drawCJKTextCentered(120, 122, "B返回", RGB565(120,132,150), 1);
     return;
   }
   if (def.sectionCount == 0) { // placeholder until the page is built
-    drawCJKTextCentered(120, 5, PAGE_TITLES[subPage], COL_TEXT, 1);
+    drawCJKTextCentered(120, 5, PAGE_TITLES[subPage], colText, 1);
     drawMenuIcon((240 - ICON_W) / 2, 30, subPage);
     drawCJKTextCentered(120, 122, "待实现", RGB565(170,180,195), 1);
     return;
   }
   if (subList) { // section list level
-    drawCJKTextCentered(120, 5, PAGE_TITLES[subPage], COL_TEXT, 1);
+    drawCJKTextCentered(120, 5, PAGE_TITLES[subPage], colText, 1);
     int hY = 28 + (int)(selY - scrollOff);
     lfbRect(6, hY - 2, 228, 19, RGB565(42,54,72)); // gliding highlight bar
     int first = (int)(scrollOff / 30.0f);
@@ -1099,17 +1123,17 @@ void renderSub() {
       int y = 28 + (int)(i * 30 - scrollOff);
       if (y < 14 || y > 118) continue;
       if (i == subSection) {
-        drawCJKText(14, y, def.sections[i].title, COL_HI, 1);
+        drawCJKText(14, y, def.sections[i].title, colHi, 1);
         drawCJKText(218, y, ">", ACC_SETTINGS, 1);
       } else {
-        drawCJKText(14, y, def.sections[i].title, COL_TEXT, 1);
+        drawCJKText(14, y, def.sections[i].title, colText, 1);
       }
     }
     drawScrollbar(def.sectionCount, scrollOff, 3, 30, 232, 28, 118);
     drawCJKTextCentered(120, 122, "A进入 B返回 上下选择", RGB565(120,132,150), 1);
   } else { // option list level
     MenuSection &sec = def.sections[subSection];
-    drawCJKTextCentered(120, 5, sec.title, COL_TEXT, 1);
+    drawCJKTextCentered(120, 5, sec.title, colText, 1);
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
       if (radioUp && radioLinked) {
@@ -1128,8 +1152,8 @@ void renderSub() {
       int y = 28 + (int)(i * 24 - scrollOff);
       if (y < 14 || y > 118) continue;
       if (o->type == OPT_SLIDER) {
-        uint16_t c = (i == subSel) ? ACC_SETTINGS : COL_RING;
-        drawCJKText(14, y, o->label, (i == subSel) ? COL_HI : COL_TEXT, 1);
+        uint16_t c = (i == subSel) ? ACC_SETTINGS : colRing;
+        drawCJKText(14, y, o->label, (i == subSel) ? colHi : colText, 1);
         drawSlider(86, y, 90, o->value, o->max, c);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", o->value);
@@ -1138,13 +1162,13 @@ void renderSub() {
         bool editable = (o->type != OPT_ACTION);
         if (i == subSel) {
           if (editable) drawCJKText(8, y, "<", ACC_SETTINGS, 1);
-          drawCJKText(18, y, o->label, COL_HI, 1);
+          drawCJKText(18, y, o->label, colHi, 1);
           drawOptValue(o, editable ? 214 : 226, y, ACC_SETTINGS);
           if (editable) drawCJKText(224, y, ">", ACC_SETTINGS, 1);
         } else {
           if (editable) drawCJKText(8, y, "<", RGB565(95,106,120), 1);
-          drawCJKText(18, y, o->label, COL_TEXT, 1);
-          drawOptValue(o, editable ? 214 : 226, y, COL_TEXT);
+          drawCJKText(18, y, o->label, colText, 1);
+          drawOptValue(o, editable ? 214 : 226, y, colText);
           if (editable) drawCJKText(224, y, ">", RGB565(95,106,120), 1);
         }
       }
@@ -1156,21 +1180,21 @@ void renderSub() {
   if (confirmOpen) {
     lfbRect(28, 40, 184, 58, RGB565(30,38,52));   // dialog box
     for (int t = 0; t < 2; t++) {
-      drawLine(28+t, 40, 212-t, 40, COL_RING);
-      drawLine(28, 40+t, 28, 98-t, COL_RING);
-      drawLine(212, 40+t, 212, 98-t, COL_RING);
-      drawLine(28+t, 98, 212-t, 98, COL_RING);
+      drawLine(28+t, 40, 212-t, 40, colRing);
+      drawLine(28, 40+t, 28, 98-t, colRing);
+      drawLine(212, 40+t, 212, 98-t, colRing);
+      drawLine(28+t, 98, 212-t, 98, colRing);
     }
-    drawCJKTextCentered(120, 50, "是否立即保存", COL_TEXT, 1);
+    drawCJKTextCentered(120, 50, "是否立即保存", colText, 1);
     int y = 74;
     if (confirmChoice == 0) {
       lfbRect(72, y - 2, 42, 19, RGB565(42,54,72));
-      drawCJKText(80, y, "是", COL_HI, 1);
-      drawCJKText(132, y, "否", COL_TEXT, 1);
+      drawCJKText(80, y, "是", colHi, 1);
+      drawCJKText(132, y, "否", colText, 1);
     } else {
-      drawCJKText(80, y, "是", COL_TEXT, 1);
+      drawCJKText(80, y, "是", colText, 1);
       lfbRect(120, y - 2, 42, 19, RGB565(42,54,72));
-      drawCJKText(128, y, "否", COL_HI, 1);
+      drawCJKText(128, y, "否", colHi, 1);
     }
     drawCJKTextCentered(120, 100, "左右选择 A确认", RGB565(120,132,150), 1);
   }
@@ -1319,8 +1343,21 @@ void saveHistSettings() {
 }
 
 // ---- input history toggle (settings > 显示) ----
+void applyTheme() {
+  int idx = constrain(histOpts[2].value, 0, THEME_COUNT - 1);
+  colBg      = THEMES[idx].bg;
+  colText    = THEMES[idx].text;
+  colRing    = THEMES[idx].ring;
+  colHi      = THEMES[idx].hi;
+  colTextOn  = THEMES[idx].textOn;
+  colThumbOn = THEMES[idx].thumbOn;
+  colThumbOff = THEMES[idx].thumbOff;
+  redrawNeeded = true;
+}
+
 void applyHistSettings() {
   layoutScale = histOpts[0].value ? 0.78f : 1.0f; // shrink layout for the strip
+  applyTheme();
   redrawNeeded = true;
 }
 
@@ -1354,6 +1391,7 @@ void saveConfigFile() {
   f.printf("saver_ms=%d\n", sleepOpts[1].value);
   f.printf("screenoff=%d\n", sleepOpts[2].value);
   f.printf("wl=%d\n", wlOpts[0].value);
+  f.printf("theme=%d\n", histOpts[2].value);
   f.flush();
   f.close();
   sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
@@ -1381,6 +1419,7 @@ void loadConfigFile() {
     else if (k == "saver_ms") sleepOpts[1].value = constrain(v, 0, 600);
     else if (k == "screenoff") sleepOpts[2].value = constrain(v, 0, 1);
     else if (k == "wl")   wlOpts[0].value = constrain(v, 0, 1);
+    else if (k == "theme") histOpts[2].value = constrain(v, 0, THEME_COUNT - 1);
   }
   f.close();
   applyBgSettings();
@@ -1408,7 +1447,7 @@ void sendEspSave() {
   f[14] = (sleepOpts[1].value >> 8) & 0xFF; // 屏保时间
   f[15] = sleepOpts[2].value; // 关屏
   f[16] = wlOpts[0].value;    // 无线开关
-  f[17] = 0;                  // 保留
+  f[17] = histOpts[2].value;  // 主题
   f[18] = 0;                  // 保留
   f[19] = 0;                  // 保留
   uint16_t crc = 0xFFFF;
@@ -1452,6 +1491,7 @@ void applyEspCfg(uint8_t *p, uint8_t len) {
   sleepOpts[1].value = constrain(p[10] | ((uint16_t)p[11] << 8), 0, 600);
   sleepOpts[2].value = constrain(p[12], 0, 1);
   wlOpts[0].value = constrain(p[13], 0, 1);
+  histOpts[2].value = constrain(p[14], 0, THEME_COUNT - 1);
   espCfgLoaded = true;
   applyBgSettings();
   applyHistSettings();
@@ -1474,7 +1514,7 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_EASTER) {
     renderEaster();
   } else {
-    lfbFill(COL_BG);
+    lfbFill(colBg);
     drawPageContent(outX, page);
     drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
     lfbThumbs(page);

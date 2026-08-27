@@ -128,6 +128,17 @@ uint8_t prevStickD = 0;              // 左摇杆菜单方向边沿检测
 unsigned long lastActivity = 0;
 bool redrawNeeded = true;
 
+// ---- boot animation (GP-Combine 故障字效，参考 开机动画.txt 原型) ----
+#define BOOT_ANIM_MS   3200
+#define BOOT_ORANGE    RGB565(255, 122, 0)   // #ff7a00 品牌橙
+#define BOOT_TXT       "GP-COMBINE"
+bool bootAnimActive = true;
+unsigned long bootAnimStart = 0;
+unsigned long bootFrameMs = 0;
+uint32_t bootRandState = 0x9E3779B9u;
+static uint16_t bootBg[135];       // 每行背景渐变（中心亮、上下暗）
+static uint16_t bootBgScan[135];   // 扫描线行（略亮）
+
 // menu page metadata: titles and icon index into ICONS[]
 static const char* const PAGE_TITLES[NUM_PAGES] = {"设置", "电池", "灯光", "背景", "休眠", "无线"};
 
@@ -1494,6 +1505,119 @@ void drawPage() {
   pushFrame();
 }
 
+// ---- 开机动画 ----
+static uint8_t bootRandByte() {
+  bootRandState ^= bootRandState << 13;
+  bootRandState ^= bootRandState >> 17;
+  bootRandState ^= bootRandState << 5;
+  return (uint8_t)(bootRandState >> 8);
+}
+
+static char bootRandChar() {
+  static const char SET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>=-%:";
+  return SET[bootRandByte() % (sizeof(SET) - 1)];
+}
+
+void bootBuildBg() {
+  for (int y = 0; y < 135; y++) {
+    float d = abs(y - 67) / 67.0f;      // 中心亮、上下暗（近似原型径向渐变）
+    int v = 6 + (int)(22 * (1.0f - d) * (1.0f - d));
+    bootBg[y] = RGB565(v, v, v + 1);
+    int s = v + 7; if (s > 38) s = 38;
+    bootBgScan[y] = RGB565(s, s, s + 1);
+  }
+}
+
+// 全屏叠加混合（无 alpha 的 RGB565 上的简易半透明）
+void lfbBlend(uint16_t rgb, uint8_t a) {
+  int ar = (rgb >> 11) & 0x1F, ag = (rgb >> 5) & 0x3F, ab = rgb & 0x1F;
+  for (int i = 0; i < 240 * 135; i++) {
+    uint16_t c = lfb[i];
+    int r = ((c >> 11) & 0x1F) + ((ar - ((c >> 11) & 0x1F)) * a >> 8);
+    int g = ((c >> 5) & 0x3F) + ((ag - ((c >> 5) & 0x3F)) * a >> 8);
+    int b = (c & 0x1F) + ((ab - (c & 0x1F)) * a >> 8);
+    lfb[i] = (uint16_t)((r << 11) | (g << 5) | b);
+  }
+}
+
+// t: 0.0 ~ 1.0 播放进度（单遍，结束后进入主界面）
+void renderBootAnim(float t) {
+  // 背景渐变 + 扫描线
+  for (int y = 0; y < 135; y++) {
+    uint16_t c = bootBg[y];
+    uint16_t *row = &lfb[y * 240];
+    for (int x = 0; x < 240; x++) row[x] = c;
+    if ((y & 3) == 0) {
+      c = bootBgScan[y];
+      for (int x = 0; x < 240; x++) row[x] = c;
+    }
+  }
+
+  // 左侧系统信息：淡入显示 INITIALIZING + 动态省略号
+  if (t >= 0.22f && t < 0.95f) {
+    drawText(10, 8, "GP-CONTROLLER SYSTEM", RGB565(115, 115, 118));
+    int dots = 1 + (int)(t * 10) % 3;
+    char line2[20];
+    strcpy(line2, "INITIALIZING");
+    for (int i = 0; i < dots && i < 3; i++) strcat(line2, ".");
+    drawText(10, 20, line2, RGB565(115, 115, 118));
+  }
+
+  // 底部成长线（文字锁定后出现）
+  if (t >= 0.55f && t < 0.95f) {
+    float lp = (t - 0.55f) / 0.20f; if (lp > 1.0f) lp = 1.0f;
+    int w = (int)(156 * lp);   // 65% 屏宽
+    int lx = (240 - w) / 2;
+    lfbRect(lx, 102, w, 2, BOOT_ORANGE);
+    if (w > 4) {
+      lfbRect(lx + 2, 101, w - 4, 1, RGB565(120, 60, 0));  // 上缘暗光
+      lfbRect(lx + 2, 104, w - 4, 1, RGB565(120, 60, 0));  // 下缘暗光
+    }
+  }
+
+  // 右下角状态
+  if (t >= 0.58f && t < 0.95f) {
+    drawText(240 - 10 - 12 * 8, 121, "SYSTEM READY", BOOT_ORANGE);
+  }
+
+  // 主标题：乱码 -> 逐字锁定 -> 完整 -> 尾部轻故障
+  char s[11];
+  for (int i = 0; i < 10; i++) {
+    if (t < 0.15f) {
+      s[i] = bootRandChar();
+    } else if (t < 0.55f) {
+      int locked = (int)((t - 0.15f) / 0.40f * 11);
+      s[i] = (i < locked) ? BOOT_TXT[i] : bootRandChar();
+    } else if (t < 0.80f) {
+      s[i] = BOOT_TXT[i];
+    } else {
+      float st = (t - 0.80f) / 0.08f; if (st > 1.0f) st = 1.0f;
+      s[i] = (bootRandByte() < (uint8_t)(st * 0.8f * 255)) ? bootRandChar() : BOOT_TXT[i];
+    }
+  }
+  s[10] = 0;
+
+  int tw = 10 * 4 * 5 - 5;              // scale 5 的文本宽
+  int gx = 0;
+  if (t < 0.55f && (bootRandByte() & 3) == 0) {   // 不稳定期随机左右跳
+    gx = (int)(bootRandByte() % 13) - 6;
+  }
+  int tx = (240 - tw) / 2 + gx;
+  int ty = 52;
+  // 错位层（暗灰 / 深橙）制造故障色边
+  drawTextBig(tx - 3, ty + 1, s, RGB565(72, 72, 74), 5);
+  drawTextBig(tx + 3, ty - 1, s, RGB565(150, 70, 0), 5);
+  drawTextBig(tx, ty, s, BOOT_ORANGE, 5);
+
+  // 开场橙色闪烁
+  if (t >= 0.03f && t < 0.10f) lfbBlend(BOOT_ORANGE, 170);
+  // 结尾淡出到黑
+  if (t > 0.88f) {
+    uint8_t a = (uint8_t)((t - 0.88f) / 0.12f * 255.0f);
+    lfbBlend(RGB565(0, 0, 0), a);
+  }
+}
+
 void menuMove(int dir) {
   if (animating) { pendingDir = dir; return; }
   animDir = dir;
@@ -1658,6 +1782,12 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     prevStickD = stickD;
     uint8_t uiD = dpad | stickD;      // 菜单用方向（十字键 + 左摇杆）
     uint8_t uiDEdge = dEdge | stickEdge;
+    if (bootAnimActive) {   // 开机动画期间只更新输入基线，结束后不误触发
+      lastButtons = buttons;
+      lastDpad = dpad;
+      prevStickD = stickD;
+      return;
+    }
     if (saverActive && stateChanged) { // 任意输入唤醒屏保，这一帧不当作菜单输入
       saverWake();
       lastButtons = buttons;
@@ -2035,7 +2165,11 @@ void setup(){
   digitalWrite(RST,LOW);delay(10);digitalWrite(RST,HIGH);delay(120);
   cmd(0x01);delay(150);cmd(0x11);delay(150);
   cmd(0x3A);dat(0x55);cmd(0x36);dat(0x00);cmd(0x21);cmd(0x13);delay(10);cmd(0x29);delay(10);
-  drawPage();
+  bootBuildBg();
+  bootAnimStart = millis();
+  bootFrameMs = bootAnimStart;
+  renderBootAnim(0.0f);
+  pushFrame();
   Serial.begin(UART_BAUD, SERIAL_8N1, ESP_RX, ESP_TX);
   sendMuteFrame(false); // 开机同步：确保 Pico 端不残留静音状态
   pinMode(48,OUTPUT);
@@ -2057,27 +2191,43 @@ void loop(){
     espLoadReqLast = millis();
     sendEspLoadReq();
   }
-  if (animating) updateAnimation();
-  if (listAnimating) updateListAnim();
-  if (savedFlashUntil && millis() >= savedFlashUntil) { // toast expired
-    savedFlashUntil = 0;
-    redrawNeeded = true;
-  }
-  saverTick();
-  if (view == VIEW_EASTER && millis() - easterFrameMs >= 40) { // 彩蛋动画 ~25fps
-    easterFrameMs = millis();
-    redrawNeeded = true;
-  }
-  // refresh status bar / wireless page periodically (no input events needed)
-  static unsigned long lastUiRefresh = 0;
-  if (millis() - lastUiRefresh >= 1000) {
-    lastUiRefresh = millis();
-    redrawNeeded = true;
-  }
-  if (redrawNeeded && !animating) {
-    redrawNeeded = false;
-    renderScene(ICON_X, -ICON_W);
-    pushFrame();
+  if (bootAnimActive) {   // 开机动画：独占渲染，~30fps
+    unsigned long now = millis();
+    if (now - bootFrameMs >= 33) {
+      bootFrameMs = now;
+      float t = (float)(now - bootAnimStart) / BOOT_ANIM_MS;
+      if (t >= 1.0f) {
+        bootAnimActive = false;
+        lastActivity = millis();
+        drawPage();
+      } else {
+        renderBootAnim(t);
+        pushFrame();
+      }
+    }
+  } else {
+    if (animating) updateAnimation();
+    if (listAnimating) updateListAnim();
+    if (savedFlashUntil && millis() >= savedFlashUntil) { // toast expired
+      savedFlashUntil = 0;
+      redrawNeeded = true;
+    }
+    saverTick();
+    if (view == VIEW_EASTER && millis() - easterFrameMs >= 40) { // 彩蛋动画 ~25fps
+      easterFrameMs = millis();
+      redrawNeeded = true;
+    }
+    // refresh status bar / wireless page periodically (no input events needed)
+    static unsigned long lastUiRefresh = 0;
+    if (millis() - lastUiRefresh >= 1000) {
+      lastUiRefresh = millis();
+      redrawNeeded = true;
+    }
+    if (redrawNeeded && !animating) {
+      redrawNeeded = false;
+      renderScene(ICON_X, -ICON_W);
+      pushFrame();
+    }
   }
   digitalWrite(48, (millis() - lastActivity < 250) ? HIGH : LOW);
 }

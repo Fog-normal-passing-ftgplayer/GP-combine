@@ -511,28 +511,6 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.ledOptions, brightnessSteps, LED_BRIGHTNESS_STEPS);
     INIT_UNSET_PROPERTY(config.ledOptions, turnOffWhenSuspended, LEDS_TURN_OFF_WHEN_SUSPENDED);
 
-#ifdef UART_LINK_ENABLED
-    // 正式版手柄（无 webconfig）：LED 灯序以编译进固件的 pico_user.h 为准，
-    // 每次启动都覆盖已存配置，保证配置助手调整灯序后刷机即生效。
-    config.ledOptions.indexUp = LEDS_DPAD_UP;       config.ledOptions.has_indexUp = true;
-    config.ledOptions.indexDown = LEDS_DPAD_DOWN;   config.ledOptions.has_indexDown = true;
-    config.ledOptions.indexLeft = LEDS_DPAD_LEFT;   config.ledOptions.has_indexLeft = true;
-    config.ledOptions.indexRight = LEDS_DPAD_RIGHT; config.ledOptions.has_indexRight = true;
-    config.ledOptions.indexB1 = LEDS_BUTTON_B1;     config.ledOptions.has_indexB1 = true;
-    config.ledOptions.indexB2 = LEDS_BUTTON_B2;     config.ledOptions.has_indexB2 = true;
-    config.ledOptions.indexB3 = LEDS_BUTTON_B3;     config.ledOptions.has_indexB3 = true;
-    config.ledOptions.indexB4 = LEDS_BUTTON_B4;     config.ledOptions.has_indexB4 = true;
-    config.ledOptions.indexL1 = LEDS_BUTTON_L1;     config.ledOptions.has_indexL1 = true;
-    config.ledOptions.indexR1 = LEDS_BUTTON_R1;     config.ledOptions.has_indexR1 = true;
-    config.ledOptions.indexL2 = LEDS_BUTTON_L2;     config.ledOptions.has_indexL2 = true;
-    config.ledOptions.indexR2 = LEDS_BUTTON_R2;     config.ledOptions.has_indexR2 = true;
-    config.ledOptions.indexS1 = LEDS_BUTTON_S1;     config.ledOptions.has_indexS1 = true;
-    config.ledOptions.indexS2 = LEDS_BUTTON_S2;     config.ledOptions.has_indexS2 = true;
-    config.ledOptions.indexL3 = LEDS_BUTTON_L3;     config.ledOptions.has_indexL3 = true;
-    config.ledOptions.indexR3 = LEDS_BUTTON_R3;     config.ledOptions.has_indexR3 = true;
-    config.ledOptions.indexA1 = LEDS_BUTTON_A1;     config.ledOptions.has_indexA1 = true;
-    config.ledOptions.indexA2 = LEDS_BUTTON_A2;     config.ledOptions.has_indexA2 = true;
-#else
     INIT_UNSET_PROPERTY(config.ledOptions, indexUp, LEDS_DPAD_UP);
     INIT_UNSET_PROPERTY(config.ledOptions, indexDown, LEDS_DPAD_DOWN);
     INIT_UNSET_PROPERTY(config.ledOptions, indexLeft, LEDS_DPAD_LEFT);
@@ -551,7 +529,6 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.ledOptions, indexR3, LEDS_BUTTON_R3);
     INIT_UNSET_PROPERTY(config.ledOptions, indexA1, LEDS_BUTTON_A1);
     INIT_UNSET_PROPERTY(config.ledOptions, indexA2, LEDS_BUTTON_A2);
-#endif
 
     INIT_UNSET_PROPERTY(config.ledOptions, pledType, PLED_TYPE);
     INIT_UNSET_PROPERTY(config.ledOptions, pledPin1, PLED1_PIN);
@@ -1959,6 +1936,86 @@ static bool loadConfigInner(Config& config)
     return pb_decode(&inputStream, Config_fields, &config);
 }
 
+#ifdef UART_LINK_ENABLED
+// ---- 编译期 LED 灯序（pico_user.h）版本标记 ----
+// webconfig 保存的灯序存在 FlashPROM；但配置助手生成的新灯序要「刷机即生效」。
+// 在独立扇区存一份编译期宏的哈希：只有哈希变化（换了 pico_user.h）才覆盖一次，
+// 其余时候保留 FlashPROM 里的灯序，让 webconfig 的 RGB 顺序能正常保存/持久化。
+#include "hardware/flash.h"
+#include "pico/multicore.h"
+
+#define LED_ORDER_MARKER_XIP   0x101F6000u
+#define LED_ORDER_MARKER_OFF   0x1F6000u
+#define LED_ORDER_MARKER_MAGIC 0x4C454453u   // "LEDS"
+
+struct LedOrderMarker {
+    uint32_t magic;
+    uint32_t hash;
+};
+
+static uint32_t compileTimeLedOrderHash()
+{
+    uint32_t h = 2166136261u;   // FNV-1a
+    const int32_t vals[] = {
+        LEDS_DPAD_UP, LEDS_DPAD_DOWN, LEDS_DPAD_LEFT, LEDS_DPAD_RIGHT,
+        LEDS_BUTTON_B1, LEDS_BUTTON_B2, LEDS_BUTTON_B3, LEDS_BUTTON_B4,
+        LEDS_BUTTON_L1, LEDS_BUTTON_R1, LEDS_BUTTON_L2, LEDS_BUTTON_R2,
+        LEDS_BUTTON_S1, LEDS_BUTTON_S2, LEDS_BUTTON_L3, LEDS_BUTTON_R3,
+        LEDS_BUTTON_A1, LEDS_BUTTON_A2, LEDS_PER_PIXEL,
+    };
+    for (size_t i = 0; i < sizeof(vals) / sizeof(vals[0]); i++) {
+        h ^= (uint32_t)(int32_t)vals[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static bool ledOrderMarkerMatches()
+{
+    const LedOrderMarker *m = reinterpret_cast<const LedOrderMarker *>(LED_ORDER_MARKER_XIP);
+    return m->magic == LED_ORDER_MARKER_MAGIC && m->hash == compileTimeLedOrderHash();
+}
+
+static void ledOrderMarkerWrite()
+{
+    LedOrderMarker m;
+    m.magic = LED_ORDER_MARKER_MAGIC;
+    m.hash = compileTimeLedOrderHash();
+    multicore_lockout_start_blocking();
+    flash_range_erase(LED_ORDER_MARKER_OFF, FLASH_SECTOR_SIZE);
+    flash_range_program(LED_ORDER_MARKER_OFF, reinterpret_cast<const uint8_t *>(&m), FLASH_PAGE_SIZE);
+    multicore_lockout_end_blocking();
+}
+
+// 仅当 pico_user.h 的编译期灯序变化（或首次刷入）时覆盖一次已存配置，
+// 之后 webconfig 保存的 RGB 顺序正常持久化。
+static void applyCompileTimeLedOrderIfChanged(Config &config)
+{
+    if (ledOrderMarkerMatches())
+        return;
+    config.ledOptions.indexUp = LEDS_DPAD_UP;       config.ledOptions.has_indexUp = true;
+    config.ledOptions.indexDown = LEDS_DPAD_DOWN;   config.ledOptions.has_indexDown = true;
+    config.ledOptions.indexLeft = LEDS_DPAD_LEFT;   config.ledOptions.has_indexLeft = true;
+    config.ledOptions.indexRight = LEDS_DPAD_RIGHT; config.ledOptions.has_indexRight = true;
+    config.ledOptions.indexB1 = LEDS_BUTTON_B1;     config.ledOptions.has_indexB1 = true;
+    config.ledOptions.indexB2 = LEDS_BUTTON_B2;     config.ledOptions.has_indexB2 = true;
+    config.ledOptions.indexB3 = LEDS_BUTTON_B3;     config.ledOptions.has_indexB3 = true;
+    config.ledOptions.indexB4 = LEDS_BUTTON_B4;     config.ledOptions.has_indexB4 = true;
+    config.ledOptions.indexL1 = LEDS_BUTTON_L1;     config.ledOptions.has_indexL1 = true;
+    config.ledOptions.indexR1 = LEDS_BUTTON_R1;     config.ledOptions.has_indexR1 = true;
+    config.ledOptions.indexL2 = LEDS_BUTTON_L2;     config.ledOptions.has_indexL2 = true;
+    config.ledOptions.indexR2 = LEDS_BUTTON_R2;     config.ledOptions.has_indexR2 = true;
+    config.ledOptions.indexS1 = LEDS_BUTTON_S1;     config.ledOptions.has_indexS1 = true;
+    config.ledOptions.indexS2 = LEDS_BUTTON_S2;     config.ledOptions.has_indexS2 = true;
+    config.ledOptions.indexL3 = LEDS_BUTTON_L3;     config.ledOptions.has_indexL3 = true;
+    config.ledOptions.indexR3 = LEDS_BUTTON_R3;     config.ledOptions.has_indexR3 = true;
+    config.ledOptions.indexA1 = LEDS_BUTTON_A1;     config.ledOptions.has_indexA1 = true;
+    config.ledOptions.indexA2 = LEDS_BUTTON_A2;     config.ledOptions.has_indexA2 = true;
+    ConfigUtils::save(config);
+    ledOrderMarkerWrite();
+}
+#endif
+
 void ConfigUtils::load(Config& config)
 {
     // First try to load from Protobuf storage, if that fails fall back to legacy storage.
@@ -1978,6 +2035,11 @@ void ConfigUtils::load(Config& config)
     // Make sure that fields that were not deserialized are properly initialized.
     // They were probably added with a newer version of the firmware.
     initUnsetPropertiesWithDefaults(config);
+
+#ifdef UART_LINK_ENABLED
+    // 正式版：pico_user.h 灯序变化才覆盖一次，否则保留 webconfig 保存的 RGB 顺序
+    applyCompileTimeLedOrderIfChanged(config);
+#endif
 
     // Run migrations that need to happen after initUnset...
     // ProtoBuf && Board Config settings are loaded here

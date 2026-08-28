@@ -77,7 +77,6 @@ def import_config(
                 local_pico_user_header(src),
                 led_pin=new_state.led_pin,
                 leds_per_button=new_state.leds_per_button,
-                led_order=new_state.led_order,
             )
             write_defaults_header(new_state.default_layout, local_defaults_header(src))
             write_layout_header(new_state.layout, local_layout_header(src))

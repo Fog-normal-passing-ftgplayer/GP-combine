@@ -24,7 +24,6 @@ class WizardState:
     # Pico 配置（正式版）
     led_pin: int = 28
     leds_per_button: int = 1
-    led_order: dict = field(default_factory=dict) # {button: index}
     # GIF 动画（正式版 ESP32）
     gif_src: str = ""
     gif_mode: str = "cover"
@@ -59,7 +58,6 @@ class WizardState:
             s.leds_per_button = int(d.get("leds_per_button", 1))
         except Exception:
             pass
-        s.led_order = dict(d.get("led_order", {}))
         s.gif_src = str(d.get("gif_src", ""))
         s.gif_mode = str(d.get("gif_mode", "cover"))
         try:

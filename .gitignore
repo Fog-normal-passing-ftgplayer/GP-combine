@@ -9,6 +9,7 @@ build_fusion/
 build_receiver/
 build_receiver_zero/
 esp32/build/
+esp32_170x320/build/
 pico/build/
 tools/*/build/
 

@@ -85,25 +85,46 @@ uint16_t colHi      = 0xFFFF;
 uint16_t colTextOn  = 0x0000;
 uint16_t colThumbOn  = RGB565(64, 160, 255);
 uint16_t colThumbOff = RGB565(64, 72, 86);
+uint16_t colMoon     = RGB565(220, 230, 255);   // 菜单月亮图标（浅色主题下用深色）
+bool curThemeImageBg = false;                    // 滑动菜单背景用按键布局的背景图
 
 struct Theme {
-  uint16_t bg, text, ring, hi, textOn, thumbOn, thumbOff;
+  uint16_t bg, text, ring, hi, textOn, thumbOn, thumbOff, moon;
+  uint8_t imageBg;
 };
 static const Theme THEMES[] = {
   // 默认（深蓝）
-  { RGB565(21, 27, 39),   RGB565(215, 222, 235), RGB565(150, 160, 175), 0xFFFF,           0x0000, RGB565(64, 160, 255), RGB565(64, 72, 86) },
+  { RGB565(21, 27, 39),   RGB565(215, 222, 235), RGB565(150, 160, 175), 0xFFFF,           0x0000, RGB565(64, 160, 255), RGB565(64, 72, 86),  RGB565(220, 230, 255), 0 },
   // 品牌橙
-  { RGB565(28, 20, 14),   RGB565(240, 228, 216), RGB565(176, 144, 122), RGB565(255, 122, 0), 0x0000, RGB565(255, 122, 0), RGB565(96, 72, 56) },
+  { RGB565(28, 20, 14),   RGB565(240, 228, 216), RGB565(176, 144, 122), RGB565(255, 122, 0), 0x0000, RGB565(255, 122, 0), RGB565(96, 72, 56),  RGB565(255, 200, 130), 0 },
   // 绯红
-  { RGB565(30, 16, 20),   RGB565(240, 217, 220), RGB565(176, 126, 134), RGB565(255, 64, 80), 0x0000, RGB565(255, 64, 80), RGB565(100, 58, 64) },
+  { RGB565(30, 16, 20),   RGB565(240, 217, 220), RGB565(176, 126, 134), RGB565(255, 64, 80), 0x0000, RGB565(255, 64, 80), RGB565(100, 58, 64), RGB565(255, 180, 190), 0 },
   // 翠绿
-  { RGB565(14, 26, 20),   RGB565(216, 232, 220), RGB565(127, 168, 139), RGB565(46, 230, 111), 0x0000, RGB565(46, 230, 111), RGB565(52, 92, 66) },
+  { RGB565(14, 26, 20),   RGB565(216, 232, 220), RGB565(127, 168, 139), RGB565(46, 230, 111), 0x0000, RGB565(46, 230, 111), RGB565(52, 92, 66),  RGB565(150, 255, 185), 0 },
   // 紫罗兰
-  { RGB565(22, 16, 30),   RGB565(227, 217, 238), RGB565(154, 135, 176), RGB565(164, 108, 255), 0x0000, RGB565(164, 108, 255), RGB565(84, 62, 104) },
+  { RGB565(22, 16, 30),   RGB565(227, 217, 238), RGB565(154, 135, 176), RGB565(164, 108, 255), 0x0000, RGB565(164, 108, 255), RGB565(84, 62, 104), RGB565(210, 180, 255), 0 },
   // 青蓝
-  { RGB565(12, 24, 32),   RGB565(214, 230, 238), RGB565(127, 160, 176), RGB565(48, 200, 255), 0x0000, RGB565(48, 200, 255), RGB565(44, 78, 94) },
+  { RGB565(12, 24, 32),   RGB565(214, 230, 238), RGB565(127, 160, 176), RGB565(48, 200, 255), 0x0000, RGB565(48, 200, 255), RGB565(44, 78, 94),  RGB565(170, 225, 255), 0 },
+  // 浅色（整体亮色：滑动菜单白底，深色文字/高亮）
+  { RGB565(242, 243, 246), RGB565(28, 33, 42),   RGB565(96, 106, 120),  RGB565(24, 60, 120), 0xFFFF, RGB565(24, 60, 120),  RGB565(200, 204, 212), RGB565(45, 70, 130), 0 },
+  // 背景图（滑动菜单背景 = 按键布局界面的背景图，文字/图标用浅色）
+  { RGB565(21, 27, 39),   RGB565(215, 222, 235), RGB565(150, 160, 175), 0xFFFF,           0x0000, RGB565(64, 160, 255), RGB565(64, 72, 86),  RGB565(220, 230, 255), 1 },
 };
 #define THEME_COUNT ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
+
+// 显示风格（可叠加在任何颜色主题上）：0=无，1=复古扫描线，2=暗角
+enum ThemeStyle {
+  THEME_STYLE_NONE = 0,
+  THEME_STYLE_SCANLINE = 1,
+  THEME_STYLE_VIGNETTE = 2,
+};
+uint8_t curThemeStyle = THEME_STYLE_NONE;
+
+// 游戏主界面（背景图为深色）固定浅色，不随主题变化，保证任何主题下可读
+#define LAYOUT_TEXT    RGB565(215, 222, 235)
+#define LAYOUT_RING    RGB565(150, 160, 175)
+#define LAYOUT_HI      0xFFFF
+#define LAYOUT_TEXT_ON 0x0000
 
 #define FONT_SCALE     2
 #define ACC_SETTINGS   RGB565(80,200,255)
@@ -195,16 +216,18 @@ static MenuOpt sysOpts[] = {
 };
 
 static const char *const LAYOUT_NAMES[] = {"街机", "HITBOX", "WASD", "自定义"};
-static const char *const THEME_NAMES[] = {"默认", "品牌橙", "绯红", "翠绿", "紫罗兰", "青蓝"};
+static const char *const THEME_NAMES[] = {"默认", "品牌橙", "绯红", "翠绿", "紫罗兰", "青蓝", "浅色", "背景图"};
+static const char *const STYLE_NAMES[] = {"无", "复古扫描线", "暗角"};
 static MenuOpt histOpts[] = {
   {"输入历史", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
   {"按键布局", OPT_ENUM, DEFAULT_LAYOUT, 0, 3, 1, LAYOUT_NAMES, 4, ""},
   {"主题", OPT_ENUM, 0, 0, THEME_COUNT - 1, 1, THEME_NAMES, THEME_COUNT, ""},
+  {"风格", OPT_ENUM, 0, 0, 2, 1, STYLE_NAMES, 3, ""},
 };
 
 static MenuSection settingsSections[] = {
   {"手柄", gpOpts, 7},
-  {"显示", histOpts, 3},
+  {"显示", histOpts, 4},
   {"系统", sysOpts, 3},
 };
 static MenuSection sleepSections[] = {
@@ -508,14 +531,14 @@ void iconPicture(int x, int y) { // framed landscape
 }
 
 void iconMoon(int x, int y) { // crescent + stars
-  drawDisc(x+46, y+40, 20, ACC_MOON);
+  drawDisc(x+46, y+40, 20, colMoon);
   drawDisc(x+56, y+32, 18, colBg);                // cut out the crescent
-  drawLine(x+26, y+18, x+26, y+26, ACC_MOON);      // stars (plus marks)
-  drawLine(x+22, y+22, x+30, y+22, ACC_MOON);
-  drawLine(x+66, y+56, x+66, y+64, ACC_MOON);
-  drawLine(x+62, y+60, x+70, y+60, ACC_MOON);
-  drawLine(x+18, y+52, x+18, y+58, ACC_MOON);
-  drawLine(x+15, y+55, x+21, y+55, ACC_MOON);
+  drawLine(x+26, y+18, x+26, y+26, colMoon);      // stars (plus marks)
+  drawLine(x+22, y+22, x+30, y+22, colMoon);
+  drawLine(x+66, y+56, x+66, y+64, colMoon);
+  drawLine(x+62, y+60, x+70, y+60, colMoon);
+  drawLine(x+18, y+52, x+18, y+58, colMoon);
+  drawLine(x+15, y+55, x+21, y+55, colMoon);
 }
 
 void iconWireless(int x, int y) { // radio waves
@@ -626,11 +649,11 @@ void drawRing(int cx, int cy, int r, uint16_t color) {
 
 void drawBtn(int cx, int cy, int r, bool pressed, const char *label) {
   if (pressed) {
-    drawDisc(cx, cy, r, colHi);
-    drawTextCentered(cx, cy, label, colTextOn);
+    drawDisc(cx, cy, r, LAYOUT_HI);
+    drawTextCentered(cx, cy, label, LAYOUT_TEXT_ON);
   } else {
-    drawRing(cx, cy, r, colRing);
-    drawTextCentered(cx, cy, label, colRing);
+    drawRing(cx, cy, r, LAYOUT_RING);
+    drawTextCentered(cx, cy, label, LAYOUT_RING);
   }
 }
 
@@ -647,16 +670,16 @@ void layoutSquare(int cx, int cy, int size, bool pressed, const char *label) {
   int sx = lx(cx - size / 2), sy = ly(cy - size / 2), ss = lr(size);
   if (ss < 2) return;
   if (pressed) {
-    lfbRect(sx, sy, ss, ss, colHi);
-    drawTextCentered(sx + ss / 2, sy + ss / 2, label, colTextOn);
+    lfbRect(sx, sy, ss, ss, LAYOUT_HI);
+    drawTextCentered(sx + ss / 2, sy + ss / 2, label, LAYOUT_TEXT_ON);
   } else {
     for (int t = 0; t < 2; t++) {
-      drawLine(sx + t, sy, sx + ss - 1, sy, colRing);
-      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, colRing);
-      drawLine(sx, sy + t, sx, sy + ss - 1, colRing);
-      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, colRing);
+      drawLine(sx + t, sy, sx + ss - 1, sy, LAYOUT_RING);
+      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, LAYOUT_RING);
+      drawLine(sx, sy + t, sx, sy + ss - 1, LAYOUT_RING);
+      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, LAYOUT_RING);
     }
-    drawTextCentered(sx + ss / 2, sy + ss / 2, label, colRing);
+    drawTextCentered(sx + ss / 2, sy + ss / 2, label, LAYOUT_RING);
   }
 }
 
@@ -967,14 +990,14 @@ void drawStatusBar() {
   char buf[40];
   snprintf(buf, sizeof(buf), "SOCD:%s DP:%s MODE:%s",
            socdName(stSocd), dpadName(stDpadMode), modeName(stInputMode));
-  drawText(4, 3, buf, colText);
+  drawText(4, 3, buf, LAYOUT_TEXT);
   // power indicator: USB icon or battery icon + percent
   if (stBattFlags & 0x02) {
     drawUsbIcon(206, 7, ACC_SETTINGS);
   } else {
     int pct = battPercent(stBattMv);
     if (pct >= 0) {
-      drawMiniBattery(198, 2, 18, 10, pct, colText);
+      drawMiniBattery(198, 2, 18, 10, pct, LAYOUT_TEXT);
     }
   }
   if (radioUp) drawMiniWireless(232, 11, radioLinked);
@@ -1013,7 +1036,7 @@ void drawLayoutEntry(const LayoutBtn &e, uint16_t b, uint8_t d) {
 void drawLever() {
   // big ring + a blue dot that follows the dpad direction
   int cx = lx(USER_LEVER_X), cy = ly(USER_LEVER_Y);
-  drawRing(cx, cy, lr(USER_LEVER_RING), colRing);
+  drawRing(cx, cy, lr(USER_LEVER_RING), LAYOUT_RING);
   int dx = 0, dy = 0;
   uint8_t d = lastDpad;
   if (d & 0x01) dy -= lr(8); // UP
@@ -1075,7 +1098,7 @@ void drawInputHistory() {
   for (int i = 0; i < histCount; i++) {
     int idx = (histHead - histCount + i + HIST_MAX) % HIST_MAX; // oldest first
     bool newest = (i == histCount - 1);
-    drawTextBig(x, 124, histLabels[idx], newest ? colHi : RGB565(130,140,155), 1);
+    drawTextBig(x, 124, histLabels[idx], newest ? LAYOUT_HI : RGB565(130,140,155), 1);
     x += (int)strlen(histLabels[idx]) * 4 + 6;
     if (x > 216) break;
   }
@@ -1087,8 +1110,17 @@ void drawPageContent(int x, int p) {
   drawMenuIcon(x, ICON_Y, p);
 }
 
+// 菜单/子页背景：背景图主题用按键布局同款背景图，其余主题用纯色
+void drawMenuBg() {
+  if (curThemeImageBg) {
+    memcpy(lfb, BACKGROUND_IMG[bgOpts[0].value], 240 * 135 * 2);
+  } else {
+    lfbFill(colBg);
+  }
+}
+
 void renderSub() {
-  lfbFill(colBg);
+  drawMenuBg();
   SubPageDef &def = subDefs[subPage];
   if (subPage == 1) { // 电池: custom status page
     drawCJKTextCentered(120, 6, "电池", colText, 1);
@@ -1352,12 +1384,54 @@ void applyTheme() {
   colTextOn  = THEMES[idx].textOn;
   colThumbOn = THEMES[idx].thumbOn;
   colThumbOff = THEMES[idx].thumbOff;
+  colMoon    = THEMES[idx].moon;
+  curThemeImageBg = THEMES[idx].imageBg != 0;
   redrawNeeded = true;
+}
+
+void applyStyle() {
+  curThemeStyle = constrain(histOpts[3].value, 0, 2);
+  redrawNeeded = true;
+}
+
+// 显示风格叠加（可叠加在任意颜色主题上）
+void applyThemeStyleOverlay() {
+  if (curThemeStyle == THEME_STYLE_SCANLINE) {
+    // CRT 扫描线：每 3 行压暗一行
+    for (int y = 0; y < 135; y += 3) {
+      uint16_t *row = &lfb[y * 240];
+      for (int x = 0; x < 240; x++) {
+        uint16_t c = row[x];
+        int r = ((c >> 11) & 0x1F) * 3 / 4;
+        int g = ((c >> 5) & 0x3F) * 3 / 4;
+        int b = (c & 0x1F) * 3 / 4;
+        row[x] = (uint16_t)((r << 11) | (g << 5) | b);
+      }
+    }
+  } else if (curThemeStyle == THEME_STYLE_VIGNETTE) {
+    // 暗角：离中心越远越暗（横向/纵向各自按距离压暗）
+    for (int y = 0; y < 135; y++) {
+      int vd = abs(y - 67) * 255 / 67;              // 0(中心)..255(上下边)
+      uint16_t *row = &lfb[y * 240];
+      for (int x = 0; x < 240; x++) {
+        int hd = abs(x - 119) * 255 / 119;          // 0(中心)..255(左右边)
+        int d = (vd > hd) ? vd : hd;
+        int m = 255 - (d * d >> 8);                 // 255(中心)..~0(角)
+        if (m >= 255) continue;
+        uint16_t c = row[x];
+        int r = ((c >> 11) & 0x1F) * m >> 8;
+        int g = ((c >> 5) & 0x3F) * m >> 8;
+        int b = (c & 0x1F) * m >> 8;
+        row[x] = (uint16_t)((r << 11) | (g << 5) | b);
+      }
+    }
+  }
 }
 
 void applyHistSettings() {
   layoutScale = histOpts[0].value ? 0.78f : 1.0f; // shrink layout for the strip
   applyTheme();
+  applyStyle();
   redrawNeeded = true;
 }
 
@@ -1392,6 +1466,7 @@ void saveConfigFile() {
   f.printf("screenoff=%d\n", sleepOpts[2].value);
   f.printf("wl=%d\n", wlOpts[0].value);
   f.printf("theme=%d\n", histOpts[2].value);
+  f.printf("style=%d\n", histOpts[3].value);
   f.flush();
   f.close();
   sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
@@ -1420,6 +1495,7 @@ void loadConfigFile() {
     else if (k == "screenoff") sleepOpts[2].value = constrain(v, 0, 1);
     else if (k == "wl")   wlOpts[0].value = constrain(v, 0, 1);
     else if (k == "theme") histOpts[2].value = constrain(v, 0, THEME_COUNT - 1);
+    else if (k == "style") histOpts[3].value = constrain(v, 0, 2);
   }
   f.close();
   applyBgSettings();
@@ -1448,7 +1524,7 @@ void sendEspSave() {
   f[15] = sleepOpts[2].value; // 关屏
   f[16] = wlOpts[0].value;    // 无线开关
   f[17] = histOpts[2].value;  // 主题
-  f[18] = 0;                  // 保留
+  f[18] = histOpts[3].value;  // 风格
   f[19] = 0;                  // 保留
   uint16_t crc = 0xFFFF;
   for (int i = 1; i <= 19; i++) crc = crc16_update(crc, f[i]);
@@ -1492,6 +1568,7 @@ void applyEspCfg(uint8_t *p, uint8_t len) {
   sleepOpts[2].value = constrain(p[12], 0, 1);
   wlOpts[0].value = constrain(p[13], 0, 1);
   histOpts[2].value = constrain(p[14], 0, THEME_COUNT - 1);
+  histOpts[3].value = constrain(p[15], 0, 2);
   espCfgLoaded = true;
   applyBgSettings();
   applyHistSettings();
@@ -1502,9 +1579,7 @@ void applyEspCfg(uint8_t *p, uint8_t len) {
 void renderScene(int16_t outX, int16_t inX) {
   if (saverActive) {
     renderSaver();
-    return;
-  }
-  if (view == VIEW_LAYOUT) {
+  } else if (view == VIEW_LAYOUT) {
     memcpy(lfb, BACKGROUND_IMG[bgOpts[0].value], 240 * 135 * 2);
     drawStatusBar();
     drawButtonLayout();
@@ -1514,11 +1589,12 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_EASTER) {
     renderEaster();
   } else {
-    lfbFill(colBg);
+    drawMenuBg();
     drawPageContent(outX, page);
     drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
     lfbThumbs(page);
   }
+  applyThemeStyleOverlay();
 }
 
 void pushFrame() {

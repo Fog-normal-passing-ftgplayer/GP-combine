@@ -18,8 +18,8 @@
 #if __has_include("layout_user.h")
 #include "layout_user.h"
 #else
-#define USER_LEVER_X 66
-#define USER_LEVER_Y 269
+#define USER_LEVER_X 51
+#define USER_LEVER_Y 101
 #define USER_LEVER_RING 22
 #define USER_LEVER_KNOB 7
 #endif
@@ -60,15 +60,15 @@
 #define VIEW_SUB    2   // sub-page of the selected menu item
 #define VIEW_EASTER 3   // 彩蛋：紫树落叶
 
-// ---- 170x320 竖屏 ST7789（1.9寸），偏移取网络上最常见的 35,0 ----
-#define SCR_W          170
-#define SCR_H          320
+// ---- 170x320 物理屏，内容区 LANDSCAPE 320x170，软件旋转到竖屏面板 ----
+#define SCR_W          320
+#define SCR_H          170
 #define SCR_CX         (SCR_W / 2)
 #define SCR_CY         (SCR_H / 2)
 #define NUM_PAGES      6
 #define ICON_W         86
 #define ICON_X         ((SCR_W - ICON_W) / 2)
-#define ICON_Y         92
+#define ICON_Y         26
 #define TITLE_Y        6
 #define THUMB_Y        (SCR_H - 16)
 #define THUMB_SIZE     8
@@ -135,20 +135,22 @@ uint8_t curThemeStyle = THEME_STYLE_NONE;
 #define ACC_MOUNTAIN   RGB565(140,120,255)
 #define ACC_MOON       RGB565(220,230,255)
 
-// portrait content framebuffer + driver-order output buffer
+// landscape content framebuffer + driver-order output buffer
 uint16_t lfb[SCR_W * SCR_H];
 uint8_t  rbuf[SCR_W * SCR_H * 2];
 
-// 面板朝向微调（默认直拷；若画面方向不对改这两个）
-int rotFlipX = 0;    // 1 = 水平镜像
-int rotFlipY = 0;    // 1 = 垂直镜像
+// runtime rotation mapping (base orientation is upright)
+//   my = cx              (content horizontal -> memory rows)
+//   mx = 169 - cy        (content vertical, reversed -> memory columns)
+int rotSwapRow = 1;
+int rotRevCol = 1;
 bool invertScreen = false;
 
 void cmd(uint8_t c){digitalWrite(DC,LOW);digitalWrite(CS,LOW);SPI.transfer(c);digitalWrite(CS,HIGH);}
 void dat(uint8_t d){digitalWrite(DC,HIGH);digitalWrite(CS,LOW);SPI.transfer(d);digitalWrite(CS,HIGH);}
 void dat16(uint16_t c){dat(c>>8);dat(c&0xFF);}
-int OX=35,OY=0;   // 170x320 ST7789 常见偏移
-void fill(uint16_t c){cmd(0x2A);dat16(OX);dat16(OX+SCR_W-1);cmd(0x2B);dat16(OY);dat16(OY+SCR_H-1);cmd(0x2C);for(int i=0;i<SCR_W*SCR_H;i++)dat16(c);}
+int OX=35,OY=0;   // 170x320 ST7789 常见偏移（内容旋转后仍用同一窗口）
+void fill(uint16_t c){cmd(0x2A);dat16(OX);dat16(OX+169);cmd(0x2B);dat16(OY);dat16(OY+319);cmd(0x2C);for(int i=0;i<170*320;i++)dat16(c);}
 
 void setWin(int x0, int y0, int x1, int y1) {
   cmd(0x2A); dat16(x0+OX); dat16(x1+OX);
@@ -828,14 +830,14 @@ void drawSaverToast() {
   drawLine(tX + 6, tY + 6, tX + 4, tY + 8, 0x0000);
 }
 
-#define MATRIX_COLS 14
+#define MATRIX_COLS 26
 static int mHead[MATRIX_COLS], mSpeed[MATRIX_COLS];
 void drawSaverMatrix() {
   static bool init = false;
   if (!init) {
     init = true;
     for (int i = 0; i < MATRIX_COLS; i++) {
-      mHead[i] = (int)(saverRand() % (SCR_H + 60)) - 50;
+      mHead[i] = (int)(saverRand() % 180) - 50;
       mSpeed[i] = 1 + (int)(saverRand() % 3);
     }
   }
@@ -941,18 +943,18 @@ void eggInput(uint8_t d) {
 void renderEaster() {
   lfbFill(RGB565(140, 195, 235));   // 天空
   // 紫色树干
-  lfbRect(77, 130, 16, 80, RGB565(115, 55, 165));
-  lfbRect(69, 168, 32, 42, RGB565(115, 55, 165));
-  lfbRect(83, 116, 4, 16, RGB565(115, 55, 165));   // 顶枝
-  lfbRect(65, 112, 4, 12, RGB565(115, 55, 165));   // 左枝
-  lfbRect(101, 112, 4, 12, RGB565(115, 55, 165));  // 右枝
+  lfbRect(152, 70, 16, 65, RGB565(115, 55, 165));
+  lfbRect(144, 98, 32, 37, RGB565(115, 55, 165));
+  lfbRect(158, 58, 4, 14, RGB565(115, 55, 165));   // 顶枝
+  lfbRect(140, 54, 4, 10, RGB565(115, 55, 165));   // 左枝
+  lfbRect(176, 54, 4, 10, RGB565(115, 55, 165));   // 右枝
   // 红色树冠
-  drawDisc(85, 100, 26, RGB565(215, 55, 55));
-  drawDisc(55, 112, 20, RGB565(180, 40, 40));
-  drawDisc(115, 112, 20, RGB565(180, 40, 40));
-  drawDisc(85, 82, 18, RGB565(235, 95, 70));
-  drawDisc(40, 104, 14, RGB565(180, 40, 40));
-  drawDisc(130, 104, 14, RGB565(180, 40, 40));
+  drawDisc(160, 42, 26, RGB565(215, 55, 55));
+  drawDisc(130, 52, 20, RGB565(180, 40, 40));
+  drawDisc(190, 52, 20, RGB565(180, 40, 40));
+  drawDisc(160, 26, 18, RGB565(235, 95, 70));
+  drawDisc(115, 44, 14, RGB565(180, 40, 40));
+  drawDisc(205, 44, 14, RGB565(180, 40, 40));
   // 落叶：从顶部飘落，带左右摆动
   unsigned long t = millis() / 40;
   for (int i = 0; i < EASTER_LEAVES; i++) {
@@ -987,44 +989,44 @@ const char *modeName(uint8_t m) {
 }
 
 void drawStatusBar() {
-  char buf[24];
-  snprintf(buf, sizeof(buf), "S:%s D:%s M:%s",
+  char buf[40];
+  snprintf(buf, sizeof(buf), "SOCD:%s DP:%s MODE:%s",
            socdName(stSocd), dpadName(stDpadMode), modeName(stInputMode));
   drawText(4, 3, buf, LAYOUT_TEXT);
   // power indicator: USB icon or battery icon + percent
   if (stBattFlags & 0x02) {
-    drawUsbIcon(134, 8, ACC_SETTINGS);
+    drawUsbIcon(286, 7, ACC_SETTINGS);
   } else {
     int pct = battPercent(stBattMv);
     if (pct >= 0) {
-      drawMiniBattery(134, 3, 18, 10, pct, LAYOUT_TEXT);
+      drawMiniBattery(282, 2, 18, 10, pct, LAYOUT_TEXT);
     }
   }
-  if (radioUp) drawMiniWireless(162, 10, radioLinked);
+  if (radioUp) drawMiniWireless(310, 11, radioLinked);
 }
 
 // layout tables: movement side per layout + shared right cluster
 static const LayoutBtn HITBOX_MOVE[] = {
-  {0x04, 34, 269, 13, "L", 1, 0},
-  {0x02, 66, 292, 13, "D", 1, 0},
-  {0x08, 98, 269, 13, "R", 1, 0},
-  {0x01, 66, 246, 13, "U", 1, 0},
+  {0x04, 23, 55, 13, "L", 1, 0},
+  {0x02, 72, 55, 13, "D", 1, 0},
+  {0x08, 115, 83, 13, "R", 1, 0},
+  {0x01, 129, 151, 13, "U", 1, 0},
 };
 static const LayoutBtn WASD_MOVE[] = {
-  {0x01, 66, 252, 8, "U", 1, 1},
-  {0x02, 66, 286, 8, "D", 1, 1},
-  {0x04, 50, 269, 8, "L", 1, 1},
-  {0x08, 82, 269, 8, "R", 1, 1},
+  {0x01, 80, 65, 8, "U", 1, 1},
+  {0x02, 80, 121, 8, "D", 1, 1},
+  {0x04, 51, 93, 8, "L", 1, 1},
+  {0x08, 109, 93, 8, "R", 1, 1},
 };
 static const LayoutBtn RIGHT_CLUSTER[] = {
-  {0x0004, 110, 80, 13, "B3", 0, 0},
-  {0x0008, 148, 80, 13, "B4", 0, 0},
-  {0x0020, 110, 130, 13, "R1", 0, 0},
-  {0x0010, 148, 130, 13, "L1", 0, 0},
-  {0x0001, 110, 180, 13, "B1", 0, 0},
-  {0x0002, 148, 180, 13, "B2", 0, 0},
-  {0x0080, 110, 230, 13, "R2", 0, 0},
-  {0x0040, 148, 230, 13, "L2", 0, 0},
+  {0x0004, 147, 60, 13, "B3", 0, 0},
+  {0x0008, 195, 45, 13, "B4", 0, 0},
+  {0x0020, 243, 45, 13, "R1", 0, 0},
+  {0x0010, 291, 60, 13, "L1", 0, 0},
+  {0x0001, 147, 108, 13, "B1", 0, 0},
+  {0x0002, 195, 93, 13, "B2", 0, 0},
+  {0x0080, 243, 93, 13, "R2", 0, 0},
+  {0x0040, 291, 108, 13, "L2", 0, 0},
 };
 
 void drawLayoutEntry(const LayoutBtn &e, uint16_t b, uint8_t d) {
@@ -1111,9 +1113,25 @@ void drawPageContent(int x, int p) {
 }
 
 // 菜单/子页背景：背景图主题用按键布局同款背景图，其余主题用纯色
+// 只存一张原图，按透明度档位在运行时与底色(21,27,39)混合，省 flash
+static const uint8_t BG_ALPHAS[BACKGROUND_LEVELS] = {64, 102, 140, 178, 217}; // 0.25..0.85
+
+void drawBackground(int level) {
+  if (level < 0 || level >= BACKGROUND_LEVELS) { lfbFill(colBg); return; }
+  int a = BG_ALPHAS[level];
+  const int br = 2, bg_ = 6, bb = 4;   // RGB565 of (21,27,39)
+  for (int i = 0; i < SCR_W * SCR_H; i++) {
+    uint16_t c = BACKGROUND_IMG[i];
+    int r = ((c >> 11) & 0x1F) * a + br * (255 - a);
+    int g = ((c >> 5) & 0x3F) * a + bg_ * (255 - a);
+    int b = (c & 0x1F) * a + bb * (255 - a);
+    lfb[i] = (uint16_t)(((r >> 8) << 11) | ((g >> 8) << 5) | (b >> 8));
+  }
+}
+
 void drawMenuBg() {
   if (curThemeImageBg) {
-    memcpy(lfb, BACKGROUND_IMG[bgOpts[0].value], SCR_W * SCR_H * 2);
+    drawBackground(bgOpts[0].value);
   } else {
     lfbFill(colBg);
   }
@@ -1132,37 +1150,37 @@ void renderSub() {
     } else {
       snprintf(buf, sizeof(buf), "%d%%", pct);
     }
-    drawTextBig(SCR_CX - ((int)strlen(buf) * 12 - 3) / 2, 70, buf, ACC_BATTERY, 3);
+    drawTextBig(SCR_CX - ((int)strlen(buf) * 12 - 3) / 2, 34, buf, ACC_BATTERY, 3);
     snprintf(buf, sizeof(buf), "电压 %d.%02dV", stBattMv / 1000, (stBattMv % 1000) / 10);
-    drawCJKTextCentered(SCR_CX, 140, buf, colText, 1);
-    drawCJKTextCentered(SCR_CX, 180, usb ? "USB连接" : "电池供电",
+    drawCJKTextCentered(SCR_CX, 78, buf, colText, 1);
+    drawCJKTextCentered(SCR_CX, 104, usb ? "USB连接" : "电池供电",
                         RGB565(120,132,150), 1);
-    drawCJKTextCentered(SCR_CX, 210, "B返回", RGB565(120,132,150), 1);
+    drawCJKTextCentered(SCR_CX, 122, "B返回", RGB565(120,132,150), 1);
     return;
   }
   if (def.sectionCount == 0) { // placeholder until the page is built
     drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
-    drawMenuIcon(ICON_X, 60, subPage);
-    drawCJKTextCentered(SCR_CX, 260, "待实现", RGB565(170,180,195), 1);
+    drawMenuIcon(ICON_X, 30, subPage);
+    drawCJKTextCentered(SCR_CX, 122, "待实现", RGB565(170,180,195), 1);
     return;
   }
   if (subList) { // section list level
     drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
     int hY = 28 + (int)(selY - scrollOff);
-    lfbRect(4, hY - 2, 160, 22, RGB565(42,54,72)); // gliding highlight bar
-    int first = (int)(scrollOff / 32.0f);
-    for (int i = first; i < def.sectionCount && i < first + 8; i++) {
-      int y = 28 + (int)(i * 32 - scrollOff);
-      if (y < 14 || y > 280) continue;
+    lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
+    int first = (int)(scrollOff / 30.0f);
+    for (int i = first; i < def.sectionCount && i < first + 4; i++) {
+      int y = 28 + (int)(i * 30 - scrollOff);
+      if (y < 14 || y > 118) continue;
       if (i == subSection) {
-        drawCJKText(12, y, def.sections[i].title, colHi, 1);
-        drawCJKText(158, y, ">", ACC_SETTINGS, 1);
+        drawCJKText(19, y, def.sections[i].title, colHi, 1);
+        drawCJKText(291, y, ">", ACC_SETTINGS, 1);
       } else {
-        drawCJKText(12, y, def.sections[i].title, colText, 1);
+        drawCJKText(19, y, def.sections[i].title, colText, 1);
       }
     }
-    drawScrollbar(def.sectionCount, scrollOff, 8, 32, 164, 28, 280);
-    drawCJKTextCentered(SCR_CX, 306, "A进入 B返回 上下选择", RGB565(120,132,150), 1);
+    drawScrollbar(def.sectionCount, scrollOff, 3, 30, 309, 28, 118);
+    drawCJKTextCentered(SCR_CX, 122, "A进入 B返回 上下选择", RGB565(120,132,150), 1);
   } else { // option list level
     MenuSection &sec = def.sections[subSection];
     drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
@@ -1173,66 +1191,66 @@ void renderSub() {
       } else {
         snprintf(lb, sizeof(lb), "断链");
       }
-      drawCJKText(166 - cjkTextWidth(lb, 1), 5, lb,
+      drawCJKText(301 - cjkTextWidth(lb, 1), 5, lb,
                   radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
     }
     int hY = 28 + (int)(selY - scrollOff);
-    lfbRect(4, hY - 2, 160, 22, RGB565(42,54,72)); // gliding highlight bar
-    int first = (int)(scrollOff / 28.0f);
-    for (int i = first; i < sec.count && i < first + 9; i++) {
+    lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
+    int first = (int)(scrollOff / 24.0f);
+    for (int i = first; i < sec.count && i < first + 5; i++) {
       MenuOpt *o = &sec.opts[i];
-      int y = 28 + (int)(i * 28 - scrollOff);
-      if (y < 14 || y > 280) continue;
+      int y = 28 + (int)(i * 24 - scrollOff);
+      if (y < 14 || y > 118) continue;
       if (o->type == OPT_SLIDER) {
         uint16_t c = (i == subSel) ? ACC_SETTINGS : colRing;
-        drawCJKText(12, y, o->label, (i == subSel) ? colHi : colText, 1);
-        drawSlider(82, y, 60, o->value, o->max, c);
+        drawCJKText(19, y, o->label, (i == subSel) ? colHi : colText, 1);
+        drawSlider(115, y, 120, o->value, o->max, c);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", o->value);
-        drawCJKText(148, y, buf, c, 1);
+        drawCJKText(243, y, buf, c, 1);
       } else {
         bool editable = (o->type != OPT_ACTION);
         if (i == subSel) {
-          if (editable) drawCJKText(6, y, "<", ACC_SETTINGS, 1);
-          drawCJKText(16, y, o->label, colHi, 1);
-          drawOptValue(o, editable ? 150 : 158, y, ACC_SETTINGS);
-          if (editable) drawCJKText(160, y, ">", ACC_SETTINGS, 1);
+          if (editable) drawCJKText(11, y, "<", ACC_SETTINGS, 1);
+          drawCJKText(24, y, o->label, colHi, 1);
+          drawOptValue(o, editable ? 285 : 301, y, ACC_SETTINGS);
+          if (editable) drawCJKText(299, y, ">", ACC_SETTINGS, 1);
         } else {
-          if (editable) drawCJKText(6, y, "<", RGB565(95,106,120), 1);
-          drawCJKText(16, y, o->label, colText, 1);
-          drawOptValue(o, editable ? 150 : 158, y, colText);
-          if (editable) drawCJKText(160, y, ">", RGB565(95,106,120), 1);
+          if (editable) drawCJKText(11, y, "<", RGB565(95,106,120), 1);
+          drawCJKText(24, y, o->label, colText, 1);
+          drawOptValue(o, editable ? 285 : 301, y, colText);
+          if (editable) drawCJKText(299, y, ">", RGB565(95,106,120), 1);
         }
       }
     }
-    drawScrollbar(sec.count, scrollOff, 9, 28, 164, 28, 280);
-    drawCJKTextCentered(SCR_CX, 306, sliderMode ? "左右调整 B退出" : "左右改值 上下选择 B返回",
+    drawScrollbar(sec.count, scrollOff, 4, 24, 309, 28, 118);
+    drawCJKTextCentered(SCR_CX, 122, sliderMode ? "左右调整 B退出" : "左右改值 上下选择 B返回",
                         RGB565(120,132,150), 1);
   }
   if (confirmOpen) {
-    lfbRect(10, 130, 150, 60, RGB565(30,38,52));   // dialog box
+    lfbRect(68, 40, 184, 58, RGB565(30,38,52));   // dialog box
     for (int t = 0; t < 2; t++) {
-      drawLine(10+t, 130, 160-t, 130, colRing);
-      drawLine(10, 130+t, 10, 190-t, colRing);
-      drawLine(160, 130+t, 160, 190-t, colRing);
-      drawLine(10+t, 190, 160-t, 190, colRing);
+      drawLine(68+t, 40, 252-t, 40, colRing);
+      drawLine(68, 40+t, 68, 98-t, colRing);
+      drawLine(252, 40+t, 252, 98-t, colRing);
+      drawLine(68+t, 98, 252-t, 98, colRing);
     }
-    drawCJKTextCentered(SCR_CX, 140, "是否立即保存", colText, 1);
-    int y = 168;
+    drawCJKTextCentered(SCR_CX, 50, "是否立即保存", colText, 1);
+    int y = 74;
     if (confirmChoice == 0) {
-      lfbRect(52, y - 2, 34, 19, RGB565(42,54,72));
-      drawCJKText(58, y, "是", colHi, 1);
-      drawCJKText(100, y, "否", colText, 1);
+      lfbRect(112, y - 2, 42, 19, RGB565(42,54,72));
+      drawCJKText(120, y, "是", colHi, 1);
+      drawCJKText(172, y, "否", colText, 1);
     } else {
-      drawCJKText(58, y, "是", colText, 1);
-      lfbRect(88, y - 2, 34, 19, RGB565(42,54,72));
-      drawCJKText(94, y, "否", colHi, 1);
+      drawCJKText(120, y, "是", colText, 1);
+      lfbRect(160, y - 2, 42, 19, RGB565(42,54,72));
+      drawCJKText(168, y, "否", colHi, 1);
     }
-    drawCJKTextCentered(SCR_CX, 202, "左右选择 A确认", RGB565(120,132,150), 1);
+    drawCJKTextCentered(SCR_CX, 100, "左右选择 A确认", RGB565(120,132,150), 1);
   }
   if (millis() < savedFlashUntil) { // "已保存" toast
-    lfbRect(SCR_CX - 36, 150, 72, 24, RGB565(30,38,52));
-    drawCJKTextCentered(SCR_CX, 154, configAcked ? "已确认" : "已保存", ACC_BATTERY, 1);
+    lfbRect(118, 56, 84, 24, RGB565(30,38,52));
+    drawCJKTextCentered(SCR_CX, 60, configAcked ? "已确认" : "已保存", ACC_BATTERY, 1);
   }
 }
 
@@ -1359,8 +1377,8 @@ void subBack() {
 // 上电时先读取并应用，避免板上旧 NVS 数据导致的保存失败。
 
 void applyBgSettings() {
-  rotFlipX = bgOpts[2].value ? 1 : 0;      // 水平翻转
-  rotFlipY = bgOpts[3].value ? 1 : 0;      // 垂直翻转
+  rotSwapRow = bgOpts[2].value ? 0 : 1;    // 水平翻转
+  rotRevCol = bgOpts[3].value ? 0 : 1;     // 垂直翻转
   invertScreen = bgOpts[4].value != 0;     // 反色
   ledcWrite(BL, (uint32_t)bgOpts[1].value * 255 / 100); // 背光 PWM
   redrawNeeded = true;
@@ -1580,7 +1598,7 @@ void renderScene(int16_t outX, int16_t inX) {
   if (saverActive) {
     renderSaver();
   } else if (view == VIEW_LAYOUT) {
-    memcpy(lfb, BACKGROUND_IMG[bgOpts[0].value], SCR_W * SCR_H * 2);
+    drawBackground(bgOpts[0].value);
     drawStatusBar();
     drawButtonLayout();
     drawInputHistory();
@@ -1599,17 +1617,17 @@ void renderScene(int16_t outX, int16_t inX) {
 
 void pushFrame() {
   uint8_t *out = rbuf;
-  for (int y = 0; y < SCR_H; y++) {
-    int sy = rotFlipY ? (SCR_H - 1 - y) : y;
-    for (int x = 0; x < SCR_W; x++) {
-      int sx = rotFlipX ? (SCR_W - 1 - x) : x;
-      uint16_t c = lfb[sy * SCR_W + sx];
+  for (int my = 0; my < SCR_W; my++) {        // 面板行 = 内容宽 (320)
+    for (int mx = 0; mx < SCR_H; mx++) {      // 面板列 = 内容高 (170)
+      int cx = rotSwapRow ? my : (SCR_W - 1 - my);
+      int cy = rotRevCol ? (SCR_H - 1 - mx) : mx;
+      uint16_t c = lfb[cy * SCR_W + cx];
       if (invertScreen) c = 0xFFFF - c;
       *out++ = (uint8_t)(c >> 8);
       *out++ = (uint8_t)(c & 0xFF);
     }
   }
-  setWin(0, 0, SCR_W - 1, SCR_H - 1);
+  setWin(0, 0, SCR_H - 1, SCR_W - 1);
   digitalWrite(DC, HIGH);   // data mode for the bulk transfer
   digitalWrite(CS, LOW);
   SPI.transfer(rbuf, sizeof(rbuf));
@@ -1636,7 +1654,7 @@ static char bootRandChar() {
 
 void bootBuildBg() {
   for (int y = 0; y < SCR_H; y++) {
-    float d = abs(y - SCR_CY) / (float)SCR_CY;   // 中心亮、上下暗
+    float d = abs(y - SCR_CY) / (float)SCR_CY;
     int v = 6 + (int)(22 * (1.0f - d) * (1.0f - d));
     bootBg[y] = RGB565(v, v, v + 1);
     int s = v + 7; if (s > 38) s = 38;
@@ -1682,12 +1700,12 @@ void renderBootAnim(float t) {
   // 底部成长线（文字锁定后出现）
   if (t >= 0.55f && t < 0.95f) {
     float lp = (t - 0.55f) / 0.20f; if (lp > 1.0f) lp = 1.0f;
-    int w = (int)((SCR_W - 40) * lp);   // 65%+ 屏宽
+    int w = (int)((SCR_W - 40) * lp);
     int lx = (SCR_W - w) / 2;
-    lfbRect(lx, SCR_H - 30, w, 2, BOOT_ORANGE);
+    lfbRect(lx, SCR_H - 40, w, 2, BOOT_ORANGE);
     if (w > 4) {
-      lfbRect(lx + 2, SCR_H - 31, w - 4, 1, RGB565(120, 60, 0));
-      lfbRect(lx + 2, SCR_H - 28, w - 4, 1, RGB565(120, 60, 0));
+      lfbRect(lx + 2, SCR_H - 41, w - 4, 1, RGB565(120, 60, 0));
+      lfbRect(lx + 2, SCR_H - 38, w - 4, 1, RGB565(120, 60, 0));
     }
   }
 
@@ -1713,17 +1731,17 @@ void renderBootAnim(float t) {
   }
   s[10] = 0;
 
-  int tw = 10 * 4 * 4 - 4;              // scale 4 的文本宽（170 宽放得下）
+  int tw = 10 * 4 * 5 - 5;              // scale 5 的文本宽
   int gx = 0;
   if (t < 0.55f && (bootRandByte() & 3) == 0) {   // 不稳定期随机左右跳
     gx = (int)(bootRandByte() % 13) - 6;
   }
   int tx = (SCR_W - tw) / 2 + gx;
-  int ty = SCR_CY - 10;
+  int ty = 52;
   // 错位层（暗灰 / 深橙）制造故障色边
-  drawTextBig(tx - 3, ty + 1, s, RGB565(72, 72, 74), 4);
-  drawTextBig(tx + 3, ty - 1, s, RGB565(150, 70, 0), 4);
-  drawTextBig(tx, ty, s, BOOT_ORANGE, 4);
+  drawTextBig(tx - 3, ty + 1, s, RGB565(72, 72, 74), 5);
+  drawTextBig(tx + 3, ty - 1, s, RGB565(150, 70, 0), 5);
+  drawTextBig(tx, ty, s, BOOT_ORANGE, 5);
 
   // 开场橙色闪烁
   if (t >= 0.03f && t < 0.10f) lfbBlend(BOOT_ORANGE, 170);
@@ -2277,7 +2295,7 @@ void setup(){
   ledcAttach(BL, 5000, 8);
   ledcWrite(BL, 255);
   pinMode(CS,OUTPUT);pinMode(DC,OUTPUT);pinMode(RST,OUTPUT);digitalWrite(CS,HIGH);
-  SPI.begin(12,-1,11,-1);SPI.setFrequency(40000000);
+  SPI.begin(12,-1,11,-1);SPI.setFrequency(80000000);  // 320x170 帧更大，80MHz 才跟得上 60fps
   digitalWrite(RST,LOW);delay(10);digitalWrite(RST,HIGH);delay(120);
   cmd(0x01);delay(150);cmd(0x11);delay(150);
   cmd(0x3A);dat(0x55);cmd(0x36);dat(0x00);cmd(0x21);cmd(0x13);delay(10);cmd(0x29);delay(10);

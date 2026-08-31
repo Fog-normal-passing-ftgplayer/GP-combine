@@ -64,6 +64,29 @@ class Layout:
         ]
         return cls(move=move, cluster=cluster, lever=Lever())
 
+    @classmethod
+    def preset_170x320(cls) -> "Layout":
+        """170x320 物理屏默认布局：内容区 320x170 横屏，
+        与固件 esp32_170x320.ino 的 HITBOX_MOVE/RIGHT_CLUSTER 一致。"""
+        move = [
+            Btn(0x04, 23, 55, 13, False, "L", True),
+            Btn(0x02, 72, 55, 13, False, "D", True),
+            Btn(0x08, 115, 83, 13, False, "R", True),
+            Btn(0x01, 129, 151, 13, False, "U", True),
+        ]
+        cluster = [
+            Btn(0x0004, 147, 60, 13, False, "B3", False),
+            Btn(0x0008, 195, 45, 13, False, "B4", False),
+            Btn(0x0020, 243, 45, 13, False, "R1", False),
+            Btn(0x0010, 291, 60, 13, False, "L1", False),
+            Btn(0x0001, 147, 108, 13, False, "B1", False),
+            Btn(0x0002, 195, 93, 13, False, "B2", False),
+            Btn(0x0080, 243, 93, 13, False, "R2", False),
+            Btn(0x0040, 291, 108, 13, False, "L2", False),
+        ]
+        return cls(move=move, cluster=cluster,
+                   lever=Lever(x=51, y=101, ring=22, knob=7))
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "move": [asdict(b) for b in self.move],

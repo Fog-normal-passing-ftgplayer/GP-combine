@@ -21,7 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import SCREEN_H, SCREEN_W, local_defaults_header, local_layout_header
+from ..app_config import (
+    local_defaults_header,
+    local_layout_header,
+    screen_dims,
+)
 from ..defaults_header import write_defaults_header
 from ..lite_layout_header import write_lite_layout_header
 from ..layout_header import write_layout_header
@@ -92,7 +96,7 @@ class LayoutPage(QWidget):
         toolbar.addWidget(self.reset_btn)
         left.addLayout(toolbar)
 
-        lw, lh = (128, 64) if self.lite else (240, 135)
+        lw, lh = (128, 64) if self.lite else screen_dims(self.state.screen_res)
         self.canvas = LayoutCanvas(logical_size=(lw, lh))
         self.canvas.item_moved.connect(self._on_item_moved)
         self.canvas.lever_moved.connect(self._on_lever_moved)
@@ -201,6 +205,12 @@ class LayoutPage(QWidget):
     # ---------- 状态 ----------
 
     def _sync_from_state(self) -> None:
+        if not self.lite and self.state.screen_res == "170x320":
+            lay = self.state.layout
+            pts = ([b.x for b in lay.move + lay.cluster]
+                   + [lay.lever.x if lay.show_lever else 0])
+            if any(x > 319 for x in pts):
+                self.state.layout = Layout.preset_170x320()
         self.canvas.set_layout(self._layout())
         self._set_combo_by_data(self.default_combo, self.state.default_layout)
         self.lever_check.blockSignals(True)
@@ -463,6 +473,8 @@ class LayoutPage(QWidget):
     def reset_defaults(self) -> None:
         if self.lite:
             self.state.lite_layout = Layout.preset()
+        elif self.state.screen_res == "170x320":
+            self.state.layout = Layout.preset_170x320()
         else:
             self.state.layout = Layout.preset()
         self.canvas.set_layout(self._layout())
@@ -486,7 +498,7 @@ class LayoutPage(QWidget):
                 out = Path(src) / "configs" / "GPFusionLite" / "layout_user.h"
                 write_lite_layout_header(self._layout(), out)
             else:
-                out = local_layout_header(Path(src))
+                out = local_layout_header(Path(src), self.state.screen_res)
                 write_layout_header(self._layout(), out)
             self.status_label.setText("✔ 已实时写入 %s" % out)
             self.status_label.setStyleSheet("color: #64E0A0;")

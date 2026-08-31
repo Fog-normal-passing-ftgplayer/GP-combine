@@ -1,4 +1,4 @@
-"""GIF -> 240x135 调色板索引 + 行程压缩 -> gif_user.h（方案三：压缩存储+运行时解码）。
+"""GIF -> 目标分辨率调色板索引 + 行程压缩 -> gif_user.h（方案三：压缩存储+运行时解码）。
 
 v2 格式：全局调色板（默认 16 色）+ 每帧像素索引行程编码 [len][idx]，
 比 RGB565 原值 RLE 通常小 2~4 倍。
@@ -9,35 +9,41 @@ from pathlib import Path
 
 from PIL import Image
 
-from .app_config import SCREEN_H, SCREEN_W
+from .app_config import SCREEN_RESOLUTIONS
 
 
 def _rgb565(r: int, g: int, b: int) -> int:
     return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
 
 
-def load_gif_frames(src: str | Path, mode: str = "cover", max_frames: int = 60):
-    """读取 GIF，返回 [(PIL帧, 延时ms), ...]（已缩放到 240x135）。"""
+def load_gif_frames(
+    src: str | Path,
+    mode: str = "cover",
+    max_frames: int = 60,
+    size: tuple[int, int] | None = None,
+):
+    """读取 GIF，返回 [(PIL帧, 延时ms), ...]（已缩放到目标分辨率）。"""
+    w, h = size or SCREEN_RESOLUTIONS["240x135"]
     im = Image.open(src)
     frames: list[tuple[Image.Image, int]] = []
     try:
         while True:
             frame = im.convert("RGB")
             if mode == "stretch":
-                frame = frame.resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
+                frame = frame.resize((w, h), Image.LANCZOS)
             elif mode == "fit":
-                frame.thumbnail((SCREEN_W, SCREEN_H), Image.LANCZOS)
-                canvas = Image.new("RGB", (SCREEN_W, SCREEN_H), (0, 0, 0))
-                canvas.paste(frame, ((SCREEN_W - frame.width) // 2,
-                                     (SCREEN_H - frame.height) // 2))
+                frame.thumbnail((w, h), Image.LANCZOS)
+                canvas = Image.new("RGB", (w, h), (0, 0, 0))
+                canvas.paste(frame, ((w - frame.width) // 2,
+                                     (h - frame.height) // 2))
                 frame = canvas
             else:  # cover
-                scale = max(SCREEN_W / frame.width, SCREEN_H / frame.height)
+                scale = max(w / frame.width, h / frame.height)
                 f2 = frame.resize((round(frame.width * scale),
                                    round(frame.height * scale)), Image.LANCZOS)
-                x = (f2.width - SCREEN_W) // 2
-                y = (f2.height - SCREEN_H) // 2
-                frame = f2.crop((x, y, x + SCREEN_W, y + SCREEN_H))
+                x = (f2.width - w) // 2
+                y = (f2.height - h) // 2
+                frame = f2.crop((x, y, x + w, y + h))
             delay = im.info.get("duration", 100) or 100
             frames.append((frame, delay))
             if len(frames) >= max_frames:
@@ -87,8 +93,10 @@ def generate_gif_header(
     mode: str = "cover",
     max_frames: int = 60,
     palette_size: int = 16,
+    size: tuple[int, int] | None = None,
 ) -> tuple[Path, int, int]:
-    frames = load_gif_frames(src, mode, max_frames)
+    w, h = size or SCREEN_RESOLUTIONS["240x135"]
+    frames = load_gif_frames(src, mode, max_frames, size)
     assert frames, "GIF 没有可用的帧"
     delays = [d for _, d in frames]
 
@@ -112,8 +120,8 @@ def generate_gif_header(
         f.write("// 由 GP-Combine 配置助手生成（GIF 压缩：RLE），请勿手改。\n")
         f.write("#define GIF_USER_VERSION 2\n")
         f.write("#define GIF_USER_FRAMES %d\n" % len(frames))
-        f.write("#define GIF_USER_WIDTH %d\n" % SCREEN_W)
-        f.write("#define GIF_USER_HEIGHT %d\n" % SCREEN_H)
+        f.write("#define GIF_USER_WIDTH %d\n" % w)
+        f.write("#define GIF_USER_HEIGHT %d\n" % h)
         f.write("#define GIF_USER_PALETTE_SIZE %d\n" % palette_size)
         f.write("static const uint16_t GIF_USER_PALETTE[%d] = {"
                 % palette_size)

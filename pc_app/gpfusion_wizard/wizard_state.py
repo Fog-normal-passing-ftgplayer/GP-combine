@@ -15,6 +15,7 @@ class WizardState:
     port: str = ""
     cli_path: str = ""
     source_dir: str = ""
+    screen_res: str = "240x135"      # 240x135 默认 / 170x320 竖屏
     lite_source_dir: str = ""
     pico_sdk_dir: str = ""
     lite_screen_size: str = "0.96"
@@ -44,6 +45,8 @@ class WizardState:
         s.port = str(d.get("port", ""))
         s.cli_path = str(d.get("cli_path", ""))
         s.source_dir = str(d.get("source_dir", ""))
+        res = str(d.get("screen_res", ""))
+        s.screen_res = res if res in ("240x135", "170x320") else "240x135"
         s.lite_source_dir = str(d.get("lite_source_dir", ""))
         s.pico_sdk_dir = str(d.get("pico_sdk_dir", ""))
         s.lite_screen_size = str(d.get("lite_screen_size", "0.96"))
@@ -110,8 +113,10 @@ class WizardState:
         self.__dict__.update(other.__dict__)
 
 
-def source_ready(source_dir: str) -> bool:
+def source_ready(source_dir: str, screen_res: str = "240x135") -> bool:
     if not source_dir:
         return False
     p = Path(source_dir)
-    return (p / "esp32" / "esp32.ino").is_file()
+    ino = ("esp32_170x320" if screen_res == "170x320" else "esp32")
+    name = ("esp32_170x320.ino" if screen_res == "170x320" else "esp32.ino")
+    return (p / ino / name).is_file()

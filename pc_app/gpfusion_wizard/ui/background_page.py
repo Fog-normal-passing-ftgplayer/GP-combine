@@ -17,7 +17,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import BG_ALPHAS, SCREEN_H, SCREEN_W, local_background_header
+from ..app_config import (
+    BG_ALPHAS,
+    local_background_header,
+    screen_dims,
+)
 from ..imagegen import generate_background_header, preview_image
 from ..wizard_state import WizardState
 
@@ -98,11 +102,11 @@ class BackgroundPage(QWidget):
         root.addLayout(left, 2)
 
         # 右列：预览
-        right = QGroupBox("预览（240×135 内容区）")
+        right = QGroupBox("预览")
         right_l = QVBoxLayout(right)
         self.preview = QLabel()
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(SCREEN_W * 3, SCREEN_H * 3)
+        self.preview.setMinimumSize(240 * 3, 135 * 3)
         self.preview.setStyleSheet(
             "background: #0D1117; border: 1px solid #232C3C; border-radius: 8px;"
         )
@@ -151,12 +155,14 @@ class BackgroundPage(QWidget):
             self.preview.setPixmap(QPixmap())
             return
         mode = self.MODES[self.mode_combo.currentIndex()][0]
+        w, h = screen_dims(self.state.screen_res)
         try:
-            im = preview_image(self.state.background_src, mode, BG_ALPHAS[idx])
+            im = preview_image(self.state.background_src, mode, BG_ALPHAS[idx],
+                               size=(w, h))
             qim = QImage(im.tobytes("raw", "RGB"), im.width, im.height,
                          im.width * 3, QImage.Format.Format_RGB888)
             pix = QPixmap.fromImage(qim).scaled(
-                SCREEN_W * 3, SCREEN_H * 3,
+                w * 3, h * 3,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -175,8 +181,10 @@ class BackgroundPage(QWidget):
             self.status_label.setStyleSheet("color: #FFB454;")
             return
         try:
-            out = local_background_header(Path(self.state.source_dir))
-            generate_background_header(src, out, self.state.background_mode)
+            res = self.state.screen_res
+            out = local_background_header(Path(self.state.source_dir), res)
+            generate_background_header(src, out, self.state.background_mode,
+                                       size=screen_dims(res))
             size_kb = out.stat().st_size // 1024
             self.status_label.setText(
                 "✔ 已写入 %s（%d KB，含 5 档透明度）" % (out, size_kb)

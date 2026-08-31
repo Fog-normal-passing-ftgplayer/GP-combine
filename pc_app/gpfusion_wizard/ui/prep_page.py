@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -24,6 +25,7 @@ from ..app_config import (
     DEFAULT_REPO_URL,
     default_source_dir,
     is_windows,
+    local_sketch_ino,
 )
 from ..jobs import JobRunner, core_install_progress
 from ..serial_detect import list_esp32_ports
@@ -145,6 +147,15 @@ class PrepPage(QWidget):
         # 固件源码
         src = QGroupBox("固件源码（GP-Fusion 仓库）")
         src_l = QVBoxLayout(src)
+        res_row = QHBoxLayout()
+        res_row.addWidget(QLabel("屏幕分辨率"))
+        self.res_combo = QComboBox()
+        self.res_combo.addItem("240x135（默认）", "240x135")
+        self.res_combo.addItem("170x320（1.9寸竖屏）", "170x320")
+        self.res_combo.currentIndexChanged.connect(self._on_res_changed)
+        res_row.addWidget(self.res_combo)
+        res_row.addStretch(1)
+        src_l.addLayout(res_row)
         url_row = QHBoxLayout()
         url_row.addWidget(QLabel("仓库地址"))
         self.url_edit = QLineEdit(DEFAULT_REPO_URL)
@@ -205,6 +216,11 @@ class PrepPage(QWidget):
         self._refresh_source()
 
     def reload_state(self) -> None:
+        idx = self.res_combo.findData(self.state.screen_res)
+        if idx >= 0 and idx != self.res_combo.currentIndex():
+            self.res_combo.blockSignals(True)
+            self.res_combo.setCurrentIndex(idx)
+            self.res_combo.blockSignals(False)
         self._refresh_all()
 
     def _refresh_cli(self) -> None:
@@ -242,9 +258,10 @@ class PrepPage(QWidget):
 
     def _refresh_source(self) -> None:
         self._normalize_source_dir()
-        if self.state.source_dir and source_ready(self.state.source_dir):
+        res = self.state.screen_res
+        if self.state.source_dir and source_ready(self.state.source_dir, res):
             self._source_ok = True
-            ino = Path(self.state.source_dir, "esp32", "esp32.ino")
+            ino = local_sketch_ino(Path(self.state.source_dir), res)
             try:
                 supports_user_layout = "USER_LAYOUT" in ino.read_text(encoding="utf-8")
             except Exception:
@@ -260,8 +277,9 @@ class PrepPage(QWidget):
                 self.src_status.setStyleSheet("color: #FFB454;")
         elif self.state.source_dir:
             self._source_ok = False
+            sketch = "esp32_170x320" if res == "170x320" else "esp32"
             self.src_status.setText(
-                "所选目录缺少 esp32/esp32.ino：%s" % self.state.source_dir
+                "所选目录缺少 %s/%s.ino：%s" % (sketch, sketch, self.state.source_dir)
             )
             self.src_status.setStyleSheet("color: #FF7B72;")
         else:
@@ -276,8 +294,17 @@ class PrepPage(QWidget):
         if not self.state.source_dir:
             return
         p = Path(self.state.source_dir)
-        if (p / "esp32.ino").is_file() and not (p / "esp32" / "esp32.ino").is_file():
+        res = self.state.screen_res
+        sketch = "esp32_170x320" if res == "170x320" else "esp32"
+        ino_name = sketch + ".ino"
+        if (p / ino_name).is_file() and not (p / sketch / ino_name).is_file():
             self.state.source_dir = str(p.parent)
+
+    def _on_res_changed(self) -> None:
+        self.state.screen_res = str(self.res_combo.currentData())
+        self.state.save()
+        self._refresh_source()
+        self.ready_changed.emit()
 
     def is_ready(self) -> bool:
         return bool(self.state.port) and self._cli_ok and self._core_ok and self._source_ok
@@ -481,7 +508,7 @@ class PrepPage(QWidget):
             return
         dest = default_source_dir()
         if dest.exists() and any(dest.iterdir()):
-            if source_ready(str(dest)):
+            if source_ready(str(dest), self.state.screen_res):
                 self.state.source_dir = str(dest)
                 self._log("目标目录已存在且可用：%s" % dest)
                 self._finish_step("源码已就绪")
@@ -497,7 +524,7 @@ class PrepPage(QWidget):
 
     def _after_clone(self) -> None:
         dest = default_source_dir()
-        if source_ready(str(dest)):
+        if source_ready(str(dest), self.state.screen_res):
             self.state.source_dir = str(dest)
             self._log("✔ 仓库克隆完成，源码位于：%s" % dest)
             self._finish_step("源码准备完成")

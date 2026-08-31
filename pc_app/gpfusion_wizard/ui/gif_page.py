@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import SCREEN_H, SCREEN_W, local_gif_header
+from ..app_config import local_gif_header, screen_dims
 from ..gif_convert import generate_gif_header
 from ..wizard_state import WizardState
 
@@ -83,7 +83,7 @@ class GifPage(QWidget):
 
         self.preview = QLabel()
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(SCREEN_W * 3, SCREEN_H * 3)
+        self.preview.setMinimumSize(240 * 3, 135 * 3)
         self.preview.setStyleSheet(
             "background: #0D1117; border: 1px solid #232C3C; border-radius: 8px;"
         )
@@ -134,7 +134,8 @@ class GifPage(QWidget):
         try:
             im = Image.open(self.state.gif_src)
             im.seek(0)
-            im2 = im.convert("RGB").resize((SCREEN_W * 3, SCREEN_H * 3), Image.LANCZOS)
+            w, h = screen_dims(self.state.screen_res)
+            im2 = im.convert("RGB").resize((w * 3, h * 3), Image.LANCZOS)
             qim = QImage(im2.tobytes("raw", "RGB"), im2.width, im2.height,
                          im2.width * 3, QImage.Format.Format_RGB888)
             self.preview.setPixmap(QPixmap.fromImage(qim))
@@ -151,12 +152,14 @@ class GifPage(QWidget):
             self.status.setStyleSheet("color: #FFB454;")
             return
         try:
-            out = local_gif_header(Path(self.state.source_dir))
+            res = self.state.screen_res
+            out = local_gif_header(Path(self.state.source_dir), res)
             out, frames, data_bytes = generate_gif_header(
                 self.state.gif_src,
                 out,
                 self.MODES[self.mode_combo.currentIndex()][0],
                 palette_size=int(self.palette_combo.currentData()),
+                size=screen_dims(res),
             )
             self.status.setText("✔ 已写入 %s（%d 帧，压缩后 %d KB）"
                                 % (out, frames, data_bytes // 1024))

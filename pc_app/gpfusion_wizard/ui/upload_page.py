@@ -15,7 +15,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import FQBN, default_tool_dir
+from ..app_config import (
+    FQBN,
+    default_tool_dir,
+    local_background_header,
+    local_sketch_dir,
+    local_sketch_ino,
+)
 from ..jobs import JobRunner, compile_progress
 from ..uploader import compile_cmd, upload_cmd
 from ..wizard_state import WizardState
@@ -110,11 +116,14 @@ class UploadPage(QWidget):
             self._log("错误：找不到 arduino-cli")
             self.finished_upload.emit(False)
             return
-        if not self.state.source_dir or not Path(self.state.source_dir, "esp32", "esp32.ino").is_file():
+        res = self.state.screen_res
+        if not self.state.source_dir or not local_sketch_ino(
+            Path(self.state.source_dir), res
+        ).is_file():
             self._set_status("源码目录未就绪，请回到第 1 步", "#FF7B72")
             self.finished_upload.emit(False)
             return
-        bg_h = Path(self.state.source_dir, "esp32", "background.h")
+        bg_h = local_background_header(Path(self.state.source_dir), res)
         if not bg_h.is_file():
             self._set_status("缺少 background.h，请先在第 3 步生成背景图", "#FFB454")
             self._log("错误：%s 不存在" % bg_h)
@@ -126,7 +135,7 @@ class UploadPage(QWidget):
             self.finished_upload.emit(False)
             return
 
-        sketch_dir = Path(self.state.source_dir, "esp32")
+        sketch_dir = local_sketch_dir(Path(self.state.source_dir), res)
         build_dir = default_tool_dir() / "build_esp32s3"
         self.log.clear()
         self._set_status("正在编译固件…（首次约 2~5 分钟）", "#50C8FF")
@@ -157,7 +166,7 @@ class UploadPage(QWidget):
         self._phase = "upload"
         self._set_status("正在上传到 ESP32-S3…", "#50C8FF")
         cli = Path(self.state.cli_path)
-        sketch_dir = Path(self.state.source_dir, "esp32")
+        sketch_dir = local_sketch_dir(Path(self.state.source_dir), self.state.screen_res)
         build_dir = default_tool_dir() / "build_esp32s3"
         self._log("$ %s" % " ".join(upload_cmd(cli, self.state.port, build_dir)))
         runner = JobRunner()

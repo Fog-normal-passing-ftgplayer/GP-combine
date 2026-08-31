@@ -8,9 +8,17 @@ from pathlib import Path
 APP_NAME = "GP-Fusion 配置向导"
 APP_VERSION = "0.5.0"
 
-# ESP32 UI 内容分辨率（横向 240x135，驱动层再旋转到竖屏面板）
-SCREEN_W = 240
-SCREEN_H = 135
+# ESP32 UI 可选分辨率（准备步骤选择）
+SCREEN_RESOLUTIONS: dict[str, tuple[int, int]] = {
+    "240x135": (240, 135),     # 默认横屏内容（驱动层旋转到竖屏面板）
+    "170x320": (320, 170),     # 1.9寸物理屏 170x320，内容仍为 320x170 横屏
+}
+SCREEN_W, SCREEN_H = SCREEN_RESOLUTIONS["240x135"]   # 兼容默认值
+
+
+def screen_dims(screen_res: str) -> tuple[int, int]:
+    """按屏幕分辨率字符串返回 (宽, 高)，未知值回退默认。"""
+    return SCREEN_RESOLUTIONS.get(str(screen_res or ""), SCREEN_RESOLUTIONS["240x135"])
 MENU_BG = (21, 27, 39)                      # esp32.ino 里的 COL_BG
 BG_ALPHAS = (0.25, 0.40, 0.55, 0.70, 0.85)  # 5 档透明度，对应机内菜单
 
@@ -58,20 +66,21 @@ def state_file() -> Path:
     return config_dir() / "wizard_state.json"
 
 
-def local_sketch_dir(source_dir: Path) -> Path:
-    return source_dir / "esp32"
+def local_sketch_dir(source_dir: Path, screen_res: str = "240x135") -> Path:
+    return source_dir / ("esp32_170x320" if screen_res == "170x320" else "esp32")
 
 
-def local_sketch_ino(source_dir: Path) -> Path:
-    return local_sketch_dir(source_dir) / "esp32.ino"
+def local_sketch_ino(source_dir: Path, screen_res: str = "240x135") -> Path:
+    d = local_sketch_dir(source_dir, screen_res)
+    return d / ("esp32_170x320.ino" if screen_res == "170x320" else "esp32.ino")
 
 
-def local_background_header(source_dir: Path) -> Path:
-    return local_sketch_dir(source_dir) / "background.h"
+def local_background_header(source_dir: Path, screen_res: str = "240x135") -> Path:
+    return local_sketch_dir(source_dir, screen_res) / "background.h"
 
 
-def local_layout_header(source_dir: Path) -> Path:
-    return local_sketch_dir(source_dir) / "layout_user.h"
+def local_layout_header(source_dir: Path, screen_res: str = "240x135") -> Path:
+    return local_sketch_dir(source_dir, screen_res) / "layout_user.h"
 
 
 def local_defaults_header(source_dir: Path) -> Path:
@@ -82,5 +91,5 @@ def local_pico_user_header(source_dir: Path) -> Path:
     return source_dir / "configs" / "GPFusion" / "pico_user.h"
 
 
-def local_gif_header(source_dir: Path) -> Path:
-    return local_sketch_dir(source_dir) / "gif_user.h"
+def local_gif_header(source_dir: Path, screen_res: str = "240x135") -> Path:
+    return local_sketch_dir(source_dir, screen_res) / "gif_user.h"

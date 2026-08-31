@@ -14,6 +14,7 @@ from .app_config import (
     local_gif_header,
     local_layout_header,
     local_pico_user_header,
+    screen_dims,
 )
 from .defaults_header import write_defaults_header
 from .gif_convert import generate_gif_header
@@ -65,7 +66,7 @@ def import_config(
     new_state.port = state.port
     new_state.cli_path = state.cli_path
     src = Path(new_state.source_dir) if new_state.source_dir else None
-    if src is None or not source_ready(str(src)):
+    if src is None or not source_ready(str(src), new_state.screen_res):
         new_state.source_dir = state.source_dir
         src = Path(new_state.source_dir) if new_state.source_dir else None
         if src is None:
@@ -79,7 +80,9 @@ def import_config(
                 leds_per_button=new_state.leds_per_button,
             )
             write_defaults_header(new_state.default_layout, local_defaults_header(src))
-            write_layout_header(new_state.layout, local_layout_header(src))
+            write_layout_header(
+                new_state.layout, local_layout_header(src, new_state.screen_res)
+            )
             notes.append("灯序 / 布局 / 默认布局已写回源码目录")
         except Exception as exc:  # noqa: BLE001
             notes.append("写回源码目录失败：%s" % exc)
@@ -88,7 +91,8 @@ def import_config(
         if bg and Path(bg).is_file():
             try:
                 generate_background_header(
-                    bg, local_background_header(src), new_state.background_mode
+                    bg, local_background_header(src, new_state.screen_res),
+                    new_state.background_mode, size=screen_dims(new_state.screen_res),
                 )
                 notes.append("背景图已重新生成")
             except Exception as exc:  # noqa: BLE001
@@ -101,9 +105,10 @@ def import_config(
             try:
                 generate_gif_header(
                     gif,
-                    local_gif_header(src),
+                    local_gif_header(src, new_state.screen_res),
                     new_state.gif_mode,
                     palette_size=new_state.gif_palette,
+                    size=screen_dims(new_state.screen_res),
                 )
                 notes.append("GIF 已重新生成")
             except Exception as exc:  # noqa: BLE001

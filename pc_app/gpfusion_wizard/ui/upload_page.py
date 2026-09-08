@@ -19,8 +19,10 @@ from ..app_config import (
     FQBN,
     default_tool_dir,
     local_background_header,
+    local_gif_header,
     local_sketch_dir,
     local_sketch_ino,
+    local_wallpaper_header,
 )
 from ..jobs import JobRunner, compile_progress
 from ..uploader import compile_cmd, upload_cmd
@@ -123,12 +125,26 @@ class UploadPage(QWidget):
             self._set_status("源码目录未就绪，请回到第 1 步", "#FF7B72")
             self.finished_upload.emit(False)
             return
-        bg_h = local_background_header(Path(self.state.source_dir), res)
-        if not bg_h.is_file():
-            self._set_status("缺少 background.h，请先在第 3 步生成背景图", "#FFB454")
-            self._log("错误：%s 不存在" % bg_h)
-            self.finished_upload.emit(False)
-            return
+        if self.state.bg_kind == "dynamic":
+            wp_h = local_wallpaper_header(Path(self.state.source_dir), res)
+            if not wp_h.is_file():
+                self._set_status("动态壁纸未启用，请先在第 3 步选择「动态壁纸」",
+                                 "#FFB454")
+                self.finished_upload.emit(False)
+                return
+            gf_h = local_gif_header(Path(self.state.source_dir), res)
+            if not gf_h.is_file():
+                self._set_status("缺少 gif_user.h，请先在第 6 步选择 GIF 动画",
+                                 "#FFB454")
+                self.finished_upload.emit(False)
+                return
+        else:
+            bg_h = local_background_header(Path(self.state.source_dir), res)
+            if not bg_h.is_file():
+                self._set_status("缺少 background.h，请先在第 3 步生成背景图", "#FFB454")
+                self._log("错误：%s 不存在" % bg_h)
+                self.finished_upload.emit(False)
+                return
         if not self.state.port:
             self._set_status("未插入 ESP32-S3，不写入固件，插入后再试", "#FFB454")
             self._log("未插入 ESP32-S3：不写入固件，插入后重试上传。")

@@ -39,8 +39,9 @@ class GifPage(QWidget):
         title = QLabel("第 6 步：GIF 动画")
         title.setObjectName("StepTitle")
         left.addWidget(title)
-        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率（240×135）并做行程压缩，"
-                      "生成固件内的 gif_user.h，机内屏保选择「GIF」即可播放。")
+        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩，"
+                      "生成固件内的 gif_user.h。作为屏保选择「GIF」播放；"
+                      "若第 3 步选了「动态壁纸」，它将成为主界面动态背景（屏保禁用）。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -161,8 +162,9 @@ class GifPage(QWidget):
                 palette_size=int(self.palette_combo.currentData()),
                 size=screen_dims(res),
             )
-            self.status.setText("✔ 已写入 %s（%d 帧，压缩后 %d KB）"
-                                % (out, frames, data_bytes // 1024))
+            use = "作为动态壁纸" if self.state.bg_kind == "dynamic" else "作为 GIF 屏保"
+            self.status.setText("✔ 已写入 %s（%d 帧，压缩后 %d KB，%s）"
+                                % (out, frames, data_bytes // 1024, use))
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
         except Exception as exc:  # noqa: BLE001

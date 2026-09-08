@@ -79,6 +79,11 @@ def local_background_header(source_dir: Path, screen_res: str = "240x135") -> Pa
     return local_sketch_dir(source_dir, screen_res) / "background.h"
 
 
+def local_wallpaper_header(source_dir: Path, screen_res: str = "240x135") -> Path:
+    """动态壁纸标记头：存在 = 固件以 GIF 作为主界面动态背景。"""
+    return local_sketch_dir(source_dir, screen_res) / "bg_wallpaper.h"
+
+
 def local_layout_header(source_dir: Path, screen_res: str = "240x135") -> Path:
     return local_sketch_dir(source_dir, screen_res) / "layout_user.h"
 

@@ -21,6 +21,7 @@ class WizardState:
     lite_screen_size: str = "0.96"
     background_src: str = ""
     background_mode: str = "cover"
+    bg_kind: str = "static"      # static=静态背景 dynamic=GIF 动态壁纸
     default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
     # Pico 配置（正式版）
     led_pin: int = 28
@@ -52,6 +53,8 @@ class WizardState:
         s.lite_screen_size = str(d.get("lite_screen_size", "0.96"))
         s.background_src = str(d.get("background_src", ""))
         s.background_mode = str(d.get("background_mode", "cover"))
+        bk = str(d.get("bg_kind", "static"))
+        s.bg_kind = bk if bk in ("static", "dynamic") else "static"
         try:
             s.default_layout = int(d.get("default_layout", 1))
         except Exception:

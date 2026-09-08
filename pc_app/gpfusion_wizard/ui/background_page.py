@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ..app_config import (
     BG_ALPHAS,
     local_background_header,
+    local_wallpaper_header,
     screen_dims,
 )
 from ..imagegen import generate_background_header, preview_image
@@ -47,12 +48,21 @@ class BackgroundPage(QWidget):
         title = QLabel("第 3 步：背景图")
         title.setObjectName("StepTitle")
         left.addWidget(title)
-        hint = QLabel("选择一张图片，会自动转换成屏幕分辨率（240×135），"
-                      "生成固件内的 5 档透明度背景。")
+        hint = QLabel("静态背景用图片生成固件背景；动态壁纸用 GIF 作为主界面"
+                      "动态背景（此时屏保自动禁用，GIF 需在第 6 步选择）。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
         left.addSpacing(10)
+
+        kind_row = QHBoxLayout()
+        kind_row.addWidget(QLabel("背景类型"))
+        self.kind_combo = QComboBox()
+        self.kind_combo.addItem("静态背景", "static")
+        self.kind_combo.addItem("动态壁纸（GIF）", "dynamic")
+        self.kind_combo.currentIndexChanged.connect(self._on_kind_changed)
+        kind_row.addWidget(self.kind_combo, 1)
+        left.addLayout(kind_row)
 
         pick_row = QHBoxLayout()
         self.pick_btn = QPushButton("选择图片…")
@@ -114,18 +124,55 @@ class BackgroundPage(QWidget):
         root.addWidget(right, 3)
 
     def _load_previous(self) -> None:
+        idx = self.kind_combo.findData(self.state.bg_kind)
+        if idx >= 0:
+            self.kind_combo.blockSignals(True)
+            self.kind_combo.setCurrentIndex(idx)
+            self.kind_combo.blockSignals(False)
         if self.state.background_src and Path(self.state.background_src).is_file():
             self.path_label.setText(Path(self.state.background_src).name)
         for i, (key, _name) in enumerate(self.MODES):
             if key == self.state.background_mode:
                 self.mode_combo.setCurrentIndex(i)
                 break
+        self._apply_kind_widgets()
 
     def reload_state(self) -> None:
         self.path_label.setText("未选择图片")
         self._load_previous()
         self._update_preview()
         self.status_label.setText("")
+
+    def _apply_kind_widgets(self) -> None:
+        dyn = self.state.bg_kind == "dynamic"
+        self.pick_btn.setEnabled(not dyn)
+        self.mode_combo.setEnabled(not dyn)
+        self.alpha_slider.setEnabled(not dyn)
+        self.gen_btn.setText("写入固件设置" if dyn else "生成并写入固件")
+        if dyn:
+            self.status_label.setText(
+                "动态壁纸模式：请在后续 GIF 步骤选择动画；"
+                "固件编译后主界面将以 GIF 为背景，屏保自动禁用。"
+            )
+            self.status_label.setStyleSheet("color: #FFB454;")
+
+    def _on_kind_changed(self) -> None:
+        self.state.bg_kind = str(self.kind_combo.currentData())
+        self.state.save()
+        self._apply_kind_widgets()
+        self.generate_now()
+
+    def _write_wallpaper_marker(self) -> None:
+        res = self.state.screen_res
+        out = local_wallpaper_header(Path(self.state.source_dir), res)
+        out.write_text("#pragma once\n#define BG_WALLPAPER 1\n", encoding="utf-8")
+        return out
+
+    def _remove_wallpaper_marker(self) -> None:
+        res = self.state.screen_res
+        out = local_wallpaper_header(Path(self.state.source_dir), res)
+        if out.exists():
+            out.unlink()
 
     def _on_change(self) -> None:
         self.state.background_mode = self.MODES[self.mode_combo.currentIndex()][0]
@@ -151,6 +198,10 @@ class BackgroundPage(QWidget):
     def _update_preview(self) -> None:
         idx = self.alpha_slider.value() - 1
         self.alpha_label.setText("%d%%" % int(BG_ALPHAS[idx] * 100))
+        if self.state.bg_kind == "dynamic":
+            self.preview.setPixmap(QPixmap())
+            self.preview.setText("动态壁纸：主界面以 GIF 动画为背景（屏保禁用）")
+            return
         if not self.state.background_src or not Path(self.state.background_src).is_file():
             self.preview.setPixmap(QPixmap())
             return
@@ -171,17 +222,27 @@ class BackgroundPage(QWidget):
             self.preview.setText("无法预览：%s" % exc)
 
     def generate_now(self) -> None:
-        src = self.state.background_src
-        if not src or not Path(src).is_file():
-            self.status_label.setText("请先选择一张背景图片")
-            self.status_label.setStyleSheet("color: #FFB454;")
-            return
         if not self.state.source_dir:
             self.status_label.setText("源码目录未就绪，请先完成第 1 步")
             self.status_label.setStyleSheet("color: #FFB454;")
             return
         try:
             res = self.state.screen_res
+            if self.state.bg_kind == "dynamic":
+                out = self._write_wallpaper_marker()
+                self.status_label.setText(
+                    "✔ 动态壁纸已启用（%s）；请在第 6 步选择 GIF 动画"
+                    % out
+                )
+                self.status_label.setStyleSheet("color: #64E0A0;")
+                self.changed.emit()
+                return
+            self._remove_wallpaper_marker()
+            src = self.state.background_src
+            if not src or not Path(src).is_file():
+                self.status_label.setText("请先选择一张背景图片")
+                self.status_label.setStyleSheet("color: #FFB454;")
+                return
             out = local_background_header(Path(self.state.source_dir), res)
             generate_background_header(src, out, self.state.background_mode,
                                        size=screen_dims(res))

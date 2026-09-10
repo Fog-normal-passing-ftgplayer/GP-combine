@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 FONT_PATH = "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"
 FONT_INDEX = 2          # Noto CJK TTC order: 0=JP 1=KR 2=SC 3=TC 4=HK
 SIZE = 16
-OUT = "/home/bit/GP2040-CE/esp32/cn_font.h"
+OUT = "/home/bit/GP2040-CE/esp32_170x320/cn_font.h"
 
 # menu page titles + common UI words; deduplicated into the glyph set
 PHRASES = [
@@ -33,6 +33,7 @@ PHRASES = [
     "输入历史", "显示",
     "街机", "按键布局",
     "主题", "风格", "浅色",
+    "动态壁纸", "壁纸来源", "卡内文件", "固件内置", "屏保已禁用",
     "品牌橙", "绯红", "翠绿", "紫罗兰", "青蓝",
     "复古", "扫描线", "暗角",
     "无线", "无线开关", "信道", "发射功率", "数据速率", "心跳频率",

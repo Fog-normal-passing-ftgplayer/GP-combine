@@ -6,26 +6,28 @@ from pathlib import Path
 from .app_config import FQBN
 
 
-def compile_cmd(cli: Path, sketch_dir: Path, build_dir: Path) -> list[str]:
+def compile_cmd(cli: Path, sketch_dir: Path, build_dir: Path,
+                fqbn: str = FQBN) -> list[str]:
     return [
         str(cli),
         "compile",
         "--fqbn",
-        FQBN,
+        fqbn,
         "--build-path",
         str(build_dir),
         str(sketch_dir),
     ]
 
 
-def upload_cmd(cli: Path, port: str, build_dir: Path) -> list[str]:
+def upload_cmd(cli: Path, port: str, build_dir: Path,
+               fqbn: str = FQBN) -> list[str]:
     return [
         str(cli),
         "upload",
         "-p",
         port,
         "--fqbn",
-        FQBN,
+        fqbn,
         "--input-dir",
         str(build_dir),
     ]

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ..app_config import (
     FQBN,
     default_tool_dir,
+    fqbn_for,
     local_background_header,
     local_gif_header,
     local_sketch_dir,
@@ -93,6 +94,14 @@ class UploadPage(QWidget):
     def on_shown(self) -> None:
         self.port_label.setText("端口：%s" % (self.state.port or "未检测到"))
         self.src_label.setText("源码目录：%s" % (self.state.source_dir or "-"))
+        res = self.state.screen_res
+        self.board_label.setText(
+            "目标板：ESP32-S3（%s）%s" % (
+                fqbn_for(res),
+                "　16MB 自定义分区（app 3MB / LittleFS 12.94MB）"
+                if res == "170x320" else "",
+            )
+        )
         if self._auto_started:
             return
         self._auto_started = True
@@ -152,20 +161,26 @@ class UploadPage(QWidget):
             return
 
         sketch_dir = local_sketch_dir(Path(self.state.source_dir), res)
-        build_dir = default_tool_dir() / "build_esp32s3"
+        fqbn = fqbn_for(res)
+        build_dir = default_tool_dir() / (
+            "build_esp32s3_170x320" if res == "170x320" else "build_esp32s3")
         self.log.clear()
+        self._log("目标：N16R8（16MB flash + 8MB PSRAM），自定义分区 "
+                  "app 3MB / LittleFS 12.94MB")
+        self._log("提示：首次写入会重排分区表，板内 LittleFS 会被清空"
+                  "（屏幕配置会自动从 Pico 镜像恢复）")
         self._set_status("正在编译固件…（首次约 2~5 分钟）", "#50C8FF")
         self.progress.setVisible(True)
         self.start_btn.setEnabled(False)
         self.cancel_btn.setVisible(True)
         self._phase = "compile"
-        self._log("$ %s" % " ".join(compile_cmd(cli, sketch_dir, build_dir)))
+        self._log("$ %s" % " ".join(compile_cmd(cli, sketch_dir, build_dir, fqbn)))
         runner = JobRunner()
         self._runner = runner
         runner.line_ready.connect(self._log)
         runner.finished.connect(self._on_compile_done)
         runner.start(
-            compile_cmd(cli, sketch_dir, build_dir),
+            compile_cmd(cli, sketch_dir, build_dir, fqbn),
             parse_progress=compile_progress,
         )
 
@@ -182,14 +197,16 @@ class UploadPage(QWidget):
         self._phase = "upload"
         self._set_status("正在上传到 ESP32-S3…", "#50C8FF")
         cli = Path(self.state.cli_path)
-        sketch_dir = local_sketch_dir(Path(self.state.source_dir), self.state.screen_res)
-        build_dir = default_tool_dir() / "build_esp32s3"
-        self._log("$ %s" % " ".join(upload_cmd(cli, self.state.port, build_dir)))
+        res2 = self.state.screen_res
+        fqbn2 = fqbn_for(res2)
+        build_dir = default_tool_dir() / (
+            "build_esp32s3_170x320" if res2 == "170x320" else "build_esp32s3")
+        self._log("$ %s" % " ".join(upload_cmd(cli, self.state.port, build_dir, fqbn2)))
         runner = JobRunner()
         self._runner = runner
         runner.line_ready.connect(self._log)
         runner.finished.connect(self._on_upload_done)
-        runner.start(upload_cmd(cli, self.state.port, build_dir))
+        runner.start(upload_cmd(cli, self.state.port, build_dir, fqbn2))
 
     def _on_upload_done(self, code: int) -> None:
         self.progress.setVisible(False)

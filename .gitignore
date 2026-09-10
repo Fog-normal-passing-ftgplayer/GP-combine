@@ -10,6 +10,9 @@ build_receiver/
 build_receiver_zero/
 esp32/build/
 esp32_170x320/build/
+# 配置助手生成的卡内壁纸与文件系统镜像（13.5MB 构建产物）
+data/wp/*.gfr
+data/wp/littlefs.bin
 pico/build/
 tools/*/build/
 

@@ -1,0 +1,8 @@
+# ESP32-S3 N16R8 (16 MB flash)：170x320 正式版
+# app 3 MB（现用约 1.2 MB，留出后续功能/GIF 余量）
+# LittleFS ~12.94 MB（GIF/背景/配置）
+# Name,   Type, SubType, Offset,   Size, Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x300000,
+spiffs,   data, spiffs,  0x310000, 0xCF0000,

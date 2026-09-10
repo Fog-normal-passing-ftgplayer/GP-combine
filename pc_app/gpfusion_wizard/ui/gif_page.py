@@ -16,8 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import local_gif_header, screen_dims
-from ..gif_convert import generate_gif_header
+from ..app_config import local_gif_header, local_wallpaper_gfr, screen_dims
+from ..gif_convert import generate_gif_header, generate_gif_gfr
+from ..jobs import JobRunner
+from ..wallpaper_fs import build_fs_image, flash_fs_cmd
 from ..wizard_state import WizardState
 
 
@@ -74,6 +76,10 @@ class GifPage(QWidget):
         self.gen_btn.setObjectName("Primary")
         self.gen_btn.clicked.connect(self.generate_now)
         left.addWidget(self.gen_btn)
+
+        self.fs_btn = QPushButton("写入设备壁纸（LittleFS）")
+        self.fs_btn.clicked.connect(self.flash_wallpaper_fs)
+        left.addWidget(self.fs_btn)
 
         self.status = QLabel("")
         self.status.setObjectName("Muted")
@@ -163,10 +169,67 @@ class GifPage(QWidget):
                 size=screen_dims(res),
             )
             use = "作为动态壁纸" if self.state.bg_kind == "dynamic" else "作为 GIF 屏保"
-            self.status.setText("✔ 已写入 %s（%d 帧，压缩后 %d KB，%s）"
-                                % (out, frames, data_bytes // 1024, use))
+            msg = "✔ 已写入 %s（%d 帧，压缩后 %d KB，%s）" % (
+                out, frames, data_bytes // 1024, use)
+            if self.state.bg_kind == "dynamic":
+                gfr = local_wallpaper_gfr(Path(self.state.source_dir))
+                gfr, gf, gb = generate_gif_gfr(
+                    self.state.gif_src, gfr,
+                    self.MODES[self.mode_combo.currentIndex()][0],
+                    palette_size=int(self.palette_combo.currentData()),
+                    size=screen_dims(res),
+                )
+                msg += "\n✔ 卡内壁纸文件 %s（%d 帧，%d KB）" % (gfr, gf, gb // 1024)
+            self.status.setText(msg)
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
         except Exception as exc:  # noqa: BLE001
             self.status.setText("生成失败：%s" % exc)
+            self.status.setStyleSheet("color: #FF7B72;")
+
+    def flash_wallpaper_fs(self) -> None:
+        """把 /wp/1.gfr 写入设备 LittleFS（仅 170x320，会清空板内配置）。"""
+        if not self.state.source_dir:
+            self.status.setText("源码目录未就绪")
+            self.status.setStyleSheet("color: #FFB454;")
+            return
+        if not self.state.port:
+            self.status.setText("未检测到 ESP32-S3 串口")
+            self.status.setStyleSheet("color: #FFB454;")
+            return
+        gfr = local_wallpaper_gfr(Path(self.state.source_dir))
+        if not gfr.is_file():
+            self.generate_now()
+        if not gfr.is_file():
+            self.status.setText("卡内壁纸文件不存在，请先生成")
+            self.status.setStyleSheet("color: #FF7B72;")
+            return
+        img = Path(self.state.source_dir) / "data" / "wp" / "littlefs.bin"
+        ok, msg = build_fs_image(gfr.parent.parent, img)   # data/ 作为根，内含 wp/
+        if not ok:
+            self.status.setText(msg)
+            self.status.setStyleSheet("color: #FF7B72;")
+            return
+        cmd = flash_fs_cmd(self.state.port, img)
+        if cmd is None:
+            self.status.setText("找不到 esptool，无法写入设备")
+            self.status.setStyleSheet("color: #FF7B72;")
+            return
+        self.status.setText("%s\n正在写入设备（会清空板内配置）…" % msg)
+        self.status.setStyleSheet("color: #50C8FF;")
+        runner = JobRunner()
+        self._fs_runner = runner
+        runner.line_ready.connect(self._on_flash_log)
+        runner.finished.connect(self._on_flash_done)
+        runner.start(cmd)
+
+    def _on_flash_log(self, line: str) -> None:
+        self.status.setText(self.status.text().split("\n")[0] + "\n" + line.strip())
+
+    def _on_flash_done(self, code: int) -> None:
+        if code == 0:
+            self.status.setText("✔ 壁纸文件已写入设备，断电重启后生效")
+            self.status.setStyleSheet("color: #64E0A0;")
+        else:
+            self.status.setText("写入失败（退出码 %d）" % code)
             self.status.setStyleSheet("color: #FF7B72;")

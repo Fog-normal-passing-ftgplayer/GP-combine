@@ -18,8 +18,9 @@
 #include "bg_wallpaper.h"
 #endif
 
-// 动态壁纸：GIF 作为主界面动态背景；此时屏保禁用、休眠屏保项不可编辑
-#if defined(BG_WALLPAPER) && defined(GIF_USER_FRAMES)
+// 动态壁纸：GIF 作为主界面动态背景（GIF 可来自 LittleFS 或编译内置）；
+// 此时屏保禁用、休眠屏保项不可编辑
+#if defined(BG_WALLPAPER)
 #define WALLPAPER_ACTIVE 1
 #else
 #define WALLPAPER_ACTIVE 0
@@ -888,58 +889,145 @@ void drawSaverMatrix() {
 }
 
 // GIF 屏保：解压 PC 助手生成的 RLE 帧（方案三：压缩存储 + 运行时解码）
-// GIF 帧推进/绘制（屏保与动态壁纸共用同一条帧流）
+// ---- GIF 帧源：优先 LittleFS 里的 /wp/1.gfr，否则回退编译内置 gif_user.h ----
+#define GIF_FS_PATH     "/wp/1.gfr"
+#define GIF_MAX_FRAMES  120
+#define GIF_MAX_PALETTE 32
+
+static const uint8_t *gifData = nullptr;
+static const uint16_t *gifDelays = nullptr;
+static const uint32_t *gifOffsets = nullptr;
+static const uint16_t *gifPalette = nullptr;
+static uint32_t gifDataSize = 0;
+static int gifFrames = 0, gifPalSize = 0, gifW = 0, gifH = 0;
+static bool gifReady = false;
+bool gifFromFs = false;                  // true = 来自卡内 .gfr
+
+static uint16_t gifDelaysRam[GIF_MAX_FRAMES];
+static uint32_t gifOffsetsRam[GIF_MAX_FRAMES];
+static uint16_t gifPaletteRam[GIF_MAX_PALETTE];
+static uint8_t *gifFsBuf = nullptr;
 static int gifIdx = 0;
 static unsigned long gifLast = 0;
 
-bool gifFrameTick() {
-#ifdef GIF_USER_FRAMES
-  unsigned long now = millis();
-  if (gifLast == 0) {
-    gifLast = now;
-    return true;
+static uint16_t gifRd16(const uint8_t *p) {
+  return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
+}
+static uint32_t gifRd32(const uint8_t *p) {
+  return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+         ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// .gfr 文件：magic"GFR1" ver u8 | frames u16 | w u16 | h u16 | palsize u8 |
+//            datasize u32 | palette u16[] | delays u16[] | offsets u32[] | RLE data
+static bool gifLoadFromFs(const char *path) {
+  File f = LittleFS.open(path, "r");
+  if (!f) return false;
+  size_t n = f.size();
+  if (n < 16 || n > 3 * 1024 * 1024) { f.close(); return false; }
+  uint8_t *buf = (uint8_t *)ps_malloc(n);
+  if (!buf) { f.close(); return false; }
+  size_t got = f.read(buf, n);
+  f.close();
+  if (got != n) { free(buf); return false; }
+  if (memcmp(buf, "GFR1", 4) != 0 || buf[4] != 2) { free(buf); return false; }
+  int frames = gifRd16(buf + 5);
+  int w = gifRd16(buf + 7);
+  int h = gifRd16(buf + 9);
+  int pal = buf[11];
+  uint32_t dsz = gifRd32(buf + 12);
+  if (frames <= 0 || frames > GIF_MAX_FRAMES || pal <= 0 || pal > GIF_MAX_PALETTE) {
+    free(buf); return false;
   }
+  if ((size_t)16 + 2 * pal + 2 * frames + 4 * frames + dsz > n) {
+    free(buf); return false;
+  }
+  const uint8_t *p = buf + 16;
+  for (int i = 0; i < pal; i++) gifPaletteRam[i] = gifRd16(p + 2 * i);
+  p += 2 * pal;
+  for (int i = 0; i < frames; i++) gifDelaysRam[i] = gifRd16(p + 2 * i);
+  p += 2 * frames;
+  for (int i = 0; i < frames; i++) gifOffsetsRam[i] = gifRd32(p + 4 * i);
+  p += 4 * frames;
+  if (gifFsBuf) free(gifFsBuf);
+  gifFsBuf = buf;
+  gifData = p;
+  gifDataSize = dsz;
+  gifPalette = gifPaletteRam;
+  gifDelays = gifDelaysRam;
+  gifOffsets = gifOffsetsRam;
+  gifFrames = frames;
+  gifPalSize = pal;
+  gifW = w;
+  gifH = h;
+  gifReady = true;
+  gifFromFs = true;
+  return true;
+}
+
+static void gifInitEmbedded() {
+#ifdef GIF_USER_FRAMES
+  gifData = GIF_USER_DATA;
+  gifDataSize = GIF_USER_DATA_SIZE;
+  gifPalette = GIF_USER_PALETTE;
+  gifDelays = GIF_USER_DELAYS;
+  gifOffsets = GIF_USER_OFFSETS;
+  gifFrames = GIF_USER_FRAMES;
+  gifPalSize = GIF_USER_PALETTE_SIZE;
+  gifW = GIF_USER_WIDTH;
+  gifH = GIF_USER_HEIGHT;
+  gifReady = true;
+  gifFromFs = false;
+#endif
+}
+
+void gifInit() {
+  gifReady = false;
+  if (LittleFS.begin(true) && LittleFS.exists(GIF_FS_PATH) &&
+      gifLoadFromFs(GIF_FS_PATH)) {
+    return;
+  }
+  gifInitEmbedded();
+}
+
+bool gifFrameTick() {
+  if (!gifReady) return false;
+  unsigned long now = millis();
+  if (gifLast == 0) { gifLast = now; return true; }
   bool changed = false;
   int guard = 0;
-  while (now - gifLast >= (unsigned long)GIF_USER_DELAYS[gifIdx] && guard++ < 8) {
-    gifLast += GIF_USER_DELAYS[gifIdx];
-    gifIdx = (gifIdx + 1) % GIF_USER_FRAMES;
+  while (now - gifLast >= (unsigned long)gifDelays[gifIdx] && guard++ < 8) {
+    unsigned long d = gifDelays[gifIdx];
+    gifLast += (d ? d : 1);
+    gifIdx = (gifIdx + 1) % gifFrames;
     changed = true;
   }
   return changed;
-#else
-  return false;
-#endif
 }
 
-void gifDrawCurrent() {
-#ifdef GIF_USER_FRAMES
-  int off = GIF_USER_OFFSETS[gifIdx];
-  int end = (gifIdx + 1 < GIF_USER_FRAMES) ? GIF_USER_OFFSETS[gifIdx + 1]
-                                           : GIF_USER_DATA_SIZE;
+bool gifDrawCurrent() {
+  if (!gifReady) return false;
+  int off = (int)gifOffsets[gifIdx];
+  int end = (gifIdx + 1 < gifFrames) ? (int)gifOffsets[gifIdx + 1] : (int)gifDataSize;
+  if (off < 0 || off >= (int)gifDataSize) return false;
   int x = 0, y = 0;
-  for (int i = off; i < end; ) {
-    int run = GIF_USER_DATA[i++];           // 0 表示 256
+  for (int i = off; i < end && i < (int)gifDataSize; ) {
+    int run = gifData[i++];                 // 0 表示 256
     if (run == 0) run = 256;
-    uint8_t idx = GIF_USER_DATA[i++];
-    uint16_t c = (idx < GIF_USER_PALETTE_SIZE) ? GIF_USER_PALETTE[idx] : 0;
+    if (i >= (int)gifDataSize) break;
+    uint8_t idx = gifData[i++];
+    uint16_t c = (idx < gifPalSize) ? gifPalette[idx] : 0;
     while (run--) {
-      if (x < GIF_USER_WIDTH && y < GIF_USER_HEIGHT) lfbSet(x, y, c);
-      if (++x >= GIF_USER_WIDTH) { x = 0; y++; }
+      if (x < gifW && y < gifH) lfbSet(x, y, c);
+      if (++x >= gifW) { x = 0; y++; }
     }
   }
-#else
-  lfbFill(colBg);
-#endif
+  return true;
 }
 
 void drawSaverGif() {
-#ifdef GIF_USER_FRAMES
   gifFrameTick();
-  gifDrawCurrent();
-#else
-  lfbFill(colBg);
-#endif
+  if (!gifDrawCurrent()) lfbFill(colBg);
 }
 
 void renderSaver() {
@@ -1281,6 +1369,10 @@ void renderSub() {
 #if WALLPAPER_ACTIVE
     if (subPage == 4) {
       drawCJKTextCentered(SCR_CX, 122, "动态壁纸模式 · 屏保已禁用", RGB565(120,132,150), 1);
+    } else if (subPage == 3) {
+      drawCJKTextCentered(SCR_CX, 122,
+                          gifFromFs ? "壁纸来源: 卡内文件" : "壁纸来源: 固件内置",
+                          RGB565(120,132,150), 1);
     } else
 #endif
     drawCJKTextCentered(SCR_CX, 122, sliderMode ? "左右调整 B退出" : "左右改值 上下选择 B返回",
@@ -1664,7 +1756,7 @@ void renderScene(int16_t outX, int16_t inX) {
     renderSaver();
   } else if (view == VIEW_LAYOUT) {
 #if WALLPAPER_ACTIVE
-    gifDrawCurrent();                       // 动态壁纸：GIF 当前帧作背景
+    if (!gifDrawCurrent()) drawBackground(bgOpts[0].value);  // 无 GIF 时回退静态背景
 #else
     drawBackground(bgOpts[0].value);
 #endif
@@ -2387,6 +2479,7 @@ void setup(){
   xTaskCreatePinnedToCore(radioTask, "radio", 4096, NULL, 1, NULL, 0); // 发送跑在核0
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
+  gifInit();              // GIF 源：卡内 /wp/1.gfr 优先，否则内置 gif_user.h
 }
 
 void loop(){
@@ -2417,7 +2510,7 @@ void loop(){
   if (listAnimating) updateListAnim();
 #if WALLPAPER_ACTIVE
   // 动态壁纸：按 GIF 帧间隔主动重绘主界面
-  if (view == VIEW_LAYOUT && gifFrameTick()) redrawNeeded = true;
+  if (view == VIEW_LAYOUT && gifReady && gifFrameTick()) redrawNeeded = true;
 #endif
   if (savedFlashUntil && millis() >= savedFlashUntil) { // toast expired
       savedFlashUntil = 0;

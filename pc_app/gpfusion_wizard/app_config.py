@@ -23,6 +23,15 @@ MENU_BG = (21, 27, 39)                      # esp32.ino 里的 COL_BG
 BG_ALPHAS = (0.25, 0.40, 0.55, 0.70, 0.85)  # 5 档透明度，对应机内菜单
 
 FQBN = "esp32:esp32:esp32s3"
+# 正式版都跑在 N16R8（16MB flash + 8MB OPI PSRAM）上：
+# 自定义分区（app 3MB / LittleFS 12.94MB），需 sketch 目录内 partitions.csv
+FQBN_16MB = "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom"
+FQBN_170x320 = FQBN_16MB      # 兼容旧引用
+
+
+def fqbn_for(screen_res: str) -> str:
+    """正式版（240x135 / 170x320）都编译为 N16R8 16MB + OPI PSRAM + 自定义分区。"""
+    return FQBN_16MB
 ESP32_CORE = "esp32:esp32"
 ESP32_INDEX_URL = "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
@@ -86,6 +95,11 @@ def local_wallpaper_header(source_dir: Path, screen_res: str = "240x135") -> Pat
 
 def local_layout_header(source_dir: Path, screen_res: str = "240x135") -> Path:
     return local_sketch_dir(source_dir, screen_res) / "layout_user.h"
+
+
+def local_wallpaper_gfr(source_dir: Path) -> Path:
+    """卡内壁纸文件路径（写入设备 LittleFS 的 /wp/1.gfr）。"""
+    return source_dir / "data" / "wp" / "1.gfr"
 
 
 def local_defaults_header(source_dir: Path) -> Path:

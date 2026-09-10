@@ -27,6 +27,7 @@ from .layout_page import LayoutPage
 from .lite_source_page import LiteSourcePage
 from .lite_uf2_page import LiteUf2Page
 from .lite_webconfig_page import LiteWebConfigPage
+from .nes_page import NesPage
 from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .reflash_page import ReflashPage
@@ -39,6 +40,7 @@ FULL_STEPS = [
     "按键布局",
     "Pico 灯带",
     "GIF 动画",
+    "小游戏（NES）",
     "网页配置",
     "编译上传",
     "整机重刷",
@@ -123,6 +125,7 @@ class MainWindow(QWidget):
         self.layout_page = LayoutPage(self.state)
         self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
+        self.nes_page = NesPage(self.state)
         self.upload_page = UploadPage(self.state)
         self.reflash_page = ReflashPage(self.state)
         self.lite_source_page = LiteSourcePage(self.state)
@@ -134,6 +137,7 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.layout_page)
         self.stack.addWidget(self.pico_page)
         self.stack.addWidget(self.gif_page)
+        self.stack.addWidget(self.nes_page)
         self.stack.addWidget(self.webconfig_page)
         self.stack.addWidget(self.upload_page)
         self.stack.addWidget(self.reflash_page)
@@ -189,9 +193,9 @@ class MainWindow(QWidget):
         idx = self._mode_offset() + row
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
-        if self._mode == "full" and row == 6:
-            self.upload_page.on_shown()
         if self._mode == "full" and row == 7:
+            self.upload_page.on_shown()
+        if self._mode == "full" and row == 8:
             self.reflash_page.on_shown()
         if self._mode == "lite" and row == 3:
             self.lite_uf2_page.on_shown()

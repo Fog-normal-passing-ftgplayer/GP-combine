@@ -20,6 +20,7 @@ from ..app_config import (
     fqbn_for,
     local_sketch_dir,
     local_wallpaper_gfr,
+    local_nes_dir,
 )
 from ..jobs import JobRunner
 from ..uploader import compile_cmd
@@ -152,11 +153,19 @@ class ReflashPage(QWidget):
         self._log("✔ 编译完成，开始写入…")
         fs_img = None
         if self.fs_check.isChecked():
+            files: list[tuple[Path, str]] = []
             gfr = local_wallpaper_gfr(Path(self.state.source_dir))
             if gfr.is_file():
+                files.append((gfr, "wp/1.gfr"))
+            rom_dir = local_nes_dir(Path(self.state.source_dir))
+            if rom_dir.is_dir():
+                for rom in sorted(rom_dir.glob("*.nes")):
+                    files.append((rom, "nes/" + rom.name))
+            if files:
                 fs_img = Path(self.state.source_dir) / "data" / "wp" / "littlefs.bin"
-                ok, msg = stage_fs_image([(gfr, "wp/1.gfr")], fs_img)
+                ok, msg = stage_fs_image(files, fs_img)
                 self._log(("✔ " if ok else "✘ ") + msg)
+                self._log("  卡内文件：%s" % "、".join(inner for _s, inner in files))
                 if not ok:
                     fs_img = None
         boot = self._build / (self._sketch.name + ".ino.bootloader.bin")

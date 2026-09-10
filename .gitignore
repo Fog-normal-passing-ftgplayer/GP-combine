@@ -32,3 +32,6 @@ www/src_gen/enums.ts
 
 # GP-Combine Lite（独立仓库，lite 分支）
 GP-Fusion Lite/
+
+# NES ROM（版权物，不入库；由配置助手导入设备）
+data/nes/*.nes

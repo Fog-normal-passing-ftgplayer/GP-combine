@@ -102,6 +102,16 @@ def local_wallpaper_gfr(source_dir: Path) -> Path:
     return source_dir / "data" / "wp" / "1.gfr"
 
 
+def local_nes_dir(source_dir: Path) -> Path:
+    """卡内 NES ROM 目录（写入设备 LittleFS 的 /nes/*.nes）。"""
+    return source_dir / "data" / "nes"
+
+
+def local_nes_conf(source_dir: Path, screen_res: str = "240x135") -> Path:
+    """小游戏运行配置头（缩放模式），仅 170x320 版使用。"""
+    return local_sketch_dir(source_dir, screen_res) / "nes_conf.h"
+
+
 def local_defaults_header(source_dir: Path) -> Path:
     return local_sketch_dir(source_dir) / "defaults.h"
 

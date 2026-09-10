@@ -8,6 +8,19 @@
  //--------------------------GP2040CE-COPYRIGHT---------------------------//
  Copyright (c) 2024 OpenStickCommunity (gp2040-ce.info)
  Copyright (c) 2021 Jason Skuby (mytechtoybox.com)
+
+ //--------------------------INFONES-COPYRIGHT---------------------------//
+ NES 模拟器核心（Nes emulator core）: InfoNES
+   esp32_170x320/src/nes/  （正式版 170x320 的小游戏功能）
+ Copyright (C) 2000 Kiyoka Nishiyama (InfoNES Project, based on pNesX)
+ Copyright (C) 2020-2024 jay-kumogata (InfoNES SDL/Linux port)
+ Upstream: https://github.com/jay-kumogata/InfoNES
+ Licensed under the Apache License, Version 2.0
+   完整许可文本见 esp32_170x320/src/nes/LICENSE
+   (Apache-2.0 与本项目 GPL-3.0 兼容，可一并分发)
+ 本项目的 NES 移植层（InfoNES_System_ESP32.cpp、mapper 裁剪、PSRAM 缓冲、
+ SPI 推屏、UART 手柄输入）为 GP-Combine 原创，同样适用本文件首页的版权声明。
+
  Everyone is permitted to copy and distribute verbatim copies
  of this license document, but changing it is not allowed.
  

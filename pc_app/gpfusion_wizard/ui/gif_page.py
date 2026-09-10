@@ -16,10 +16,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import local_gif_header, local_wallpaper_gfr, screen_dims
+from ..app_config import (
+    local_gif_header,
+    local_nes_dir,
+    local_wallpaper_gfr,
+    screen_dims,
+)
 from ..gif_convert import generate_gif_header, generate_gif_gfr
 from ..jobs import JobRunner
-from ..wallpaper_fs import build_fs_image, flash_fs_cmd
+from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
 
 
@@ -213,7 +218,12 @@ class GifPage(QWidget):
             self.status.setStyleSheet("color: #FF7B72;")
             return
         img = Path(self.state.source_dir) / "data" / "wp" / "littlefs.bin"
-        ok, msg = build_fs_image(gfr.parent.parent, img)   # data/ 作为根，内含 wp/
+        files = [(gfr, "wp/1.gfr")]
+        rom_dir = local_nes_dir(Path(self.state.source_dir))
+        if rom_dir.is_dir():
+            for rom in sorted(rom_dir.glob("*.nes")):
+                files.append((rom, "nes/" + rom.name))
+        ok, msg = stage_fs_image(files, img)
         if not ok:
             self.status.setText(msg)
             self.status.setStyleSheet("color: #FF7B72;")

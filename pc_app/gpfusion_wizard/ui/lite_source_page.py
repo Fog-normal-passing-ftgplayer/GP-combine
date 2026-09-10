@@ -1,4 +1,4 @@
-"""Lite 模式第 1 步：选择 Lite 版本源码文件夹。"""
+"""Lite 模式：选择 Lite 版本源码文件夹。"""
 from __future__ import annotations
 
 import os
@@ -73,7 +73,7 @@ class LiteSourcePage(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
-        title = QLabel("Lite 版本 · 第 1 步：源码文件夹")
+        title = QLabel("Lite 版本 · 源码文件夹")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel(

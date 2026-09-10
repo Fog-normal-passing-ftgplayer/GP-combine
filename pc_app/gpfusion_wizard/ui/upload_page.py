@@ -20,10 +20,10 @@ from ..app_config import (
     default_tool_dir,
     fqbn_for,
     local_background_header,
-    local_gif_header,
     local_sketch_dir,
     local_sketch_ino,
     local_wallpaper_header,
+    local_wallpaper_gfr,
 )
 from ..jobs import JobRunner, compile_progress
 from ..uploader import compile_cmd, upload_cmd
@@ -45,7 +45,7 @@ class UploadPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
 
-        title = QLabel("第 7 步：编译并上传")
+        title = QLabel("编译上传")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel("上传前请保持 ESP32-S3 通过 USB 连接。首次编译需要几分钟，请稍候。")
@@ -123,7 +123,7 @@ class UploadPage(QWidget):
             return
         cli = Path(self.state.cli_path) if self.state.cli_path else None
         if not cli or not cli.is_file():
-            self._set_status("arduino-cli 未就绪，请回到第 1 步", "#FF7B72")
+            self._set_status("arduino-cli 未就绪，请到「设备与源码」页安装", "#FF7B72")
             self._log("错误：找不到 arduino-cli")
             self.finished_upload.emit(False)
             return
@@ -131,26 +131,27 @@ class UploadPage(QWidget):
         if not self.state.source_dir or not local_sketch_ino(
             Path(self.state.source_dir), res
         ).is_file():
-            self._set_status("源码目录未就绪，请回到第 1 步", "#FF7B72")
+            self._set_status("源码目录未就绪，请到「设备与源码」页设置", "#FF7B72")
             self.finished_upload.emit(False)
             return
         if self.state.bg_kind == "dynamic":
             wp_h = local_wallpaper_header(Path(self.state.source_dir), res)
             if not wp_h.is_file():
-                self._set_status("动态壁纸未启用，请先在第 3 步选择「动态壁纸」",
+                self._set_status("动态壁纸未启用，请先在「背景 / 壁纸」页选择「动态壁纸」",
                                  "#FFB454")
                 self.finished_upload.emit(False)
                 return
-            gf_h = local_gif_header(Path(self.state.source_dir), res)
-            if not gf_h.is_file():
-                self._set_status("缺少 gif_user.h，请先在第 6 步选择 GIF 动画",
-                                 "#FFB454")
+            gfr = local_wallpaper_gfr(Path(self.state.source_dir))
+            if not gfr.is_file():
+                self._set_status(
+                    "缺少卡内壁纸 data/wp/1.gfr，请先在「GIF 动画」页生成",
+                    "#FFB454")
                 self.finished_upload.emit(False)
                 return
         else:
             bg_h = local_background_header(Path(self.state.source_dir), res)
             if not bg_h.is_file():
-                self._set_status("缺少 background.h，请先在第 3 步生成背景图", "#FFB454")
+                self._set_status("缺少 background.h，请先在「背景 / 壁纸」页生成", "#FFB454")
                 self._log("错误：%s 不存在" % bg_h)
                 self.finished_upload.emit(False)
                 return

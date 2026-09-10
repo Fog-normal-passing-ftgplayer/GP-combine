@@ -45,11 +45,11 @@ class BackgroundPage(QWidget):
 
         # 左列：控制
         left = QVBoxLayout()
-        title = QLabel("第 3 步：背景图")
+        title = QLabel("背景 / 壁纸")
         title.setObjectName("StepTitle")
         left.addWidget(title)
         hint = QLabel("静态背景用图片生成固件背景；动态壁纸用 GIF 作为主界面"
-                      "动态背景（此时屏保自动禁用，GIF 需在第 6 步选择）。")
+                      "动态背景（此时屏保自动禁用，GIF 在「GIF 动画」页选择）。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -223,7 +223,7 @@ class BackgroundPage(QWidget):
 
     def generate_now(self) -> None:
         if not self.state.source_dir:
-            self.status_label.setText("源码目录未就绪，请先完成第 1 步")
+            self.status_label.setText("源码目录未就绪，请先在「设备与源码」页设置")
             self.status_label.setStyleSheet("color: #FFB454;")
             return
         try:
@@ -231,7 +231,7 @@ class BackgroundPage(QWidget):
             if self.state.bg_kind == "dynamic":
                 out = self._write_wallpaper_marker()
                 self.status_label.setText(
-                    "✔ 动态壁纸已启用（%s）；请在第 6 步选择 GIF 动画"
+                    "✔ 动态壁纸已启用（%s）；请在「GIF 动画」页选择 GIF"
                     % out
                 )
                 self.status_label.setStyleSheet("color: #64E0A0;")

@@ -123,6 +123,6 @@ def import_config(
         else:
             notes.append("备份里的 GIF 文件不存在，GIF 沿用当前固件内旧动画")
     else:
-        notes.append("源码目录未就绪，导入后请先完成第 1 步再生成文件")
+        notes.append("源码目录未就绪，导入后请先在「设备与源码」页选好目录再生成文件")
 
     return new_state, notes

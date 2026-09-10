@@ -38,12 +38,12 @@ class GifPage(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
         left = QVBoxLayout()
-        title = QLabel("第 6 步：GIF 动画")
+        title = QLabel("GIF 动画")
         title.setObjectName("StepTitle")
         left.addWidget(title)
         hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩，"
                       "生成固件内的 gif_user.h。作为屏保选择「GIF」播放；"
-                      "若第 3 步选了「动态壁纸」，它将成为主界面动态背景（屏保禁用）。")
+                      "若在「背景 / 壁纸」页选了「动态壁纸」，它将成为主界面动态背景（屏保禁用）。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -160,18 +160,9 @@ class GifPage(QWidget):
             return
         try:
             res = self.state.screen_res
-            out = local_gif_header(Path(self.state.source_dir), res)
-            out, frames, data_bytes = generate_gif_header(
-                self.state.gif_src,
-                out,
-                self.MODES[self.mode_combo.currentIndex()][0],
-                palette_size=int(self.palette_combo.currentData()),
-                size=screen_dims(res),
-            )
-            use = "作为动态壁纸" if self.state.bg_kind == "dynamic" else "作为 GIF 屏保"
-            msg = "✔ 已写入 %s（%d 帧，压缩后 %d KB，%s）" % (
-                out, frames, data_bytes // 1024, use)
+            hdr = local_gif_header(Path(self.state.source_dir), res)
             if self.state.bg_kind == "dynamic":
+                # 动态壁纸：只写卡内 /wp/1.gfr，不内嵌进 app（GIF 会顶爆分区）
                 gfr = local_wallpaper_gfr(Path(self.state.source_dir))
                 gfr, gf, gb = generate_gif_gfr(
                     self.state.gif_src, gfr,
@@ -179,7 +170,24 @@ class GifPage(QWidget):
                     palette_size=int(self.palette_combo.currentData()),
                     size=screen_dims(res),
                 )
-                msg += "\n✔ 卡内壁纸文件 %s（%d 帧，%d KB）" % (gfr, gf, gb // 1024)
+                if hdr.exists():
+                    hdr.unlink()      # 移除旧的内嵌 GIF，省 app 空间
+                    msg_extra = "（已移除内嵌 gif_user.h）"
+                else:
+                    msg_extra = ""
+                msg = ("✔ 卡内壁纸 %s（%d 帧，%d KB）\n"
+                       "动态壁纸模式不再内嵌 GIF%s；用「整机重刷」写入设备生效。"
+                       % (gfr, gf, gb // 1024, msg_extra))
+            else:
+                out, frames, data_bytes = generate_gif_header(
+                    self.state.gif_src,
+                    hdr,
+                    self.MODES[self.mode_combo.currentIndex()][0],
+                    palette_size=int(self.palette_combo.currentData()),
+                    size=screen_dims(res),
+                )
+                msg = "✔ 已写入 %s（%d 帧，压缩后 %d KB，作为 GIF 屏保）" % (
+                    out, frames, data_bytes // 1024)
             self.status.setText(msg)
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()

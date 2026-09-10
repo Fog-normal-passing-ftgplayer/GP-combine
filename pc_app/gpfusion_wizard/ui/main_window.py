@@ -29,17 +29,19 @@ from .lite_uf2_page import LiteUf2Page
 from .lite_webconfig_page import LiteWebConfigPage
 from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
+from .reflash_page import ReflashPage
 from .upload_page import UploadPage
 from .webconfig_page import WebConfigPage
 
 FULL_STEPS = [
-    "连接与准备",
-    "网页配置",
-    "背景图",
+    "设备与源码",
+    "背景 / 壁纸",
     "按键布局",
-    "Pico 配置",
+    "Pico 灯带",
     "GIF 动画",
+    "网页配置",
     "编译上传",
+    "整机重刷",
 ]
 
 LITE_STEPS = [
@@ -110,7 +112,7 @@ class MainWindow(QWidget):
         self.stack = QStackedWidget()
         self.prep_page = PrepPage(self.state)
         self.webconfig_page = WebConfigPage(
-            title="正式版 · 第 2 步：网页配置",
+            title="网页配置",
             hint=(
                 "正式版 Pico 固件插电脑后，在游戏手柄状态下同时按住 "
                 "S2 + B3 + B4（Start + X + Y）约 3 秒，会重启进入网页配置模式，"
@@ -122,17 +124,19 @@ class MainWindow(QWidget):
         self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
         self.upload_page = UploadPage(self.state)
+        self.reflash_page = ReflashPage(self.state)
         self.lite_source_page = LiteSourcePage(self.state)
         self.lite_webconfig_page = LiteWebConfigPage()
         self.lite_layout_page = LayoutPage(self.state, lite=True)
         self.lite_uf2_page = LiteUf2Page(self.state)
         self.stack.addWidget(self.prep_page)
-        self.stack.addWidget(self.webconfig_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
         self.stack.addWidget(self.pico_page)
         self.stack.addWidget(self.gif_page)
+        self.stack.addWidget(self.webconfig_page)
         self.stack.addWidget(self.upload_page)
+        self.stack.addWidget(self.reflash_page)
         self.stack.addWidget(self.lite_source_page)
         self.stack.addWidget(self.lite_webconfig_page)
         self.stack.addWidget(self.lite_layout_page)
@@ -150,26 +154,6 @@ class MainWindow(QWidget):
         self.device_banner.setVisible(False)
         outer.addWidget(self.device_banner)
 
-        # 底部导航（叠加在内容区右侧的独立栏）
-        self.nav_bar = QWidget()
-        nav_l = QHBoxLayout(self.nav_bar)
-        nav_l.setContentsMargins(28, 10, 28, 14)
-        self.back_btn = QPushButton("上一步")
-        self.back_btn.clicked.connect(self._go_back)
-        nav_l.addWidget(self.back_btn)
-        nav_l.addStretch(1)
-        self.next_btn = QPushButton("下一步")
-        self.next_btn.setObjectName("Primary")
-        self.next_btn.clicked.connect(self._go_next)
-        nav_l.addWidget(self.next_btn)
-        self.finish_btn = QPushButton("完成")
-        self.finish_btn.setObjectName("Primary")
-        self.finish_btn.clicked.connect(self.close)
-        self.finish_btn.setVisible(False)
-        nav_l.addWidget(self.finish_btn)
-
-        outer.addWidget(self.nav_bar)
-
         self.prep_page.ready_changed.connect(self._update_nav)
         self.lite_source_page.ready_changed.connect(self._update_nav)
         self.upload_page.finished_upload.connect(self._on_upload_finished)
@@ -183,7 +167,7 @@ class MainWindow(QWidget):
     # ---------- 导航 ----------
 
     def _mode_offset(self) -> int:
-        return 0 if self._mode == "full" else 7
+        return 0 if self._mode == "full" else len(FULL_STEPS)
 
     def _mode_page_count(self) -> int:
         return len(FULL_STEPS) if self._mode == "full" else len(LITE_STEPS)
@@ -203,39 +187,21 @@ class MainWindow(QWidget):
     def _go_to(self, row: int) -> None:
         row = max(0, min(row, self._mode_page_count() - 1))
         idx = self._mode_offset() + row
-        cur_row = self._cur_row
-        if cur_row >= 0 and row > cur_row and not self._can_continue(cur_row):
-            return
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
         if self._mode == "full" and row == 6:
             self.upload_page.on_shown()
+        if self._mode == "full" and row == 7:
+            self.reflash_page.on_shown()
         if self._mode == "lite" and row == 3:
             self.lite_uf2_page.on_shown()
         self._update_nav()
 
-    def _go_back(self) -> None:
-        self._go_to(self._cur_row - 1)
-
-    def _go_next(self) -> None:
-        self._go_to(self._cur_row + 1)
-
     def _update_nav(self) -> None:
-        row = self._cur_row
-        self.back_btn.setEnabled(row > 0)
-        last = row == self._mode_page_count() - 1
-        self.next_btn.setVisible(not last)
-        self.finish_btn.setVisible(last)
-        self.next_btn.setEnabled(self._can_continue(row))
         if self._mode == "lite":
             self.device_banner.setVisible(False)
         else:
             self.device_banner.setVisible(not bool(self.state.port))
-        steps = FULL_STEPS if self._mode == "full" else LITE_STEPS
-        for i in range(self.step_list.count()):
-            self.step_list.item(i).setText(
-                ("✓ " if (i < row and self._step_done(i)) else "") + steps[i]
-            )
 
     def _step_done(self, i: int) -> bool:
         if self._mode == "lite":
@@ -264,12 +230,10 @@ class MainWindow(QWidget):
         return True
 
     def _on_upload_finished(self, ok: bool) -> None:
-        if ok:
-            self.finish_btn.setText("完成")
+        pass   # 自由布局：不再有"完成"按钮
 
     def _on_lite_build_finished(self, ok: bool) -> None:
-        if ok:
-            self.finish_btn.setText("完成")
+        pass
 
     # ---------- 配置备份 ----------
 

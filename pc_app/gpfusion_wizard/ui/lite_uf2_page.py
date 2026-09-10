@@ -1,4 +1,4 @@
-"""Lite 模式第 4 步：编译 Lite 固件并生成 UF2。"""
+"""Lite 模式：编译 Lite 固件并生成 UF2。"""
 from __future__ import annotations
 
 import os
@@ -53,7 +53,7 @@ class LiteUf2Page(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
-        title = QLabel("Lite 版本 · 第 4 步：生成 UF2")
+        title = QLabel("Lite 版本 · 生成 UF2")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel(
@@ -105,7 +105,7 @@ class LiteUf2Page(QWidget):
             self.src_label.setText("源码目录：%s" % src)
             self.out_label.setText("输出：%s/build_lite/*.uf2" % src)
         else:
-            self.src_label.setText("源码目录：-（请先完成第 1 步）")
+            self.src_label.setText("源码目录：-（请先选好 Lite 源码文件夹）")
             self.out_label.setText("输出：-")
 
     def start(self) -> None:
@@ -113,7 +113,7 @@ class LiteUf2Page(QWidget):
             return
         src = self.state.lite_source_dir
         if not lite_source_ready(src):
-            self._log("请先在第 1 步选择有效的 Lite 源码文件夹")
+            self._log("请先在「源码文件夹」页选择有效的 Lite 源码文件夹")
             return
         self._busy = True
         self.bar.setVisible(True)

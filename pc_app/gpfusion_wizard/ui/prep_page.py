@@ -75,7 +75,7 @@ class PrepPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
 
-        title = QLabel("第 1 步：连接与准备")
+        title = QLabel("设备与源码")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel(

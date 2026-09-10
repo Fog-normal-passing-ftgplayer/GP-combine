@@ -11,8 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-FS_OFFSET = "0x310000"
-FS_SIZE = 0xCF0000            # 12.94 MB
+FS_OFFSET = "0x410000"
+FS_SIZE = 0xBF0000            # 11.94 MB
 FS_BLOCK = 4096
 FS_PAGE = 256
 
@@ -84,3 +84,49 @@ def flash_fs_cmd(port: str, img: Path) -> list[str] | None:
         return None
     return esptool + ["--chip", "esp32s3", "-p", port, "--baud", "921600",
                       "write-flash", FS_OFFSET, str(img)]
+
+
+# ---------------- 整机重刷（bootloader + 分区表 + app [+ 卡内文件]） ----------------
+
+APP_OFFSET = "0x10000"
+BOOTLOADER_OFFSET = "0x0"
+PARTITIONS_OFFSET = "0x8000"
+BOOT_APP0_OFFSET = "0xe000"
+
+
+def erase_flash_cmd(port: str) -> list[str] | None:
+    esptool = find_esptool()
+    if esptool is None:
+        return None
+    return esptool + ["--chip", "esp32s3", "-p", port, "erase-flash"]
+
+
+def full_flash_cmd(port: str, bootloader: Path, partitions: Path,
+                   boot_app0: Path, app: Path,
+                   fs_img: Path | None = None) -> list[str] | None:
+    """整机写入命令（分区表变更后必须走这条）。"""
+    esptool = find_esptool()
+    if esptool is None:
+        return None
+    cmd = esptool + ["--chip", "esp32s3", "-p", port, "--baud", "921600",
+                     "write-flash",
+                     BOOTLOADER_OFFSET, str(bootloader),
+                     PARTITIONS_OFFSET, str(partitions),
+                     BOOT_APP0_OFFSET, str(boot_app0),
+                     APP_OFFSET, str(app)]
+    if fs_img is not None:
+        cmd += [FS_OFFSET, str(fs_img)]
+    return cmd
+
+
+def stage_fs_image(files: list[tuple[Path, str]], out_img: Path) -> tuple[bool, str]:
+    """把 (源文件, 卡内路径) 列表打包成 LittleFS 镜像（临时目录暂存）。"""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="gpfusion_fs_") as tmp:
+        root = Path(tmp)
+        for src, inner in files:
+            dst = root / inner.lstrip("/")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        return build_fs_image(root, out_img)

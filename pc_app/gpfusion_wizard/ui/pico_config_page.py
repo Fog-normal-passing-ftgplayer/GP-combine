@@ -34,7 +34,7 @@ class PicoConfigPage(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 12)
-        title = QLabel("第 5 步：Pico 配置（正式版）")
+        title = QLabel("Pico 灯带")
         title.setObjectName("StepTitle")
         root.addWidget(title)
         hint = QLabel("配置正式版 Pico 的 WS2812B 灯带。"

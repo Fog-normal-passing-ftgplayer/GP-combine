@@ -991,6 +991,17 @@ bool gifFrameTick() {
   if (!gifReady) return false;
   unsigned long now = millis();
   if (gifLast == 0) { gifLast = now; return true; }
+
+  // 落后太多就把积压丢掉：例如在滑动菜单里时这个函数不被调用，
+  // 回到主界面时 now - gifLast 已经攒了好几秒，原来的写法会一帧帧"补播"，
+  // 看起来就是壁纸突然加速。这里直接跳到下一帧并重新对齐时间基准。
+  unsigned long cur = gifDelays[gifIdx] ? gifDelays[gifIdx] : 1;
+  if (now - gifLast > cur + 200UL) {
+    gifLast = now;
+    gifIdx = (gifIdx + 1) % gifFrames;
+    return true;
+  }
+
   bool changed = false;
   int guard = 0;
   while (now - gifLast >= (unsigned long)gifDelays[gifIdx] && guard++ < 8) {

@@ -96,14 +96,25 @@ const useProfilesStore = create<State & Actions>()((set, get) => ({
 		set({ loadingProfiles: true });
 
 		// TODO, unify baseProfile with other profiles when done in web api
-		const baseProfile = await WebApi.getPinMappings();
-		const profiles = await WebApi.getProfileOptions();
+		// 注意：两个接口失败时 WebApi 会返回 undefined（内部 catch 掉了错误），
+		// 以前这里直接 [baseProfile, ...profiles] 会抛 TypeError，
+		// loadingProfiles 就永远停在 true —— 表现就是「引脚设置页一直转圈」。
+		try {
+			const baseProfile = await WebApi.getPinMappings();
+			const profiles = await WebApi.getProfileOptions();
 
-		set((state) => ({
-			...state,
-			profiles: [baseProfile, ...profiles],
-			loadingProfiles: false,
-		}));
+			set((state) => ({
+				...state,
+				profiles: [
+					baseProfile,
+					...(Array.isArray(profiles) ? profiles : []),
+				].filter(Boolean),
+				loadingProfiles: false,
+			}));
+		} catch (error) {
+			console.error('fetchProfiles failed', error);
+			set({ loadingProfiles: false });
+		}
 	},
 	copyBaseProfile: (profileIndex) =>
 		set((state) => ({

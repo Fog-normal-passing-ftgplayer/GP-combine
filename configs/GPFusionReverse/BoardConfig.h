@@ -1,0 +1,144 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * SPDX-FileCopyrightText: Copyright (c) 2026 GP-Fusion
+ */
+
+#ifndef GPFUSION_BOARD_CONFIG_H_
+#define GPFUSION_BOARD_CONFIG_H_
+
+#include "enums.pb.h"
+#include "class/hid/hid.h"
+
+#define BOARD_CONFIG_LABEL "GPFusion"
+
+// 配置助手生成的热键/WS2812B 覆盖（configs/GPFusion/pico_user.h）
+#if __has_include("pico_user.h")
+#include "pico_user.h"
+// ===== GPFusionReverse：特殊需求版本 =====
+// 与 configs/GPFusion 相比只改一处：方向键 GP4 / GP5 默认左右互换
+//   GP4 = LEFT（原 RIGHT）、GP5 = RIGHT（原 LEFT）
+// 给方向键在 PCB 上走线镜像的板子用。
+#endif
+
+// Main pin mapping Configuration (same as stock Pico)
+//                                                  // GP2040 | Xinput | Switch  | PS3/4/5  | Dinput | Arcade |
+#define GPIO_PIN_02 GpioAction::BUTTON_PRESS_UP     // UP     | UP     | UP      | UP       | UP     | UP     |
+#define GPIO_PIN_03 GpioAction::BUTTON_PRESS_DOWN   // DOWN   | DOWN   | DOWN    | DOWN     | DOWN   | DOWN   |
+#define GPIO_PIN_04 GpioAction::BUTTON_PRESS_LEFT   // Reverse 版：GP4 = 左（原 RIGHT）
+#define GPIO_PIN_05 GpioAction::BUTTON_PRESS_RIGHT  // Reverse 版：GP5 = 右（原 LEFT）
+#define GPIO_PIN_06 GpioAction::BUTTON_PRESS_B1     // B1     | A      | B       | Cross    | 2      | K1     |
+#define GPIO_PIN_07 GpioAction::BUTTON_PRESS_B2     // B2     | B      | A       | Circle   | 3      | K2     |
+#define GPIO_PIN_08 GpioAction::BUTTON_PRESS_R2     // R2     | RT     | ZR      | R2       | 8      | K3     |
+#define GPIO_PIN_09 GpioAction::BUTTON_PRESS_L2     // L2     | LT     | ZL      | L2       | 7      | K4     |
+#define GPIO_PIN_10 GpioAction::BUTTON_PRESS_B3     // B3     | X      | Y       | Square   | 1      | P1     |
+#define GPIO_PIN_11 GpioAction::BUTTON_PRESS_B4     // B4     | Y      | X       | Triangle | 4      | P2     |
+#define GPIO_PIN_12 GpioAction::BUTTON_PRESS_R1     // R1     | RB     | R       | R1       | 6      | P3     |
+#define GPIO_PIN_13 GpioAction::BUTTON_PRESS_L1     // L1     | LB     | L       | L1       | 5      | P4     |
+#define GPIO_PIN_16 GpioAction::BUTTON_PRESS_S1     // S1     | Back   | Minus   | Select   | 9      | Coin   |
+#define GPIO_PIN_17 GpioAction::BUTTON_PRESS_S2     // S2     | Start  | Plus    | Start    | 10     | Start  |
+#define GPIO_PIN_18 GpioAction::BUTTON_PRESS_L3     // L3     | LS     | LS      | L3       | 11     | LS     |
+#define GPIO_PIN_19 GpioAction::BUTTON_PRESS_R3     // R3     | RS     | RS      | R3       | 12     | RS     |
+#define GPIO_PIN_20 GpioAction::BUTTON_PRESS_A1     // A1     | Guide  | Home    | PS       | 13     | ~      |
+#define GPIO_PIN_21 GpioAction::BUTTON_PRESS_A2     // A2     | ~      | Capture | ~        | 14     | ~      |
+
+// Pins reserved for add-ons / peripherals
+#define GPIO_PIN_00 GpioAction::ASSIGNED_TO_ADDON   // UART0 TX -> ESP32 RX
+#define GPIO_PIN_01 GpioAction::ASSIGNED_TO_ADDON   // UART0 RX <- ESP32 TX
+#define GPIO_PIN_15 GpioAction::ASSIGNED_TO_ADDON
+#define GPIO_PIN_28 GpioAction::ASSIGNED_TO_ADDON   // WS2812 LED strip
+
+// Keyboard Mapping Configuration (kept for keyboard input mode)
+//                                            // GP2040 | Xinput | Switch  | PS3/4/5  | Dinput | Arcade |
+#define KEY_DPAD_UP     HID_KEY_ARROW_UP      // UP     | UP     | UP      | UP       | UP     | UP     |
+#define KEY_DPAD_DOWN   HID_KEY_ARROW_DOWN    // DOWN   | DOWN   | DOWN    | DOWN     | DOWN   | DOWN   |
+#define KEY_DPAD_RIGHT  HID_KEY_ARROW_RIGHT   // RIGHT  | RIGHT  | RIGHT   | RIGHT    | RIGHT  | RIGHT  |
+#define KEY_DPAD_LEFT   HID_KEY_ARROW_LEFT    // LEFT   | LEFT   | LEFT    | LEFT     | LEFT   | LEFT   |
+#define KEY_BUTTON_B1   HID_KEY_SHIFT_LEFT    // B1     | A      | B       | Cross    | 2      | K1     |
+#define KEY_BUTTON_B2   HID_KEY_Z             // B2     | B      | A       | Circle   | 3      | K2     |
+#define KEY_BUTTON_R2   HID_KEY_X             // R2     | RT     | ZR      | R2       | 8      | K3     |
+#define KEY_BUTTON_L2   HID_KEY_V             // L2     | LT     | ZL      | L2       | 7      | K4     |
+#define KEY_BUTTON_B3   HID_KEY_CONTROL_LEFT  // B3     | X      | Y       | Square   | 1      | P1     |
+#define KEY_BUTTON_B4   HID_KEY_ALT_LEFT      // B4     | Y      | X       | Triangle | 4      | P2     |
+#define KEY_BUTTON_R1   HID_KEY_SPACE         // R1     | RB     | R       | R1       | 6      | P3     |
+#define KEY_BUTTON_L1   HID_KEY_C             // L1     | LB     | L       | L1       | 5      | P4     |
+#define KEY_BUTTON_S1   HID_KEY_5             // S1     | Back   | Minus   | Select   | 9      | Coin   |
+#define KEY_BUTTON_S2   HID_KEY_1             // S2     | Start  | Plus    | Start    | 10     | Start  |
+#define KEY_BUTTON_L3   HID_KEY_EQUAL         // L3     | LS     | LS      | L3       | 11     | LS     |
+#define KEY_BUTTON_R3   HID_KEY_MINUS         // R3     | RS     | RS      | R3       | 12     | RS     |
+#define KEY_BUTTON_A1   HID_KEY_9             // A1     | Guide  | Home    | PS       | 13     | ~      |
+#define KEY_BUTTON_A2   HID_KEY_F2            // A2     | ~      | Capture | ~        | 14     | ~      |
+#define KEY_BUTTON_FN   -1                    // Hotkey Function                                        |
+
+// UART link to ESP32
+#define UART_LINK_ENABLED 1
+#define UART_LINK_TX_PIN 0
+#define UART_LINK_RX_PIN 1
+#define UART_LINK_BAUD 921600
+#define UART_LINK_LED_PIN 25
+
+// LED strip (WS2812 on GPIO28)
+#ifndef BOARD_LEDS_PIN
+#define BOARD_LEDS_PIN 28
+#endif
+#define LED_BRIGHTNESS_MAXIMUM 100
+#define LED_BRIGHTNESS_STEPS 5
+#ifndef LED_FORMAT
+#define LED_FORMAT LED_FORMAT_GRB
+#endif
+#ifndef LEDS_PER_PIXEL
+#define LEDS_PER_PIXEL 1
+#endif
+
+#ifndef LEDS_DPAD_LEFT
+#define LEDS_DPAD_LEFT   0
+#endif
+#ifndef LEDS_DPAD_DOWN
+#define LEDS_DPAD_DOWN   1
+#endif
+#ifndef LEDS_DPAD_RIGHT
+#define LEDS_DPAD_RIGHT  2
+#endif
+#ifndef LEDS_DPAD_UP
+#define LEDS_DPAD_UP     3
+#endif
+#ifndef LEDS_BUTTON_B3
+#define LEDS_BUTTON_B3   4
+#endif
+#ifndef LEDS_BUTTON_B4
+#define LEDS_BUTTON_B4   5
+#endif
+#ifndef LEDS_BUTTON_R1
+#define LEDS_BUTTON_R1   6
+#endif
+#ifndef LEDS_BUTTON_L1
+#define LEDS_BUTTON_L1   7
+#endif
+#ifndef LEDS_BUTTON_B1
+#define LEDS_BUTTON_B1   8
+#endif
+#ifndef LEDS_BUTTON_B2
+#define LEDS_BUTTON_B2   9
+#endif
+#ifndef LEDS_BUTTON_R2
+#define LEDS_BUTTON_R2   10
+#endif
+#ifndef LEDS_BUTTON_L2
+#define LEDS_BUTTON_L2   11
+#endif
+#ifndef LEDS_BUTTON_A1
+#define LEDS_BUTTON_A1   12
+#endif
+#ifndef LEDS_BUTTON_L3
+#define LEDS_BUTTON_L3   13
+#endif
+#ifndef LEDS_BUTTON_R3
+#define LEDS_BUTTON_R3   14
+#endif
+#ifndef LEDS_BUTTON_A2
+#define LEDS_BUTTON_A2   15
+#endif
+
+#define BUTTON_LAYOUT BUTTON_LAYOUT_STICKLESS
+#define BUTTON_LAYOUT_RIGHT BUTTON_LAYOUT_STICKLESSB
+
+#endif

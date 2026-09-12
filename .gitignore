@@ -35,3 +35,7 @@ GP-Fusion Lite/
 
 # NES ROM（版权物，不入库；由配置助手导入设备）
 data/nes/*.nes
+build-reverse/
+
+# 懒人包产物（体积大，不入库）
+dist/

@@ -46,6 +46,14 @@ def utf8_stdio() -> None:
 # riscv 工具链）全部删掉，能省一半体积
 KEEP_TOOLS = ("esp-x32", "esp32s3-libs", "esptool_py", "mklittlefs", "mkspiffs")
 PRUNE_DATA_DIRS = ("staging", "tmp", "cache/tmp")
+# 数据目录根下的元数据：没有它们 arduino-cli 首次编译会尝试联网下载
+INDEX_FILES = (
+    "package_index.json",
+    "package_index.json.sig",
+    "library_index.json",
+    "inventory.yaml",
+    "arduino-cli.yaml",
+)
 SRC_EXCLUDES = (
     ".git", "node_modules", "__pycache__", ".venv", "pc_app.zip",
     "ESP-DOOM", "esp32-doom", "InfoNES-master", "build", "build_fusion",
@@ -201,10 +209,28 @@ def copy_arduino_data(from_data: Path, data_dst: Path) -> None:
     if builtin.is_dir():
         print("  复制 packages/builtin")
         copytree(builtin, data_dst / "packages" / "builtin", skip_names=("tmp",))
-    for extra in ("arduino-cli.yaml", "inventory.yaml"):
+    for extra in INDEX_FILES:
         f = from_data / extra
         if f.is_file():
+            print("  复制 %s" % extra)
             shutil.copy2(f, data_dst / extra)
+
+
+def bundle_cli_env(root: Path) -> dict:
+    """给 arduino-cli 子进程用的环境：强制走包内 core，且不要联网检查更新。"""
+    data = root / "arduino-data"
+    user = root / "arduino-user"
+    user.mkdir(parents=True, exist_ok=True)
+    return dict(
+        os.environ,
+        ARDUINO_DIRECTORIES_DATA=str(data),
+        ARDUINO_DIRECTORIES_USER=str(user),
+        ARDUINO_CONFIG_FILE=str(root / "arduino-cli.yaml"),
+        ARDUINO_UPDATER_ENABLE_NOTIFICATION="false",
+        PYTHONUTF8="1",
+        PYTHONIOENCODING="utf-8",
+        NO_PROXY="*",
+    )
 
 
 def count_size(path: Path) -> int:
@@ -263,12 +289,13 @@ def write_launchers(root: Path) -> None:
 
 def build_prebuilt(root: Path, cli: Path, source: Path, work: Path) -> None:
     """把两版固件编译好放进 firmware/（走「刷预编译固件」按钮）。"""
+    env = bundle_cli_env(root)
     for res, sketch_name in (("240x135", "esp32"), ("170x320", "esp32_170x320")):
         sketch = source / sketch_name
         out = work / ("prebuilt_" + sketch_name)
         out.mkdir(parents=True, exist_ok=True)
         proc = sh([cli, "compile", "--fqbn", FQBN, "--build-path", out, sketch],
-                  capture_output=True)
+                  capture_output=True, env=env)
         if proc.returncode != 0:
             print(proc.stdout[-2000:] or proc.stderr[-2000:])
             raise SystemExit("编译 %s 失败" % res)
@@ -284,6 +311,7 @@ def build_prebuilt(root: Path, cli: Path, source: Path, work: Path) -> None:
             src = out / src_name
             if src.is_file():
                 shutil.copy2(src, dst / dst_name)
+        shutil.rmtree(out, ignore_errors=True)      # 构建中间产物不进包
         print("  预编译固件 →", dst)
 
 

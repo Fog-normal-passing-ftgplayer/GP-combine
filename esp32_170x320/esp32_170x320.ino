@@ -169,10 +169,28 @@ bool invertScreen = false;
 // 注意：单次 DMA 实测上限约 32KB（超过返回 ESP_ERR_INVALID_ARG），所以分 4 块。
 #include "driver/spi_master.h"
 #define LCD_CHUNK 27200                    // 108800/4，且 16 字节对齐
+#define LCD_QUEUE 4                        // 一帧 4 块；队列深度必须 >= 4（曾设 2 导致卡死）
 static spi_device_handle_t lcdSpi = nullptr;
 static spi_transaction_t lcdCmdDesc;       // 单字节命令用（tx_data 路径）
+static spi_transaction_t lcdFrameDesc[LCD_QUEUE];
+static int  lcdFrameQueued = 0;            // 已排队、未回收的事务数
+static bool lcdFramePending = false;       // 整帧传输中（CS 仍为低）
+
+// 等上一帧异步传输结束并收尾 CS；发任何同步命令/开始下一帧前都要先调它。
+static void lcdWait() {
+  while (lcdFrameQueued > 0) {
+    spi_transaction_t *r = nullptr;
+    spi_device_get_trans_result(lcdSpi, &r, portMAX_DELAY);
+    lcdFrameQueued--;
+  }
+  if (lcdFramePending) {
+    digitalWrite(CS, HIGH);
+    lcdFramePending = false;
+  }
+}
 
 static void lcdSendSync(const uint8_t *buf, size_t len) {
+  lcdWait();
   if (len <= 4) {                          // length<=32bit 必须走 tx_data
     digitalWrite(CS, LOW);
     spi_transaction_t t;
@@ -196,6 +214,35 @@ static void lcdSendSync(const uint8_t *buf, size_t len) {
     len -= n;
   }
   digitalWrite(CS, HIGH);
+}
+
+// 异步发整帧：4 块排队后立即返回，SPI 在后台跑，CPU 接着模拟下一帧。
+// 任何一步失败就退回同步发送，绝不把画面/系统卡死。
+static void lcdSendFrameAsync(const uint8_t *buf, size_t len) {
+  lcdWait();
+  const uint8_t *p = buf;
+  int n = 0;
+  digitalWrite(CS, LOW);
+  while (len && n < LCD_QUEUE) {
+    size_t chunk = (len > LCD_CHUNK) ? LCD_CHUNK : len;
+    memset(&lcdFrameDesc[n], 0, sizeof(spi_transaction_t));
+    lcdFrameDesc[n].length = chunk * 8;
+    lcdFrameDesc[n].tx_buffer = p;
+    if (spi_device_queue_trans(lcdSpi, &lcdFrameDesc[n], portMAX_DELAY) != ESP_OK) break;
+    n++;
+    p += chunk;
+    len -= chunk;
+  }
+  if (n > 0) {
+    lcdFrameQueued = n;
+    lcdFramePending = true;
+  } else {
+    digitalWrite(CS, HIGH);
+  }
+  if (len > 0) {                 // 队列没收完（异常情况）：剩下的同步补上
+    lcdWait();
+    lcdSendSync(p, len);
+  }
 }
 
 void cmd(uint8_t c){digitalWrite(DC,LOW);lcdSendSync(&c,1);}
@@ -1115,6 +1162,8 @@ static int eggSeq = 0;
 // ---- 小游戏（NES）：卡内 /nes/*.nes 列表 + 运行视图 ----
 #define NES_MAX_ROMS 16
 static char nesNames[NES_MAX_ROMS][28];
+static uint8_t nesMapper[NES_MAX_ROMS];      // iNES 头里的 mapper 号
+static bool nesSupported[NES_MAX_ROMS];      // 核心只支持 0/1/2/3/4/7（SMB3 = 4）
 static int nesRomCount = 0, nesSel = 0;
 static unsigned long nesExitStart = 0;
 
@@ -1141,6 +1190,17 @@ void nesScanRoms() {
         base = base ? base + 1 : n;
         strncpy(nesNames[nesRomCount], base, sizeof(nesNames[0]) - 1);
         nesNames[nesRomCount][sizeof(nesNames[0]) - 1] = 0;
+        // 读 16 字节 iNES 头判断 mapper：SMB3 = mapper 4(MMC3)，核心支持 0/1/2/3/4/7
+        uint8_t h[16] = {0};
+        int got = f.read(h, sizeof h);
+        nesMapper[nesRomCount] = 0;
+        nesSupported[nesRomCount] = false;
+        if (got == (int)sizeof h && memcmp(h, "NES\x1a", 4) == 0) {
+          int m = (h[6] >> 4) | (h[7] & 0xF0);
+          nesMapper[nesRomCount] = (uint8_t)m;
+          nesSupported[nesRomCount] = (m == 0 || m == 1 || m == 2 || m == 3 ||
+                                       m == 4 || m == 7);
+        }
         nesRomCount++;
       }
     }
@@ -1164,6 +1224,12 @@ void renderNesList() {
     int y = 28 + (int)(i * 24 - scrollOff);
     if (y < 14 || y > 118) continue;
     drawCJKText(24, y, nesNames[i], (i == nesSel) ? colHi : colText, 1);
+    // 右侧标一句 "M4" / "M23" / "UNS"（核心只支持 mapper 0/1/2/3/4/7）
+    char tag[8];
+    if (nesSupported[i]) snprintf(tag, sizeof tag, "M%d", nesMapper[i]);
+    else snprintf(tag, sizeof tag, "UNS");
+    drawCJKText(SCR_W - 62, y, tag, nesSupported[i] ? RGB565(120,132,150)
+                                                    : RGB565(230,110,90), 1);
   }
   drawScrollbar(nesRomCount, scrollOff, 5, 24, 309, 28, 118);
   drawCJKTextCentered(SCR_CX, 122, "A 开始 B 返回 上下选择", RGB565(120,132,150), 1);
@@ -1985,7 +2051,7 @@ void pushFrame() {
   }
   setWin(0, 0, SCR_H - 1, SCR_W - 1);
   digitalWrite(DC, HIGH);   // data mode for the bulk transfer
-  lcdSendSync(rbuf, sizeof(rbuf));     // DMA 分块发整帧
+  lcdSendFrameAsync(rbuf, sizeof(rbuf));   // 异步 DMA：与下一帧模拟重叠
 }
 
 void drawPage() {
@@ -2726,7 +2792,7 @@ void setup(){
     devcfg.clock_speed_hz = 80000000;
     devcfg.mode = 0;
     devcfg.spics_io_num = -1;    // CS 由固件手动控制
-    devcfg.queue_size = 2;
+    devcfg.queue_size = LCD_QUEUE + 2;   // 必须能一次排下整帧的 4 块
     spi_bus_add_device(SPI2_HOST, &devcfg, &lcdSpi);
   }
   digitalWrite(RST,LOW);delay(10);digitalWrite(RST,HIGH);delay(120);

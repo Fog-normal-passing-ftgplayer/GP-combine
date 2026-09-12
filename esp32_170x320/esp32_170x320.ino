@@ -2038,6 +2038,9 @@ void renderScene(int16_t outX, int16_t inX) {
 }
 
 void pushFrame() {
+  // 关键：必须先把上一帧的异步传输等完，才能往 rbuf 里写新数据。
+  // （异步推屏后 rbuf 可能还在被 DMA 读，先填会把传输打断 → 面板黑屏/花屏）
+  lcdWait();
   uint8_t *out = rbuf;
   for (int my = 0; my < SCR_W; my++) {        // 面板行 = 内容宽 (320)
     for (int mx = 0; mx < SCR_H; mx++) {      // 面板列 = 内容高 (170)

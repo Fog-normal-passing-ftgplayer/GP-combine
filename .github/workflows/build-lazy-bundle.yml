@@ -39,10 +39,18 @@ jobs:
         shell: pwsh
         run: |
           $ver = $env:ARDUINO_CLI_VERSION
-          $rel = Invoke-RestMethod "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v$ver"
-          $asset = $rel.assets | Where-Object { $_.name -match 'Windows_64bit\.zip$' } | Select-Object -First 1
-          if (-not $asset) { throw "找不到 arduino-cli $ver 的 Windows 包" }
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile cli.zip
+          # 直接用官方下载地址（不查 API，避免匿名 API 限流）；失败才用带 token 的 API 兜底
+          $url = "https://github.com/arduino/arduino-cli/releases/download/v$ver/arduino-cli_${ver}_Windows_64bit.zip"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile cli.zip
+          } catch {
+            Write-Host "直接下载失败，改用 API 查找资源：$_"
+            $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
+              "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v$ver"
+            $asset = $rel.assets | Where-Object { $_.name -match 'Windows_64bit\.zip$' } | Select-Object -First 1
+            if (-not $asset) { throw "找不到 arduino-cli $ver 的 Windows 包" }
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile cli.zip
+          }
           Expand-Archive cli.zip -DestinationPath tools/arduino-cli -Force
 
       - name: 安装 esp32 core（按 S3 裁剪前的完整安装）
@@ -131,11 +139,16 @@ jobs:
       - name: 下载 arduino-cli (Linux)
         run: |
           ver=$ARDUINO_CLI_VERSION
-          url=$(curl -fsSL "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v${ver}" \
-                | grep -o '"browser_download_url": *"[^"]*Linux_64bit\.tar\.gz"' | head -1 \
-                | sed 's/.*"\(https[^"]*\)"/\1/')
-          [ -n "$url" ] || { echo "找不到 arduino-cli ${ver} 的 Linux 包"; exit 1; }
-          curl -fsSL -o cli.tar.gz "$url"
+          url="https://github.com/arduino/arduino-cli/releases/download/v${ver}/arduino-cli_${ver}_Linux_64bit.tar.gz"
+          if ! curl -fsSL -o cli.tar.gz "$url"; then
+            echo "直接下载失败，改用 API 查找资源"
+            url=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                  "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v${ver}" \
+                  | grep -o '"browser_download_url": *"[^"]*Linux_64bit\.tar\.gz"' | head -1 \
+                  | sed 's/.*"\(https[^"]*\)"/\1/')
+            [ -n "$url" ] || { echo "找不到 arduino-cli ${ver} 的 Linux 包"; exit 1; }
+            curl -fsSL -o cli.tar.gz "$url"
+          fi
           mkdir -p tools/arduino-cli && tar -xzf cli.tar.gz -C tools/arduino-cli
 
       - name: 安装 esp32 core

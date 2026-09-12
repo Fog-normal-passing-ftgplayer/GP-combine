@@ -1161,11 +1161,16 @@ static int eggSeq = 0;
 
 // ---- 小游戏（NES）：卡内 /nes/*.nes 列表 + 运行视图 ----
 #define NES_MAX_ROMS 16
-static char nesNames[NES_MAX_ROMS][28];
+// 注意：必须存**完整文件名**（启动时要拿它拼路径），显示时再截断。
+// 之前只存 28 字节，"Super Mario Bros 3 (U) (PRG1) [!].nes" 这种长的会被截短，
+// 于是按 A 去 open 一个不存在的路径 -> 静默失败，看起来就是"按 A 没反应"。
+static char nesNames[NES_MAX_ROMS][96];
 static uint8_t nesMapper[NES_MAX_ROMS];      // iNES 头里的 mapper 号
 static bool nesSupported[NES_MAX_ROMS];      // 核心只支持 0/1/2/3/4/7（SMB3 = 4）
 static int nesRomCount = 0, nesSel = 0;
 static unsigned long nesExitStart = 0;
+static const char *nesErrText = nullptr;     // 启动失败原因（显示在屏幕上）
+static char nesErrBuf[32];                   // 上面那行指过来的缓冲（纯 ASCII，字库一定有）
 
 // 运行配置（配置助手生成 nes_conf.h：NES_SCALE_MODE 0=拉伸 1=居中）
 #if __has_include("nes_conf.h")
@@ -1223,7 +1228,11 @@ void renderNesList() {
   for (int i = first; i < nesRomCount && i < first + 5; i++) {
     int y = 28 + (int)(i * 24 - scrollOff);
     if (y < 14 || y > 118) continue;
-    drawCJKText(24, y, nesNames[i], (i == nesSel) ? colHi : colText, 1);
+    char shown[40];                      // 屏幕上只画前 29 个字符，别压到右侧 mapper 标签
+    strncpy(shown, nesNames[i], sizeof(shown) - 1);
+    shown[sizeof(shown) - 1] = 0;
+    if (strlen(shown) > 29) shown[29] = 0;
+    drawCJKText(24, y, shown, (i == nesSel) ? colHi : colText, 1);
     // 右侧标一句 "M4" / "M23" / "UNS"（核心只支持 mapper 0/1/2/3/4/7）
     char tag[8];
     if (nesSupported[i]) snprintf(tag, sizeof tag, "M%d", nesMapper[i]);
@@ -1244,15 +1253,16 @@ static unsigned long nesFrameMs = 0;
 void renderNes() {
   if (nesRunning) return;      // 运行中由 InfoNES 的 LoadFrame 直接推帧
   lfbFill(RGB565(10, 10, 14));
-  drawCJKTextCentered(SCR_CX, 58, "无法开始", RGB565(230,120,90), 1);
-  drawCJKTextCentered(SCR_CX, 88, "S1+S2 长按退出", RGB565(120,132,150), 1);
+  drawCJKTextCentered(SCR_CX, 58, nesErrText ? nesErrText : "LOAD FAIL", RGB565(230,120,90), 1);
+  drawCJKTextCentered(SCR_CX, 92, "B = BACK    HOLD S1+S2", RGB565(120,132,150), 1);
 }
 
 void nesStart(const char *path) {
   EspNesAllocBuffers();
   if (!EspNesBuffersReady()) {      // PSRAM 不足：安全退出
     nesRunning = false;
-    view = VIEW_NES_LIST;
+    nesErrText = "NO MEM (PSRAM)";
+    view = VIEW_NES;                // 走 renderNes 把原因显示出来，别静默回列表
     redrawNeeded = true;
     return;
   }
@@ -1262,17 +1272,19 @@ void nesStart(const char *path) {
   // 少了 Reset 会在第一帧用未初始化的 mapper 指针直接崩
   if (InfoNES_Load(path) != 0) {
     nesRunning = false;
-    view = VIEW_NES_LIST;
+    snprintf(nesErrBuf, sizeof nesErrBuf, "LOAD FAIL  M%d", (int)nesMapper[nesSel]);
+    nesErrText = nesErrBuf;
+    view = VIEW_NES;
     redrawNeeded = true;
     return;
   }
   nesRunning = true;
   nesFrameMs = 0;
+  nesErrText = nullptr;
 }
 
 void nesStop() {
-  if (!nesRunning) return;
-  InfoNES_ReleaseRom();
+  if (nesRunning) InfoNES_ReleaseRom();
   nesRunning = false;
   view = VIEW_NES_LIST;
   redrawNeeded = true;
@@ -2458,6 +2470,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       }
       s2PressStart = 0;
     } else if (view == VIEW_NES) {
+      if (!nesRunning && (bEdge & 0x02)) nesStop();   // 启动失败画面：B 直接回列表
       // S1+S2 长按 1 秒退出小游戏（内核接入后这里还要先停模拟器）
       if ((buttons & 0x0300) == 0x0300) {
         if (!nesExitStart) nesExitStart = millis();

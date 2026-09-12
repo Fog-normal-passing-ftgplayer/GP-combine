@@ -45,7 +45,12 @@ def fetch(url: str, dst: Path) -> Path:
 
 
 def write_gbk(path: Path, text: str) -> None:
-    """Win7 中文 cmd 是 GBK，.bat 必须按 GBK 存，否则解析错乱。"""
+    """写 .bat：必须是 GBK 编码 + CRLF 行尾，否则 cmd 会错位解析。
+
+    （GBK：中文 Windows 的 cmd 代码页是 936；CRLF：cmd 对 LF-only 批处理
+      会丢字符/错行，表现为 "ho 不是内部或外部命令" 这种。）
+    """
+    text = text.replace("\r\n", "\n").replace("\n", "\r\n")
     path.write_bytes(text.encode("gbk", errors="replace"))
 
 

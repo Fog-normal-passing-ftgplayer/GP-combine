@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""组装「Win7 刷机包」：不装 Python / Arduino，双击就能刷预先编译好的固件。
+"""组装「Win7 刷机包（免安装 · 不依赖 Python）」。
 
-Win7 上没法跑现在的编译环境（Python 3.12/Qt6 要 Win10+、arduino-cli 1.x 是
-Go 1.21+ 构建也要 Win10+、esp32 core 3.x 的 GCC 14 工具链同样如此），
-所以这个包只做「刷写」：
+背景：Win7 上跑不了现在的编译工具链（Python 3.12/Qt6、arduino-cli 1.x、esp32 core 3.x
+的 GCC 工具链都要求 Win10+），而便携 Python + PySide2 的方案在部分 Win7 机器上会被
+安全软件/系统钩子干扰（进程启动阶段 `sys.executable` 变乱码 → 找不到 encodings）。
 
-    python-3.8 embed + PySide2(Qt5) + esptool 4.8（纯 Python）
-    + 预编译固件（app/bootloader/partitions/boot_app0，可选 littlefs.bin）
-    + 懒人版助手（同一份代码，编译相关按钮自动置灰）
+所以这个包只做刷写，而且**完全不依赖 Python**：
+
+    esptool.exe（Espressif 官方 standalone，PyInstaller 单文件，只依赖 KERNEL32/ADVAPI32）
+    + 预编译固件 + flash.bat 菜单 + diagnose.bat 自检
 
 用法：
     python3 tools/make_win7_flashpack.py --out dist/GP-Combine-win7 \
-        --firmware /tmp/lazy2/firmware           # 或者 CI bundle 里的 firmware/
+        --firmware /tmp/lazy2/firmware
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -25,19 +25,16 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-PY_VER = "3.8.10"
-# 用 nuget 的「便携版」而不是 python.org 的 embeddable：
-# embeddable 靠 python38._pth + 可执行文件路径推导标准库位置，在部分 Win7 环境下
-# 推导失败（sys.executable 变乱码 -> No module named 'encodings'）；
-# nuget 版是标准布局（python.exe + Lib/ + DLLs/ 松散文件），不依赖 _pth。
-PY_URL = "https://www.nuget.org/api/v2/package/python/%s" % PY_VER
-ESPTOOL_VER = "4.8.1"
-WHEELS = ["PySide2==5.15.2.1", "pyserial", "Pillow==10.4.0", "reedsolo", "ecdsa", "bitstring"]
+ESPTOOL_VER = "4.8.1"          # 4.x：纯 Win7 兼容（5.x 要求更高版本 Python）
+ESPTOOL_URL = ("https://github.com/espressif/esptool/releases/download/v%s/"
+               "esptool-v%s-win64.zip" % (ESPTOOL_VER, ESPTOOL_VER))
 
-
-def sh(cmd: list[str], **kw) -> subprocess.CompletedProcess:
-    print("$", " ".join(str(c) for c in cmd), flush=True)
-    return subprocess.run([str(c) for c in cmd], text=True, **kw)
+# 分区偏移（与 firmware/partitions.csv 一致）
+OFF_BOOTLOADER = "0x0"
+OFF_PARTITIONS = "0x8000"
+OFF_BOOT_APP0 = "0xe000"
+OFF_APP = "0x10000"
+OFF_LITTLEFS = "0x410000"
 
 
 def fetch(url: str, dst: Path) -> Path:
@@ -47,223 +44,212 @@ def fetch(url: str, dst: Path) -> Path:
     return dst
 
 
-def unzip(src: Path, dst: Path) -> None:
-    dst.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(src) as z:
-        z.extractall(dst)
+def write_gbk(path: Path, text: str) -> None:
+    """Win7 中文 cmd 是 GBK，.bat 必须按 GBK 存，否则解析错乱。"""
+    path.write_bytes(text.encode("gbk", errors="replace"))
 
 
-def install_wheels(wheels_dir: Path, site_packages: Path) -> None:
-    site_packages.mkdir(parents=True, exist_ok=True)
-    for whl in sorted(wheels_dir.glob("*.whl")):
-        print("  安装", whl.name)
-        with zipfile.ZipFile(whl) as z:
-            z.extractall(site_packages)
+def write_bats(out: Path) -> None:
+    flash = f"""@echo off
+setlocal enabledelayedexpansion
+set "HERE=%~dp0"
+title GP-Combine 刷机工具（Win7 免安装）
+
+echo ============================================================
+echo   GP-Combine 刷机工具    （不用装 Python / 不用装 Arduino）
+echo ============================================================
+echo.
+echo 当前检测到的串口：
+powershell -NoProfile -Command "[System.IO.Ports.SerialPort]::GetPortNames()" 2>nul
+if errorlevel 1 echo   (检测失败，请到 设备管理器 -^> 端口 里看)
+echo.
+echo   提示：ESP32-S3 是免驱的；如果是 CP210x/CH340 板子要先装驱动。
+echo         看不到端口就换一根"能传数据"的 USB 线，或按住 BOOTSEL 再插。
+echo.
+set "PORT="
+set /p PORT=请输入串口号（例如 COM3，直接回车退出）: 
+if "%PORT%"=="" exit /b
+
+echo.
+echo 选择要刷的固件：
+echo    1 = 170x320 竖屏大屏
+echo    2 = 240x135 小屏
+echo    9 = 先整片擦除（清空所有设置和卡内文件，再刷 170x320）
+set "RES="
+set /p RES=请输入 1 / 2 / 9: 
+
+if "%RES%"=="2"  (set "FW=%HERE%firmware\\esp32_240_135" & goto :go)
+if "%RES%"=="9"  (set "FW=%HERE%firmware\\esp32_170_320" & set "ERASE=1" & goto :go)
+set "FW=%HERE%firmware\\esp32_170_320"
+
+:go
+if not exist "%FW%\\app.bin" (
+  echo.
+  echo [错误] 找不到固件：%FW%\\app.bin
+  echo        请确认压缩包解压完整。
+  pause & exit /b 1
+)
+
+echo.
+echo ============================================================
+echo   串口: %PORT%
+echo   固件: %FW%
+echo   即将写入 bootloader + 分区表 + 应用（不会清卡内文件）
+echo ============================================================
+pause
+
+if defined ERASE (
+  echo.
+  echo [1/2] 整片擦除...
+  "%HERE%esptool.exe" --chip esp32s3 -p %PORT% --baud 921600 erase-flash
+  if errorlevel 1 goto :fail
+)
+
+echo.
+echo 写入固件...
+"%HERE%esptool.exe" --chip esp32s3 -p %PORT% --baud 921600 write-flash ^
+  {OFF_BOOTLOADER} "%FW%\\bootloader.bin" ^
+  {OFF_PARTITIONS} "%FW%\\partitions.bin" ^
+  {OFF_BOOT_APP0} "%FW%\\boot_app0.bin" ^
+  {OFF_APP} "%FW%\\app.bin"
+if errorlevel 1 goto :fail
+
+if exist "%FW%\\littlefs.bin" (
+  echo.
+  echo 写入卡内文件（壁纸 / ROM）...
+  "%HERE%esptool.exe" --chip esp32s3 -p %PORT% --baud 921600 write-flash {OFF_LITTLEFS} "%FW%\\littlefs.bin"
+  if errorlevel 1 goto :fail
+)
+
+echo.
+echo ============================================================
+echo   ✔ 刷写完成！板子会自动重启。
+echo ============================================================
+pause
+exit /b 0
+
+:fail
+echo.
+echo ============================================================
+echo   ✘ 刷写失败，检查：
+echo     1. 串口是不是选错了（设备管理器里看）
+echo     2. 驱动装了没（CP210x/CH340 需要；ESP32-S3 免驱）
+echo     3. 换根 USB 线
+echo     4. 先按住 BOOTSEL 再插 USB，然后重跑本脚本
+echo ============================================================
+pause
+exit /b 1
+"""
+    diag = f"""@echo off
+setlocal
+set "HERE=%~dp0"
+echo === GP-Combine 刷机包自检（把整个窗口内容发给作者）===
+echo.
+echo 当前路径: %HERE%
+if exist "%HERE%esptool.exe" (echo [OK] esptool.exe) else (echo [缺] esptool.exe)
+if exist "%HERE%firmware\\esp32_170_320\\app.bin" (echo [OK] 170x320 固件) else (echo [缺] 170x320 固件)
+if exist "%HERE%firmware\\esp32_240_135\\app.bin" (echo [OK] 240x135 固件) else (echo [缺] 240x135 固件)
+echo.
+echo --- esptool 版本 ---
+"%HERE%esptool.exe" version
+echo.
+echo --- 检测到的串口 ---
+powershell -NoProfile -Command "[System.IO.Ports.SerialPort]::GetPortNames()"
+echo.
+echo --- Windows 版本 ---
+ver
+echo.
+pause
+"""
+    write_gbk(out / "flash.bat", flash)
+    write_gbk(out / "diagnose.bat", diag)
+    write_gbk(out / "诊断.bat", diag)
 
 
-def write_launchers(out: Path) -> None:
-    """写启动器。
+def write_readme(out: Path) -> None:
+    text = f"""GP-Combine 刷机工具（Win7 免安装）
+=====================================
 
-    要点：
-    * .bat 用 GBK(cp936) 编码，中文 Windows 的 cmd 才显示正常；
-    * 路径含中文时 embedded Python 会 getpath 崩（sys.executable 变乱码 ->
-      ModuleNotFoundError: No module named 'encodings'），所以先用 PowerShell
-      检测非 ASCII 字符，命中就自动复制到 %LOCALAPPDATA%\\GPCombine 再跑。
-    """
-    start = (
-        "@echo off\r\n"
-        "setlocal\r\n"
-        'set "HERE=%~dp0"\r\n'
-        "for /f \"delims=\" %%p in (\"%HERE%\") do set \"P=%%~p\"\r\n"
-        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('%P%' -match '[^\\x20-\\x7e]') { exit 1 } else { exit 0 }\"\r\n"
-        "if errorlevel 1 goto relocate\r\n"
-        'set "GPCOMBINE_BUNDLE=%P%"\r\n'
-        'set "PYTHONHOME=%HERE%python"\r\n'
-        'set "PYTHONUTF8=1"\r\n'
-        'set "PATH=%HERE%python;%HERE%python\\Scripts;%PATH%"\r\n'
-        "echo 正在启动 GP-Combine 懒人版（Win7 刷机包）...\r\n"
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%P%" %*\r\n'
-        "if errorlevel 1 pause\r\n"
-        "exit /b\r\n"
-        ":relocate\r\n"
-        "echo.\r\n"
-        "echo [提示] 当前路径含中文或特殊字符：\r\n"
-        "echo        %HERE%\r\n"
-        "echo        内置 Python 在这种路径下无法启动，正在自动复制到：\r\n"
-        "echo        %LOCALAPPDATA%\\GPCombine\r\n"
-        "echo        复制完会自动打开，请稍等（约 350MB）...\r\n"
-        'xcopy /E /I /Q /Y "%HERE:~0,-1%" "%LOCALAPPDATA%\\GPCombine\\" >nul\r\n'
-        'start "" "%LOCALAPPDATA%\\GPCombine\\Start-GP-Combine.bat"\r\n'
-        "exit /b\r\n"
-    )
-    diag = (
-        "@echo off\r\n"
-        'set "HERE=%~dp0"\r\n'
-        "for /f \"delims=\" %%p in (\"%HERE%\") do set \"P=%%~p\"\r\n"
-        'set "GPCOMBINE_BUNDLE=%P%"\r\n'
-        'set "PYTHONHOME=%HERE%python"\r\n'
-        'set "PYTHONUTF8=1"\r\n'
-        'set "PATH=%HERE%python;%HERE%python\\Scripts;%PATH%"\r\n'
-        "echo === GP-Combine 环境自检（把整个窗口内容发给作者）===\r\n"
-        "echo.\r\n"
-        "echo 当前路径: %HERE%\r\n"
-        "echo.\r\n"
-        "echo --- 关键文件检查（应该都有）---\r\n"
-        'if exist "%HERE%python\\python.exe" (echo [OK] python.exe) else (echo [缺] python.exe)\r\n'
-        'if exist "%HERE%python\\Lib\\encodings\\__init__.py" (echo [OK] Lib/encodings) else (echo [缺] Lib/encodings)\r\n'
-        'if exist "%HERE%python\\Lib\\site-packages\\PySide2\\__init__.py" (echo [OK] PySide2) else (echo [缺] PySide2)\r\n'
-        'if exist "%HERE%python\\Lib\\site-packages\\esptool\\__main__.py" (echo [OK] esptool) else (echo [缺] esptool)\r\n'
-        "echo.\r\n"
-        "echo --- 解释器能不能起来（应打印 Python 3.8.x）---\r\n"
-        '"%HERE%python\\python.exe" -V\r\n'
-        "echo.\r\n"
-        "echo --- 解释器带脚本/命令跑（应打印 hello）---\r\n"
-        "\"%HERE%python\\python.exe\" -c \"print('hello')\"\r\n"
-        "echo.\r\n"
-        "echo --- 助手自检 ---\r\n"
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%P%" --selftest\r\n'
-        "echo.\r\n"
-        "pause\r\n"
-    )
-    for name, text in (("Start-GP-Combine.bat", start),
-                       ("diagnose.bat", diag),
-                       ("诊断-显示详细报错.bat", diag)):
-        (out / name).write_bytes(text.encode("gbk", errors="replace"))
-    print("✔ 启动器（GBK）")
+★ 用法：双击 flash.bat
+    1. 先把板子插到 USB（ESP32-S3 免驱；CP210x/CH340 板子要先装驱动）
+    2. 脚本会列出检测到的串口，输入串口号（例如 COM3）
+    3. 选固件：1 = 170x320 竖屏大屏，2 = 240x135 小屏
+    4. 确认后自动刷写，跑完板子自动重启
+
+★ 这个包不含编译功能
+    Win7 跑不了现在的编译工具链（Python 3.12/Qt6、arduino-cli 1.x、esp32 core 3.x
+    的 GCC 工具链都要求 Win10+）。要改背景/布局/小游戏，请在 Win10/11 的完整懒人包
+    里编译好后，把 firmware 里的 .bin 拷过来刷；或者直接在 Win10/11 上刷。
+
+★ 出问题怎么办
+    先双击 diagnose.bat（或 诊断.bat），把窗口内容发给作者：
+    它会打印 esptool 版本、串口列表、Windows 版本。
+
+★ 常用排查
+    - 看不到串口：换一根能传数据的 USB 线；装 CP210x/CH340 驱动
+    - 一直连接失败：按住 BOOTSEL 键再插 USB，然后重跑 flash.bat
+    - 想清空所有设置：选 9（整片擦除后再刷）
+
+esptool 版本: {ESPTOOL_VER}（Espressif 官方 standalone，仅依赖 KERNEL32/ADVAPI32，Win7 可跑）
+"""
+    write_gbk(out / "README-Win7.txt", text)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="组装 Win7 刷机包")
+    ap = argparse.ArgumentParser(description="组装 Win7 刷机包（免 Python）")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--repo", default=str(Path(__file__).resolve().parents[1]))
-    ap.add_argument("--firmware", default="", help="含 esp32_240_135/esp32_170_320 的目录")
-    ap.add_argument("--cache", default=str(Path("/tmp/gpwin7cache")), help="下载缓存目录")
+    ap.add_argument("--firmware", required=True, help="含 esp32_240_135 / esp32_170_320 的目录")
+    ap.add_argument("--cache", default="/tmp/gpwin7cache")
+    ap.add_argument("--esptool-version", default=ESPTOOL_VER)
     args = ap.parse_args()
 
-    repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
     cache = Path(args.cache)
-    cache.mkdir(parents=True, exist_ok=True)
+    fw_src = Path(args.firmware).expanduser().resolve()
+    if not (fw_src / "esp32_170_320" / "app.bin").is_file():
+        raise SystemExit("--firmware 里没有 esp32_170_320/app.bin：%s" % fw_src)
     if out.exists():
         shutil.rmtree(out)
-    (out / "python").mkdir(parents=True)
-    (out / "app").mkdir(parents=True)
-    (out / "src" / "GP-Combine").mkdir(parents=True)
+    out.mkdir(parents=True)
 
-    # 1) Python 3.8 便携版（官方最后支持 Win7 的版本线）
-    py_zip = cache / ("python-%s.nupkg" % PY_VER)
-    if not py_zip.is_file():
-        fetch(PY_URL, py_zip)
-    tmp_py = cache / "python-nuget"
-    shutil.rmtree(tmp_py, ignore_errors=True)
-    unzip(py_zip, tmp_py)
-    src_tools = tmp_py / "tools"
-    if not src_tools.is_dir():
-        raise SystemExit("nuget 包里没有 tools/ 目录，结构变了：%s" % tmp_py)
-    shutil.copytree(src_tools, out / "python", dirs_exist_ok=True)
-    # 用不到的开发用目录，删掉省体积（PySide2/esptool 都不依赖它们）
-    for junk in ("Tools", "include", "libs", "Lib/test", "Lib/idlelib", "Lib/turtledemo",
-                 "Lib/lib2to3", "Lib/distutils", "Lib/ensurepip"):
-        shutil.rmtree(out / "python" / junk, ignore_errors=True)
-    print("✔ python %s（便携版）→ %s" % (PY_VER, out / "python"))
-
-    # 2) Win7 可用的轮子（PySide2=Qt5、Pillow、pyserial）
-    wheels = cache / "wheels"
-    if not wheels.is_dir() or not list(wheels.glob("*.whl")):
-        wheels.mkdir(parents=True, exist_ok=True)
-        sh([sys.executable, "-m", "pip", "download", "--no-deps", "--only-binary=:all:",
-            "--platform", "win_amd64", "--python-version", "38", "--implementation", "cp",
-            "--abi", "cp38", "-d", wheels, *WHEELS])
-    install_wheels(wheels, out / "python" / "Lib" / "site-packages")
-
-    # 3) esptool 4.8.1（纯 Python，Win7 可跑；5.x 需要更高 Python）
-    import tarfile
-
-    esp_tar = cache / ("esptool-%s.tar.gz" % ESPTOOL_VER)
-    if not esp_tar.is_file():
-        import json as _json
-
-        with urllib.request.urlopen("https://pypi.org/pypi/esptool/%s/json" % ESPTOOL_VER) as r:  # noqa: S310
-            meta = _json.load(r)
-        url = next(u["url"] for u in meta["urls"] if u["filename"].endswith(".tar.gz"))
-        fetch(url, esp_tar)
-    tmp_ex = cache / "esptool-x"
-    shutil.rmtree(tmp_ex, ignore_errors=True)
-    with tarfile.open(esp_tar) as t:
-        t.extractall(tmp_ex)
-    inner = next(tmp_ex.glob("esptool-*"))
-    shutil.copytree(inner / "esptool", out / "python" / "Lib" / "site-packages" / "esptool",
-                    dirs_exist_ok=True)
+    # 1) esptool.exe（standalone）
+    zip_path = cache / ("esptool-v%s-win64.zip" % args.esptool_version)
+    if not zip_path.is_file():
+        fetch(ESPTOOL_URL.replace(ESPTOOL_VER, args.esptool_version), zip_path)
+    tmp = cache / "esptool-x"
+    shutil.rmtree(tmp, ignore_errors=True)
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(tmp)
+    exe = next(tmp.rglob("esptool.exe"))
+    shutil.copy2(exe, out / "esptool.exe")
     for extra in ("LICENSE", "README.md"):
-        f = inner / extra
+        f = exe.parent / extra
         if f.is_file():
-            shutil.copy2(f, out / "python" / "Lib" / "site-packages" / ("esptool-" + extra))
-    print("✔ esptool", ESPTOOL_VER)
+            shutil.copy2(f, out / ("esptool-" + extra))
+    print("✔ esptool.exe", args.esptool_version, "→", out / "esptool.exe")
 
-    # 4) 懒人版助手 + 它用到的 pc_app 模块
-    app_dir = out / "app" / "pcapp_dumbversion"
-    app_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("main.py", "README.md"):
-        f = repo / "pcapp_dumbversion" / name
-        if f.is_file():
-            shutil.copy2(f, app_dir / name)
-    shutil.copytree(repo / "pcapp_dumbversion" / "dumb",
-                    app_dir / "dumb", dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copytree(repo / "pc_app" / "gpfusion_wizard",
-                    out / "src" / "GP-Combine" / "pc_app" / "gpfusion_wizard",
-                    ignore=shutil.ignore_patterns("__pycache__", "ui"), dirs_exist_ok=True)
-    (out / "src" / "GP-Combine" / "pc_app" / "__init__.py").write_text("", encoding="utf-8")
-    print("✔ 助手 + pc_app 模块")
+    # 2) 预编译固件
+    shutil.copytree(fw_src, out / "firmware", dirs_exist_ok=True)
+    for res in ("esp32_170_320", "esp32_240_135"):
+        p = out / "firmware" / res
+        print("✔ 固件 %s：%s" % (res, ", ".join(sorted(f.name for f in p.glob("*.bin"))) or "无"))
 
-    # 5) 预编译固件
-    fw_src = Path(args.firmware).expanduser() if args.firmware else None
-    if fw_src and fw_src.is_dir():
-        shutil.copytree(fw_src, out / "firmware", dirs_exist_ok=True)
-        print("✔ 预编译固件 →", out / "firmware")
-    else:
-        print("⚠ 没有提供 --firmware，包里不会有固件（刷不了）")
-
-    # 6) 启动器 + 说明
-    write_launchers(out)
-    (out / "README-Win7.txt").write_text(
-        "GP-Combine 懒人版 · Win7 刷机包\r\n"
-        "================================\r\n\r\n"
-        "★★★ 重要：必须放到纯英文路径！★★★\r\n"
-        "   例如 D:\\GP-Combine   （不要放在 桌面/新建文件夹/中文目录 里）\r\n"
-        "   内置的 Python 3.8 在中文路径下会启动失败；\r\n"
-        "   如果放错了，双击 Start-GP-Combine.bat 会自动把它复制到\r\n"
-        "   %LOCALAPPDATA%\\GPCombine 再启动（会慢一点，但能跑）。\r\n\r\n"
-        "这个包只做「刷写」，不编译。\r\n"
-        "Win7 上没法跑现在的编译工具链（Python 3.12/Qt6、arduino-cli 1.x、esp32 core 3.x\r\n"
-        "的 GCC 工具链都要求 Win10+），所以编译请在 Win10/11 的完整懒人包里做。\r\n\r\n"
-        "怎么用：\r\n"
-        "1. 把整块板子插到电脑 USB（ESP32-S3 免驱；CP210x/CH340 的板子要先装驱动）\r\n"
-        "2. 双击 Start-GP-Combine.bat\r\n"
-        "3. 顶部「串口」下拉选到板子的端口（看不到就点刷新）\r\n"
-        "4. 想要哪块屏就选分辨率，然后点「刷预编译固件」\r\n"
-        "   - 想清空重来：先「整机重刷」→ 不行再用命令行 esptool erase-flash\r\n"
-        "5. 动态壁纸/小游戏 ROM：需要别人用完整版助手写卡内文件，或者用完整包里的\r\n"
-        "   「写入卡内文件」按钮（这个包也支持，只要 firmware 里带了 littlefs.bin）\r\n\r\n"
-        "出问题时：\r\n"
-        "- 双击「诊断-显示详细报错.bat」，把窗口里的内容发给作者\r\n"
-        "- 板子不识别：换根 USB 线（要能传数据的），或者按住 BOOTSEL 再插\r\n",
-        encoding="utf-8",
-    )
-
-    manifest = {
-        "name": "GP-Combine 懒人包（Win7 刷机包）",
-        "python": PY_VER,
-        "gui": "PySide2 (Qt5)",
-        "esptool": ESPTOOL_VER,
-        "firmware": bool(fw_src and fw_src.is_dir()),
-    }
-    (out / "bundle.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 3) 脚本 + 说明
+    write_bats(out)
+    write_readme(out)
+    (out / "bundle.json").write_text(json.dumps({
+        "name": "GP-Combine 刷机工具（Win7 免安装）",
+        "esptool": args.esptool_version,
+        "needs_python": False,
+        "offsets": {"bootloader": OFF_BOOTLOADER, "partitions": OFF_PARTITIONS,
+                    "boot_app0": OFF_BOOT_APP0, "app": OFF_APP, "littlefs": OFF_LITTLEFS},
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     total = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
-    print("\n=== Win7 刷机包完成 ===")
+    print("\n=== Win7 刷机包（免 Python）完成 ===")
     print("路径:", out)
     print("大小: %.1f MB" % (total / 1048576.0))
+    print("入口:", out / "flash.bat")
     return 0
 
 

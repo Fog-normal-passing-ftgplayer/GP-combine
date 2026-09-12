@@ -36,8 +36,10 @@ jobs:
         shell: pwsh
         run: |
           $ver = $env:ARDUINO_CLI_VERSION
-          $url = "https://github.com/arduino/arduino-cli/releases/download/v$ver/arduino-cli_${ver}_Windows_64bit.zip"
-          Invoke-WebRequest -Uri $url -OutFile cli.zip
+          $rel = Invoke-RestMethod "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v$ver"
+          $asset = $rel.assets | Where-Object { $_.name -match 'Windows_64bit\.zip$' } | Select-Object -First 1
+          if (-not $asset) { throw "找不到 arduino-cli $ver 的 Windows 包" }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile cli.zip
           Expand-Archive cli.zip -DestinationPath tools/arduino-cli -Force
 
       - name: 安装 esp32 core（按 S3 裁剪前的完整安装）
@@ -51,15 +53,22 @@ jobs:
           & $cli core update-index
           & $cli core install "esp32:esp32@$env:CORE_VERSION"
 
-      - name: 组装懒人包
+      - name: 组装懒人包（含预编译固件）
+        if: ${{ github.event.inputs.prebuilt != 'false' }}
         shell: pwsh
         run: |
-          $extra = if ("${{ github.event.inputs.prebuilt }}" -eq "false") { @() } else { @("--prebuilt") }
-          python tools/make_bundle.py `
-            --out bundle `
+          python tools/make_bundle.py --out bundle `
             --from-data "$pwd/arduino-data-stage" `
             --cli "$pwd/tools/arduino-cli/arduino-cli.exe" `
-            @extra
+            --prebuilt
+
+      - name: 组装懒人包（跳过预编译固件）
+        if: ${{ github.event.inputs.prebuilt == 'false' }}
+        shell: pwsh
+        run: |
+          python tools/make_bundle.py --out bundle `
+            --from-data "$pwd/arduino-data-stage" `
+            --cli "$pwd/tools/arduino-cli/arduino-cli.exe"
 
       - name: 把助手打成 exe（免装 Python）
         shell: pwsh
@@ -70,15 +79,16 @@ jobs:
             --paths $paths --collect-all PIL --collect-all serial `
             --distpath bundle/app --workpath build/pyi --specpath build/pyi `
             "$app/main.py"
-          # 启动器改成直接跑 exe
-          @"
-          @echo off
-          setlocal
-          set "HERE=%~dp0"
-          set "GPCOMBINE_BUNDLE=%HERE%"
-          "%HERE%app\GP-Combine\GP-Combine.exe" --bundle "%HERE%" %*
-          endlocal
-          "@ | Set-Content -Encoding ASCII "bundle/Start-GP-Combine.bat"
+          # 启动器改成直接跑 exe（用数组写文件，避免 here-string 缩进问题）
+          $bat = @(
+            '@echo off',
+            'setlocal',
+            'set "HERE=%~dp0"',
+            'set "GPCOMBINE_BUNDLE=%HERE%"',
+            '"%HERE%app\GP-Combine\GP-Combine.exe" --bundle "%HERE%" %*',
+            'endlocal'
+          )
+          Set-Content -Path "bundle/Start-GP-Combine.bat" -Value $bat -Encoding ASCII
 
       - name: 打包 zip
         shell: pwsh
@@ -118,7 +128,11 @@ jobs:
       - name: 下载 arduino-cli (Linux)
         run: |
           ver=$ARDUINO_CLI_VERSION
-          curl -fsSL -o cli.tar.gz "https://github.com/arduino/arduino-cli/releases/download/v${ver}/arduino-cli_${ver}_Linux_64bit.tar.gz"
+          url=$(curl -fsSL "https://api.github.com/repos/arduino/arduino-cli/releases/tags/v${ver}" \
+                | grep -o '"browser_download_url": *"[^"]*Linux_64bit\.tar\.gz"' | head -1 \
+                | sed 's/.*"\(https[^"]*\)"/\1/')
+          [ -n "$url" ] || { echo "找不到 arduino-cli ${ver} 的 Linux 包"; exit 1; }
+          curl -fsSL -o cli.tar.gz "$url"
           mkdir -p tools/arduino-cli && tar -xzf cli.tar.gz -C tools/arduino-cli
 
       - name: 安装 esp32 core
@@ -128,13 +142,20 @@ jobs:
           ./tools/arduino-cli/arduino-cli core update-index
           ./tools/arduino-cli/arduino-cli core install "esp32:esp32@${CORE_VERSION}"
 
-      - name: 组装懒人包
+      - name: 组装懒人包（含预编译固件）
+        if: ${{ github.event.inputs.prebuilt != 'false' }}
         run: |
-          extra=""
-          if [ "${{ github.event.inputs.prebuilt }}" != "false" ]; then extra="--prebuilt"; fi
           python3 tools/make_bundle.py --out bundle \
             --from-data "$PWD/arduino-data-stage" \
-            --cli "$PWD/tools/arduino-cli/arduino-cli" $extra
+            --cli "$PWD/tools/arduino-cli/arduino-cli" \
+            --prebuilt
+
+      - name: 组装懒人包（跳过预编译固件）
+        if: ${{ github.event.inputs.prebuilt == 'false' }}
+        run: |
+          python3 tools/make_bundle.py --out bundle \
+            --from-data "$PWD/arduino-data-stage" \
+            --cli "$PWD/tools/arduino-cli/arduino-cli"
 
       - name: 打包 tar.gz
         run: |

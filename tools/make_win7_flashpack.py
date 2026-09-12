@@ -138,8 +138,10 @@ echo.
 echo ============================================================
 echo   ✘ 刷写失败，检查：
 echo     1. 串口是不是选错了（设备管理器里看）
-echo     2. 驱动装了没（CP210x/CH340 需要；ESP32-S3 免驱）
-echo     3. 换根 USB 线
+echo     2. Win7 驱动：ESP32-S3 的原生 USB 在 Win7 上没有内置驱动，
+echo        请看同目录 驱动说明-Win7.txt（换 USB-TTL 或换机器刷）
+echo        如果板子上是 CH340 / CP2102 芯片，就要装对应驱动
+echo     3. 换根"能传数据"的 USB 线
 echo     4. 先按住 BOOTSEL 再插 USB，然后重跑本脚本
 echo ============================================================
 pause
@@ -169,6 +171,55 @@ pause
     write_gbk(out / "flash.bat", flash)
     write_gbk(out / "diagnose.bat", diag)
     write_gbk(out / "诊断.bat", diag)
+
+
+def write_driver_note(out: Path) -> None:
+    text = """Win7 驱动说明（重要）
+=====================
+
+为什么插上板子没有 COM 口 / 提示"驱动程序未能正确安装"？
+
+  ESP32-S3 的原生 USB 口（USB-Serial/JTAG）**只有在 Windows 10 及以上才有内置驱动**，
+  Windows 7 上没有对应驱动，Espressif 也没有提供 Win7 的签名驱动。
+  所以 Win7 上刷固件有三条路：
+
+--------------------------------------------------------------------
+路线 A（推荐）：换一台机器刷
+  Win10 / Win11 / Linux / macOS 都能直接认出 ESP32-S3 的 USB，不用装任何驱动。
+  也就是"在别的电脑上刷好，再拿到 Win7 的机器上用"。
+
+路线 B：Win7 上用 USB-TTL 转接板走串口刷（要接 4 根线）
+  1. 买一个 USB 转 TTL 小板：CH340 或 CP2102（几块钱）
+  2. 装它的 Win7 驱动（必须装，见下面链接）
+  3. 接线（ESP32-S3 侧）：
+        TTL 的 GND  -> ESP32 的 GND
+        TTL 的 TXD  -> ESP32 的 RX（GPIO44）
+        TTL 的 RXD  -> ESP32 的 TX（GPIO43）
+        （自动下载电路需要 DTR->GPIO0、RTS->EN；没有就手动：按住 BOOTSEL，
+          点一下 RST，松开 BOOTSEL，进入下载模式）
+  4. 注意：这两根线在本项目里是接 Pico 的，刷 ESP32 前先**把 Pico 断电/拔掉**，
+     否则会互相干扰。
+  5. 刷写时把 flash.bat 里的串口填成 USB-TTL 的 COM 口（比如 COM5）
+
+路线 C：产品上直接换带 USB 桥的模组
+  PCB 上放一颗 CH340/CP2102（成本 1-2 元），Win7 用户装上它家的驱动就能刷机；
+  或者干脆出厂就把固件刷好，用户只需要改配置（不刷固件）。
+
+--------------------------------------------------------------------
+驱动下载（官方）
+  CH340/CH341（沁恒）：  http://www.wch.cn/downloads/CH341SER_EXE.html
+  CP210x（Silicon Labs）：https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+  提示：Win7 **64 位**必须用**已签名**的驱动，装完拔插一次板子再看设备管理器。
+
+怎么确认你手上的板子属于哪种？
+  设备管理器里带黄色感叹号的那个设备名字：
+    "USB JTAG/serial debug unit"  -> 原生 USB（本说明的情况，走 A/B/C）
+    "CH340" / "USB-SERIAL CH340"  -> 装 CH340 驱动（路线 B 的驱动）
+    "Silicon Labs CP210x ..."     -> 装 CP210x 驱动
+
+按 diagnose.bat 会打印 Windows 版本和当前串口列表，出问题把它发给作者。
+"""
+    write_gbk(out / "驱动说明-Win7.txt", text)
 
 
 def write_readme(out: Path) -> None:
@@ -242,6 +293,7 @@ def main() -> int:
     # 3) 脚本 + 说明
     write_bats(out)
     write_readme(out)
+    write_driver_note(out)
     (out / "bundle.json").write_text(json.dumps({
         "name": "GP-Combine 刷机工具（Win7 免安装）",
         "esptool": args.esptool_version,

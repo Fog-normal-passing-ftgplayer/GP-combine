@@ -57,6 +57,54 @@ def install_wheels(wheels_dir: Path, site_packages: Path) -> None:
             z.extractall(site_packages)
 
 
+def write_launchers(out: Path) -> None:
+    """写启动器。
+
+    要点：
+    * .bat 用 GBK(cp936) 编码，中文 Windows 的 cmd 才显示正常；
+    * 路径含中文时 embedded Python 会 getpath 崩（sys.executable 变乱码 ->
+      ModuleNotFoundError: No module named 'encodings'），所以先用 PowerShell
+      检测非 ASCII 字符，命中就自动复制到 %LOCALAPPDATA%\\GPCombine 再跑。
+    """
+    start = (
+        "@echo off\r\n"
+        "setlocal\r\n"
+        'set "HERE=%~dp0"\r\n'
+        "for /f \"delims=\" %%p in (\"%HERE%\") do set \"P=%%~p\"\r\n"
+        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('%P%' -match '[^\\x20-\\x7e]') { exit 1 } else { exit 0 }\"\r\n"
+        "if errorlevel 1 goto relocate\r\n"
+        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
+        'set "PATH=%HERE%python;%PATH%"\r\n'
+        "echo 正在启动 GP-Combine 懒人版（Win7 刷机包）...\r\n"
+        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" %*\r\n'
+        "if errorlevel 1 pause\r\n"
+        "exit /b\r\n"
+        ":relocate\r\n"
+        "echo.\r\n"
+        "echo [提示] 当前路径含中文或特殊字符：\r\n"
+        "echo        %HERE%\r\n"
+        "echo        内置 Python 在这种路径下无法启动，正在自动复制到：\r\n"
+        "echo        %LOCALAPPDATA%\\GPCombine\r\n"
+        "echo        复制完会自动打开，请稍等（约 350MB）...\r\n"
+        'xcopy /E /I /Q /Y "%HERE:~0,-1%" "%LOCALAPPDATA%\\GPCombine\\" >nul\r\n'
+        'start "" "%LOCALAPPDATA%\\GPCombine\\Start-GP-Combine.bat"\r\n'
+        "exit /b\r\n"
+    )
+    diag = (
+        "@echo off\r\n"
+        'set "HERE=%~dp0"\r\n'
+        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
+        'set "PATH=%HERE%python;%PATH%"\r\n'
+        "echo === GP-Combine 环境自检（把下面内容发给作者）===\r\n"
+        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" --selftest\r\n'
+        "echo.\r\n"
+        "pause\r\n"
+    )
+    for name, text in (("Start-GP-Combine.bat", start), ("诊断-显示详细报错.bat", diag)):
+        (out / name).write_bytes(text.encode("gbk", errors="replace"))
+    print("✔ 启动器（GBK）")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="组装 Win7 刷机包")
     ap.add_argument("--out", required=True)
@@ -142,29 +190,15 @@ def main() -> int:
         print("⚠ 没有提供 --firmware，包里不会有固件（刷不了）")
 
     # 6) 启动器 + 说明
-    (out / "Start-GP-Combine.bat").write_text(
-        "@echo off\r\n"
-        "setlocal\r\n"
-        'set "HERE=%~dp0"\r\n'
-        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
-        'set "PATH=%HERE%python;%PATH%"\r\n'
-        'echo 正在启动 GP-Combine 懒人版（Win7 刷机包）...\r\n'
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" %*\r\n'
-        "if errorlevel 1 pause\r\n"
-        "endlocal\r\n",
-        encoding="utf-8",
-    )
-    (out / "诊断-显示详细报错.bat").write_text(
-        "@echo off\r\n"
-        'set "HERE=%~dp0"\r\n'
-        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" --selftest\r\n'
-        "pause\r\n",
-        encoding="utf-8",
-    )
+    write_launchers(out)
     (out / "README-Win7.txt").write_text(
         "GP-Combine 懒人版 · Win7 刷机包\r\n"
         "================================\r\n\r\n"
+        "★★★ 重要：必须放到纯英文路径！★★★\r\n"
+        "   例如 D:\\GP-Combine   （不要放在 桌面/新建文件夹/中文目录 里）\r\n"
+        "   内置的 Python 3.8 在中文路径下会启动失败；\r\n"
+        "   如果放错了，双击 Start-GP-Combine.bat 会自动把它复制到\r\n"
+        "   %LOCALAPPDATA%\\GPCombine 再启动（会慢一点，但能跑）。\r\n\r\n"
         "这个包只做「刷写」，不编译。\r\n"
         "Win7 上没法跑现在的编译工具链（Python 3.12/Qt6、arduino-cli 1.x、esp32 core 3.x\r\n"
         "的 GCC 工具链都要求 Win10+），所以编译请在 Win10/11 的完整懒人包里做。\r\n\r\n"

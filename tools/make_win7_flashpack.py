@@ -95,12 +95,28 @@ def write_launchers(out: Path) -> None:
         'set "HERE=%~dp0"\r\n'
         'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
         'set "PATH=%HERE%python;%PATH%"\r\n'
-        "echo === GP-Combine 环境自检（把下面内容发给作者）===\r\n"
+        "echo === GP-Combine 环境自检（把整个窗口内容发给作者）===\r\n"
+        "echo.\r\n"
+        "echo 当前路径: %HERE%\r\n"
+        "echo.\r\n"
+        "echo --- 关键文件检查（应该都有）---\r\n"
+        'if exist "%HERE%python\\python.exe" (echo [OK] python.exe) else (echo [缺] python.exe)\r\n'
+        'if exist "%HERE%python\\python38.zip" (echo [OK] python38.zip) else (echo [缺] python38.zip)\r\n'
+        'if exist "%HERE%python\\python38._pth" (echo [OK] python38._pth) else (echo [缺] python38._pth)\r\n'
+        'if exist "%HERE%python\\Lib\\site-packages\\PySide2\\__init__.py" (echo [OK] PySide2) else (echo [缺] PySide2)\r\n'
+        'if exist "%HERE%python\\Lib\\site-packages\\esptool\\__main__.py" (echo [OK] esptool) else (echo [缺] esptool)\r\n'
+        "echo.\r\n"
+        "echo --- 解释器能不能起来（应打印 Python 3.8.x）---\r\n"
+        '"%HERE%python\\python.exe" -V\r\n'
+        "echo.\r\n"
+        "echo --- 助手自检 ---\r\n"
         '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" --selftest\r\n'
         "echo.\r\n"
         "pause\r\n"
     )
-    for name, text in (("Start-GP-Combine.bat", start), ("诊断-显示详细报错.bat", diag)):
+    for name, text in (("Start-GP-Combine.bat", start),
+                       ("diagnose.bat", diag),
+                       ("诊断-显示详细报错.bat", diag)):
         (out / name).write_bytes(text.encode("gbk", errors="replace"))
     print("✔ 启动器（GBK）")
 

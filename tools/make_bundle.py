@@ -32,6 +32,15 @@ CORE_SPEC = "esp32:esp32"
 CORE_VERSION = "3.3.11"
 FQBN = "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom"
 
+
+def utf8_stdio() -> None:
+    """Windows 控制台默认 cp1252，打印 ✔ / → 会 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
 # 只编 ESP32-S3：这些工具/目录打包时删掉，能省一半体积
 # 只编 ESP32-S3：tools/ 下只保留这些，其余（其它目标的预编译库、gdb、openocd、
 # riscv 工具链）全部删掉，能省一半体积
@@ -187,6 +196,11 @@ def copy_arduino_data(from_data: Path, data_dst: Path) -> None:
                 continue
             print("  复制 tools/%s" % item.name)
             copytree(item, dst_pkg / "tools" / item.name, skip_names=("tmp",))
+    # builtin 只有几 MB（串口 / MDNS 发现工具），带上更保险
+    builtin = from_data / "packages" / "builtin"
+    if builtin.is_dir():
+        print("  复制 packages/builtin")
+        copytree(builtin, data_dst / "packages" / "builtin", skip_names=("tmp",))
     for extra in ("arduino-cli.yaml", "inventory.yaml"):
         f = from_data / extra
         if f.is_file():
@@ -274,6 +288,7 @@ def build_prebuilt(root: Path, cli: Path, source: Path, work: Path) -> None:
 
 
 def main() -> int:
+    utf8_stdio()
     ap = argparse.ArgumentParser(description="打包 GP-Combine 懒人包")
     ap.add_argument("--out", required=True, help="输出目录（懒人包根）")
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parents[1]))

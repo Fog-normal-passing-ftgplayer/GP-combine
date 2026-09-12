@@ -17,6 +17,9 @@ on:
 env:
   CORE_VERSION: ${{ github.event.inputs.core_version || '3.3.11' }}
   ARDUINO_CLI_VERSION: "1.1.1"
+  # Windows 上让 Python 走 UTF-8，否则脚本里的 ✔ / → 会 UnicodeEncodeError
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
 
 jobs:
   windows:

@@ -20,7 +20,17 @@ _HERE = Path(__file__).resolve().parent if "__file__" in globals() else Path(
 sys.path.insert(0, str(_HERE))
 
 
+def _utf8_stdio() -> None:
+    """Windows 控制台默认 cp1252，日志里的 ✔ / ✘ 会直接抛 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def main() -> int:
+    _utf8_stdio()
     parser = argparse.ArgumentParser(description="GP-Combine 懒人版配置助手")
     parser.add_argument("--bundle", default="", help="懒人包根目录（默认自动探测）")
     parser.add_argument("--selftest", action="store_true", help="只做环境自检")

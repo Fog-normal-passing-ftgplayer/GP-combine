@@ -26,7 +26,11 @@ import zipfile
 from pathlib import Path
 
 PY_VER = "3.8.10"
-PY_URL = "https://www.python.org/ftp/python/%s/python-%s-embed-amd64.zip" % (PY_VER, PY_VER)
+# 用 nuget 的「便携版」而不是 python.org 的 embeddable：
+# embeddable 靠 python38._pth + 可执行文件路径推导标准库位置，在部分 Win7 环境下
+# 推导失败（sys.executable 变乱码 -> No module named 'encodings'）；
+# nuget 版是标准布局（python.exe + Lib/ + DLLs/ 松散文件），不依赖 _pth。
+PY_URL = "https://www.nuget.org/api/v2/package/python/%s" % PY_VER
 ESPTOOL_VER = "4.8.1"
 WHEELS = ["PySide2==5.15.2.1", "pyserial", "Pillow==10.4.0", "reedsolo", "ecdsa", "bitstring"]
 
@@ -73,10 +77,12 @@ def write_launchers(out: Path) -> None:
         "for /f \"delims=\" %%p in (\"%HERE%\") do set \"P=%%~p\"\r\n"
         "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if ('%P%' -match '[^\\x20-\\x7e]') { exit 1 } else { exit 0 }\"\r\n"
         "if errorlevel 1 goto relocate\r\n"
-        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
-        'set "PATH=%HERE%python;%PATH%"\r\n'
+        'set "GPCOMBINE_BUNDLE=%P%"\r\n'
+        'set "PYTHONHOME=%HERE%python"\r\n'
+        'set "PYTHONUTF8=1"\r\n'
+        'set "PATH=%HERE%python;%HERE%python\\Scripts;%PATH%"\r\n'
         "echo 正在启动 GP-Combine 懒人版（Win7 刷机包）...\r\n"
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" %*\r\n'
+        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%P%" %*\r\n'
         "if errorlevel 1 pause\r\n"
         "exit /b\r\n"
         ":relocate\r\n"
@@ -93,24 +99,29 @@ def write_launchers(out: Path) -> None:
     diag = (
         "@echo off\r\n"
         'set "HERE=%~dp0"\r\n'
-        'set "GPCOMBINE_BUNDLE=%HERE%"\r\n'
-        'set "PATH=%HERE%python;%PATH%"\r\n'
+        "for /f \"delims=\" %%p in (\"%HERE%\") do set \"P=%%~p\"\r\n"
+        'set "GPCOMBINE_BUNDLE=%P%"\r\n'
+        'set "PYTHONHOME=%HERE%python"\r\n'
+        'set "PYTHONUTF8=1"\r\n'
+        'set "PATH=%HERE%python;%HERE%python\\Scripts;%PATH%"\r\n'
         "echo === GP-Combine 环境自检（把整个窗口内容发给作者）===\r\n"
         "echo.\r\n"
         "echo 当前路径: %HERE%\r\n"
         "echo.\r\n"
         "echo --- 关键文件检查（应该都有）---\r\n"
         'if exist "%HERE%python\\python.exe" (echo [OK] python.exe) else (echo [缺] python.exe)\r\n'
-        'if exist "%HERE%python\\python38.zip" (echo [OK] python38.zip) else (echo [缺] python38.zip)\r\n'
-        'if exist "%HERE%python\\python38._pth" (echo [OK] python38._pth) else (echo [缺] python38._pth)\r\n'
+        'if exist "%HERE%python\\Lib\\encodings\\__init__.py" (echo [OK] Lib/encodings) else (echo [缺] Lib/encodings)\r\n'
         'if exist "%HERE%python\\Lib\\site-packages\\PySide2\\__init__.py" (echo [OK] PySide2) else (echo [缺] PySide2)\r\n'
         'if exist "%HERE%python\\Lib\\site-packages\\esptool\\__main__.py" (echo [OK] esptool) else (echo [缺] esptool)\r\n'
         "echo.\r\n"
         "echo --- 解释器能不能起来（应打印 Python 3.8.x）---\r\n"
         '"%HERE%python\\python.exe" -V\r\n'
         "echo.\r\n"
+        "echo --- 解释器带脚本/命令跑（应打印 hello）---\r\n"
+        "\"%HERE%python\\python.exe\" -c \"print('hello')\"\r\n"
+        "echo.\r\n"
         "echo --- 助手自检 ---\r\n"
-        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%HERE%" --selftest\r\n'
+        '"%HERE%python\\python.exe" "%HERE%app\\pcapp_dumbversion\\main.py" --bundle "%P%" --selftest\r\n'
         "echo.\r\n"
         "pause\r\n"
     )
@@ -139,14 +150,22 @@ def main() -> int:
     (out / "app").mkdir(parents=True)
     (out / "src" / "GP-Combine").mkdir(parents=True)
 
-    # 1) Python 3.8 embeddable（官方最后支持 Win7 的版本线）
-    py_zip = cache / Path(PY_URL).name
+    # 1) Python 3.8 便携版（官方最后支持 Win7 的版本线）
+    py_zip = cache / ("python-%s.nupkg" % PY_VER)
     if not py_zip.is_file():
         fetch(PY_URL, py_zip)
-    unzip(py_zip, out / "python")
-    pth = out / "python" / "python38._pth"
-    pth.write_text("python38.zip\n.\nLib\\site-packages\nimport site\n", encoding="utf-8")
-    print("✔ python 3.8 embed →", out / "python")
+    tmp_py = cache / "python-nuget"
+    shutil.rmtree(tmp_py, ignore_errors=True)
+    unzip(py_zip, tmp_py)
+    src_tools = tmp_py / "tools"
+    if not src_tools.is_dir():
+        raise SystemExit("nuget 包里没有 tools/ 目录，结构变了：%s" % tmp_py)
+    shutil.copytree(src_tools, out / "python", dirs_exist_ok=True)
+    # 用不到的开发用目录，删掉省体积（PySide2/esptool 都不依赖它们）
+    for junk in ("Tools", "include", "libs", "Lib/test", "Lib/idlelib", "Lib/turtledemo",
+                 "Lib/lib2to3", "Lib/distutils", "Lib/ensurepip"):
+        shutil.rmtree(out / "python" / junk, ignore_errors=True)
+    print("✔ python %s（便携版）→ %s" % (PY_VER, out / "python"))
 
     # 2) Win7 可用的轮子（PySide2=Qt5、Pillow、pyserial）
     wheels = cache / "wheels"

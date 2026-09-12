@@ -10,24 +10,42 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QFileDialog,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
-    QPushButton,
-    QRadioButton,
-    QVBoxLayout,
-    QWidget,
-)
+try:      # 常见环境（Win10+/Linux）
+    from PySide6.QtCore import QThread, Qt, Signal
+    from PySide6.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QFileDialog,
+        QFormLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QPlainTextEdit,
+        QProgressBar,
+        QPushButton,
+        QRadioButton,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError:   # Win7：Python 3.8 + PySide2（Qt5），接口名一致
+    from PySide2.QtCore import QThread, Qt, Signal
+    from PySide2.QtWidgets import (
+        QApplication,
+        QComboBox,
+        QFileDialog,
+        QFormLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QPlainTextEdit,
+        QProgressBar,
+        QPushButton,
+        QRadioButton,
+        QVBoxLayout,
+        QWidget,
+    )
 
 from . import APP_TITLE
 from .bundle_env import Env, refresh_cli_version, refresh_core_list
@@ -311,8 +329,27 @@ class Window(QWidget):
         except Exception:  # noqa: BLE001
             pass
         ready = bool(self.env.cli and self.env.core_ok and self.env.sketch_240)
-        for b in (self.btn_all, self.btn_compile, self.btn_fs, self.btn_full, self.btn_pre):
-            b.setEnabled(ready)
+        for b in (self.btn_all, self.btn_compile, self.btn_full):
+            b.setEnabled(ready)                    # 这三个要编译
+        self.btn_pre.setEnabled(self._firmware_available())
+        self.btn_fs.setEnabled(self._esptool_ok())
+
+    def _firmware_available(self) -> bool:
+        base = self.env.firmware_dir or self.env.root
+        if not base.is_dir():
+            return False
+        return any((base / ("esp32_%s" % res.replace("x", "_")) / "app.bin").is_file()
+                   for res in ("240x135", "170x320"))
+
+    def _esptool_ok(self) -> bool:
+        data = self.env.arduino_data
+        if data and (data / "packages" / "esp32" / "tools" / "esptool_py").is_dir():
+            return True
+        try:                       # Win7 刷机包：esptool 装在当前解释器里
+            import esptool  # noqa: F401
+        except Exception:  # noqa: BLE001
+            return False
+        return True
 
     # ------------------------------------------------------------ 运行流程
 

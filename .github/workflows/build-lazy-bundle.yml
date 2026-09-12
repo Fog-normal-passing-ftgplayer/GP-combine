@@ -193,3 +193,60 @@ jobs:
           files: |
             GP-Combine-lazy-linux.tar.gz
             GP-Combine-lazy-linux.tar.gz.sha256
+
+  win7-flashpack:
+    # Win7 上跑不了现在的编译工具链（Python 3.12/Qt6、arduino-cli 1.x、GCC 14 都要求 Win10+），
+    # 所以单独出一个「只刷机」的包：Python 3.8 embed + PySide2(Qt5) + esptool 4.8 + 预编译固件。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: pip install -r pc_app/requirements.txt
+
+      - name: 下载 arduino-cli 并装 esp32 core（只为编译预编译固件）
+        run: |
+          ver=$ARDUINO_CLI_VERSION
+          url="https://github.com/arduino/arduino-cli/releases/download/v${ver}/arduino-cli_${ver}_Linux_64bit.tar.gz"
+          curl -fsSL -o cli.tar.gz "$url"
+          mkdir -p tools/arduino-cli && tar -xzf cli.tar.gz -C tools/arduino-cli
+          export ARDUINO_DIRECTORIES_DATA="$PWD/arduino-data-stage"
+          export ARDUINO_DIRECTORIES_USER="$PWD/arduino-user-stage"
+          ./tools/arduino-cli/arduino-cli core update-index
+          ./tools/arduino-cli/arduino-cli core install "esp32:esp32@${CORE_VERSION}"
+
+      - name: 生成两版预编译固件
+        run: |
+          python3 tools/make_bundle.py --out bundle-win7-tmp \
+            --from-data "$PWD/arduino-data-stage" \
+            --cli "$PWD/tools/arduino-cli/arduino-cli" --prebuilt
+
+      - name: 组装 Win7 刷机包
+        run: |
+          python3 tools/make_win7_flashpack.py --out GP-Combine-win7-flashpack \
+            --firmware bundle-win7-tmp/firmware
+
+      - name: 打包 tar.gz
+        run: |
+          tar -czf GP-Combine-win7-flashpack.tar.gz GP-Combine-win7-flashpack
+          sha256sum GP-Combine-win7-flashpack.tar.gz > GP-Combine-win7-flashpack.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GP-Combine-win7-flashpack
+          path: |
+            GP-Combine-win7-flashpack.tar.gz
+            GP-Combine-win7-flashpack.tar.gz.sha256
+          retention-days: 14
+
+      - name: 挂到 Release（推 tag 时）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            GP-Combine-win7-flashpack.tar.gz
+            GP-Combine-win7-flashpack.tar.gz.sha256

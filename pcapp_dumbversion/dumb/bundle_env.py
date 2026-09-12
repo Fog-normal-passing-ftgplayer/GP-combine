@@ -23,7 +23,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-BUNDLE_MARKER = "arduino-data"
+# 包根标志：完整懒人包有 arduino-data；Win7 刷机包没有（只有 bundle.json）
+BUNDLE_MARKERS = ("arduino-data", "bundle.json")
 CLI_RELATIVE = Path("tools") / "arduino-cli"
 
 
@@ -80,7 +81,7 @@ def find_bundle_root(explicit: str | Path | None = None) -> Path | None:
             if cand in seen:
                 continue
             seen.add(cand)
-            if (cand / BUNDLE_MARKER).is_dir():
+            if any((cand / m).exists() for m in BUNDLE_MARKERS):
                 return cand
     return None
 
@@ -115,7 +116,12 @@ def init(explicit_root: str | Path | None = None) -> Env:
     env = Env(root=bundle or _repo_root(), portable=bundle is not None)
 
     if env.portable:
-        env.arduino_data = env.root / BUNDLE_MARKER
+        data = env.root / "arduino-data"
+        if not data.is_dir():
+            # Win7 刷机包没有 core：建个空目录占位，保证环境变量/配置合法
+            data.mkdir(parents=True, exist_ok=True)
+            env.notes.append("没有内置 arduino-data（只支持刷预编译固件）")
+        env.arduino_data = data
         env.arduino_user = env.root / "arduino-user"
         env.work_dir = env.root / "work"
         src = env.root / "src" / "GP-Combine"
@@ -189,14 +195,23 @@ def init(explicit_root: str | Path | None = None) -> Env:
 
 def patch_pc_app_paths(env: Env) -> None:
     """把 pc_app 里写死的 ~/.arduino15 指到包内（mklittlefs / esptool 在包内）。"""
-    if not env.arduino_data:
-        return
     try:
         from gpfusion_wizard import wallpaper_fs  # type: ignore
     except Exception as exc:  # pragma: no cover - 只有包不完整才会走到
         env.notes.append("pc_app 模块不可用：%s" % exc)
         return
-    wallpaper_fs._arduino15 = lambda: env.arduino_data  # type: ignore[attr-defined]
+    if env.arduino_data:
+        wallpaper_fs._arduino15 = lambda: env.arduino_data  # type: ignore[attr-defined]
+    else:
+        env.arduino_data = env.root / "arduino-data"
+    # Win7 刷机包没有 arduino-data：用当前解释器里的 esptool 模块刷写
+    bundled_esptool = env.arduino_data / "packages" / "esp32" / "tools" / "esptool_py"
+    if not bundled_esptool.is_dir():
+        try:
+            import esptool  # noqa: F401
+        except Exception:  # noqa: BLE001
+            return
+        wallpaper_fs.find_esptool = lambda: [sys.executable, "-m", "esptool"]  # type: ignore[assignment]
 
 
 def _run(cmd: list[str], timeout: int = 120) -> tuple[int, str]:
@@ -253,5 +268,13 @@ def selftest(env: Env) -> int:
         print("注意      :", note)
 
     ok = bool(env.cli and env.core_ok and env.sketch_240 and env.sketch_320)
-    print("结论      :", "✔ 离线可用" if ok else "✘ 包不完整")
-    return 0 if ok else 1
+    fw_dir = env.firmware_dir
+    has_fw = bool(fw_dir and fw_dir.is_dir() and any(fw_dir.glob("esp32_*/app.bin")))
+    if ok:
+        print("结论      : ✔ 离线可用（可编译 + 可刷写）")
+        return 0
+    if has_fw:
+        print("结论      : ✔ 只支持刷预编译固件（Win7 刷机包形态，编译请用完整包）")
+        return 0
+    print("结论      : ✘ 包不完整")
+    return 1

@@ -2508,7 +2508,10 @@ void pushFrame() {
   // 反过来（外层内容行、内层内容列）读 lfb 是连续的，但写 rbuf 变成跨 340 字节，
   // 写侧 cache 全打穿，实测反而涨到 9.4ms —— 别改回这个方向。
   for (int my = 0; my < SCR_W; my++) {        // 面板行 = 内容宽 (320)
-    uint8_t *out = rbufChunk[my / rowsPerChunk];   // 换块：整行对齐，循环里不用判断
+    // 换块 + 块内行偏移。2026-09-18 踩坑：这里一开始只写了 rbufChunk[my / rowsPerChunk]，
+    // 每行都从块首开始覆盖，一块 27200 字节只填了头 340 字节，其余 26860 是堆垃圾
+    // → 整屏花屏（一帧只有 1.2% 的字节是有效画面）。块内偏移必须带上。
+    uint8_t *out = rbufChunk[my / rowsPerChunk] + (size_t)(my % rowsPerChunk) * (SCR_H * 2);
     for (int mx = 0; mx < SCR_H; mx++) {      // 面板列 = 内容高 (170)
       int cx = rotSwapRow ? my : (SCR_W - 1 - my);
       int cy = rotRevCol ? (SCR_H - 1 - mx) : mx;

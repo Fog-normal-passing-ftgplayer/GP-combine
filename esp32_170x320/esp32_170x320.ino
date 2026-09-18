@@ -1646,7 +1646,8 @@ void renderSub() {
       drawCJKTextCentered(SCR_CX, 122, "动态壁纸模式 · 屏保已禁用", RGB565(120,132,150), 1);
     } else if (subPage == 3) {
       drawCJKTextCentered(SCR_CX, 122,
-                          gifFromFs ? "壁纸来源: 卡内文件" : "壁纸来源: 固件内置",
+                          gifFromFs ? "壁纸来源: 卡内文件"
+                                    : (gifReady ? "壁纸来源: 固件内置" : "壁纸来源: 无（静态背景）"),
                           RGB565(120,132,150), 1);
     } else
 #endif

@@ -15,6 +15,7 @@
     python3 tools/ble_frame.py cfg_get
     python3 tools/ble_frame.py cfg_set 01 01 00 01 64 00 00 00 01 3C 00 01 01 00 00 00 00
     python3 tools/ble_frame.py cfg_reset
+    python3 tools/ble_frame.py script 123456      # 一次吐整套自测顺序（含期望回包）
 
 seq 默认 0；要连着发多帧可以 --seq N（回包会把 seq 原样带回来，方便对号）。
 """
@@ -55,12 +56,56 @@ def build(cmd: int, payload: bytes = b"", seq: int = 0) -> bytes:
     return bytes(MAGIC) + body + crc.to_bytes(2, "little")
 
 
+def hexs(frame: bytes) -> str:
+    return " ".join(f"{b:02X}" for b in frame)
+
+
+# 手测顺序：(命令, 载荷, 说明, 期望回包)
+# 断连会清 authed，所以每次重连都要从头走一遍。
+SCRIPT = [
+    ("ping", b"", "探活：不需要认证。回包应该和发过去的这帧一模一样", "同一帧原样回来"),
+    ("auth", None, "认证：把配对码换成屏幕上那 6 位", "1 字节 01 = 过，00 = 码错"),
+    ("info", b"", "固件/存储/内存信息（这条开始必须先过 AUTH）", "ASCII 文本，ver=... / fs=... / ram=..."),
+    ("pair_info", b"", "设备名、配对码、蓝牙开关、已连手机数", "ASCII 文本，name=... / pair=... / clients=..."),
+    ("cfg_get", b"", "读 17 字节设置镜像", "17 字节设置数据"),
+    ("cfg_reset", b"", "恢复出厂（会写 LittleFS 并同步给 Pico）", "1 字节 00 = OK；发之前想清楚"),
+]
+
+
+def print_script(code: str, hex_only: bool = False) -> None:
+    if len(code) != 6 or not code.isdigit():
+        raise SystemExit("配对码必须是 6 位数字，例如：script 123456")
+    for i, (name, payload, note, expect) in enumerate(SCRIPT, 1):
+        if payload is None:
+            payload = code.encode("ascii")
+        assert name in CMDS
+        frame = build(CMDS[name], payload, seq=0)
+        if hex_only:
+            print(hexs(frame))
+            continue
+        print(f"# ---- {i}. {name.upper()} ----")
+        print(f"# 说明：{note}")
+        print(f"# 期望：{expect}")
+        print(hexs(frame))
+        print()
+    if not hex_only:
+        err = build(CMDS["err"], bytes([0x04]) + b"auth first", seq=0)
+        print("# AUTH 没过之前，除了 ping / auth，其它命令都会回这帧（ERR 0x04 auth first）：")
+        print(hexs(err))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="造 GP-Combine 协议帧（十六进制）")
-    ap.add_argument("cmd", choices=sorted(CMDS))
+    ap.add_argument("cmd", choices=sorted(CMDS) + ["script"])
     ap.add_argument("payload", nargs="*", help="十六进制字节；auth 可以直接写 6 位配对码")
     ap.add_argument("--seq", type=int, default=0)
+    ap.add_argument("--hex-only", action="store_true", help="script 模式：只打印十六进制行")
     a = ap.parse_args()
+
+    if a.cmd == "script":
+        code = "".join(a.payload)
+        print_script(code, a.hex_only)
+        return 0
 
     cmd = CMDS[a.cmd]
     payload = b""
@@ -79,8 +124,7 @@ def main() -> int:
         raise SystemExit(f"cfg_set 载荷必须是 17 字节，现在给了 {len(payload)}")
 
     frame = build(cmd, payload, a.seq)
-    hexs = " ".join(f"{b:02X}" for b in frame)
-    print(hexs)
+    print(hexs(frame))
     print(f"# {len(frame)} 字节  cmd=0x{cmd:02X}  len={len(payload)}  seq={a.seq}",
           file=sys.stderr)
     return 0

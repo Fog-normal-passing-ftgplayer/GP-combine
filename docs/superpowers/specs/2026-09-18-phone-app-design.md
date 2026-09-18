@@ -26,8 +26,9 @@
 | 项 | 数据 | 来源 |
 |---|---|---|
 | app 分区占用 | 563,455 B / 4,194,304 B（删掉内嵌 GIF 后） | `arduino-cli compile` |
-| 内部 RAM 静态占用 | 284,124 B / 327,680 B，剩 **43,556 B** | 同上 |
-| RAM 大头 | `lfb` 108,800 + `rbuf` 108,800（两个整屏缓冲，占静态 77%） | `nm --size-sort` |
+| 内部 RAM 静态占用 | 175,500 B / 327,680 B（`rbuf` 已改为运行期从内部堆分配） | 同上 |
+| 内部堆（开机、挂完静态对象后） | 182,132 B 可用；`rbuf` 吃掉 108,816 B → 剩 **73,316 B**；稳定运行后 **63,244 B**，最大连续块 **31,732 B**，DMA 可用 **55,484 B** | 设备实测（`[heap]` 调试输出） |
+| RAM 大头 | `lfb` 108,800 + `rbuf` 108,800（两个整屏缓冲） | `nm --size-sort` |
 | PSRAM | 8 MB，当前代码**一个字节没用** | 全仓库无 `ps_malloc`/`heap_caps_malloc` |
 | BLE 开销（核心自带 Bluedroid） | +287 KB flash、+5.7 KB 静态；运行时另需 ~40–60 KB 内部堆 | 对照编译实测 |
 | BLE+WiFi+WebServer | +838 KB flash、+26 KB 静态；运行时另需 ~40–50 KB 内部堆 | 对照编译实测 |
@@ -38,7 +39,7 @@
 
 **由此推出的三条结论**
 
-1. 必须先把 `rbuf`（108,800 B）挪到 PSRAM，内部 RAM 才有 ~152 KB 余量装下 BLE+WiFi（否则 43 KB 连 BLE 都紧张）。
+1. ~~先把 `rbuf` 挪到 PSRAM 腾内部 RAM~~ —— **2026-09-18 实测否掉了这条路**：PSRAM 版 `rbuf` 对内部堆的开销是 0，但运行后内部堆 `free=61,440 / alloc=164,160`，比内部版（`free=63,244 / alloc=162,420`）还少；每帧 `conv` 从 6.5 ms 涨到 8.4 ms。原因是 SPI 主控驱动对非 DMA 内存的源缓冲会另开一份内部 bounce buffer，等于把 106 KB 又搬回内部。**`rbuf` 留在内部 RAM**，BLE 只能吃那 63 KB（NimBLE 够用，Bluedroid 不够）。真要再抠内存，就上"分块流水线"：只留 2 块（54,400 B）做双缓冲，边转边发，省 54 KB。
 2. 传大文件不能走 BLE（实测同类实现 30–80 KB/s，2.5 MB 壁纸要 1 分钟），必须用 WiFi 做数据面。
 3. 想要 OTA 必须先动分区表（拆出 `app1`），这一步会重刷分区表，所以放在 P3 并单独确认。
 
@@ -214,8 +215,8 @@ BLE 上：`len ≤ MTU-3`，一帧可能跨多个 GATT 写，接收端按 `len` 
 |---|---|
 | BLE 与 WiFi 共用 2.4 G 射频，同开会掉吞吐 | 用哪个开哪个；传文件时 BLE 只保持连接不传数据 |
 | 在 BLE 回调里写 flash 会卡协议栈/触发看门狗 | 回调只入队，处理全在主循环 |
-| PSRAM 当 SPI DMA 源需要 cache 同步，否则花屏/黑屏 | 挪 `rbuf` 时先单独验证一版：先只挪缓冲、跑 NES 看帧率与画面 |
-| 内部 RAM 余量只剩 ~40 KB，协议栈一膨胀就 OOM | 加开机打印内存；把传输缓冲放 PSRAM；必要时改用 NimBLE（省 ~150 KB flash、~20 KB RAM） |
+| PSRAM 当 SPI DMA 源会触发内部 bounce buffer，省不了内部 RAM | 已实测排除（见 §2 结论 1），`rbuf` 留内部 RAM |
+| 内部 RAM 只剩 ~63 KB，协议栈一膨胀就 OOM | 开机与每 6 秒打印堆明细（`[heap]`）；用 NimBLE（省 ~150 KB flash、~20 KB RAM）；还紧张就上分块流水线省 54 KB |
 | LittleFS 写 2.5 MB 壁纸耗时，期间菜单会卡 | 分片写（每片 ≤ 4 KB）+ 主循环让路，屏幕显示进度 |
 | App 构建要 Android SDK，本机没有 | 优先本地装（一次性 ~1.5 GB，迭代快）；或走 GitHub Actions 出 APK |
 | 连 SoftAP 后 Android 判定"无网络" | App 内引导文案 + 手动切回 |
@@ -224,9 +225,15 @@ BLE 上：`len ≤ MTU-3`，一帧可能跨多个 GATT 写，接收端按 `len` 
 
 **P1 控制面（不写 App 也能验证）**
 
-- 固件加 BLE 服务 + 协议 + CFG/INFO/PAIR_INFO 命令 + 滑动菜单「蓝牙」页；`rbuf` 挪 PSRAM
+- 固件加 BLE 服务 + 协议 + CFG/INFO/PAIR_INFO 命令 + 滑动菜单「蓝牙」页（`rbuf` 挪 PSRAM 已实测否掉，见下方进度）
 - 验收：nRF Connect 连上 → `PING` 有回 → `CFG_GET` 拿到 17 字节 → `CFG_SET` 改亮度，屏幕立刻变化；断电重启后保持；菜单新页显示设备名/配对码/状态；NES 帧率不低于改动前（42 fps）
 - 交付物：可测固件
+
+**P1 进度（2026-09-18）**
+
+- ✅ 滑动菜单第 8 页「蓝牙」已实现并刷机运行：蓝牙开关 + 清除配对两个选项，标题行右侧显示状态（已关闭 / 未接入 / 广播中 / 已连接 N），下方两行显示 `设备名 GP-Combine-XXXX`（取 efuse MAC 低 16 位）与 `配对码 6 位`；后者首次开机用 `esp_random()` 生成后写 `/bt.cfg`，开关值写 `/gpfusion.cfg` 的 `bt=`。`btLinkState`/`btClients` 留给 BLE 协议栈填（接入前显示"未接入"）。
+- ✅ `rbuf` 按实测结论留在内部 RAM（PSRAM 方案否掉，见 §2 结论 1）；新增 USB-Serial-JTAG 调试口（115200，独立于去 Pico 的 UART0）：每 2 秒打印 fps + push 分段耗时 + 内部堆。
+- ⬜ 待做：BLE 协议栈（NimBLE）、协议帧、CFG/INFO/PAIR_INFO 命令。
 
 **P2 数据面 + App**
 

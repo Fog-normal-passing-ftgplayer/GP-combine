@@ -81,7 +81,7 @@
 #define SCR_H          170
 #define SCR_CX         (SCR_W / 2)
 #define SCR_CY         (SCR_H / 2)
-#define NUM_PAGES      7
+#define NUM_PAGES      8
 #define ICON_W         86
 #define ICON_X         ((SCR_W - ICON_W) / 2)
 #define ICON_Y         26
@@ -157,7 +157,26 @@ uint8_t curThemeStyle = THEME_STYLE_NONE;
 
 // landscape content framebuffer + driver-order output buffer
 uint16_t lfb[SCR_W * SCR_H];
-uint8_t  rbuf[SCR_W * SCR_H * 2] __attribute__((aligned(16)));  // SPI DMA 要求对齐
+#define RBUF_BYTES (SCR_W * SCR_H * 2)      // 108800
+// 输出缓冲故意留在内部 RAM。2026-09-18 实测过挪到 PSRAM（想给 BLE 腾 106KB）：
+//   PSRAM 版  rbuf 分配占内部堆 0 字节，但运行后内部堆 free=61440 / alloc=164160，
+//             conv=8.4ms total=10.4ms
+//   内部版    rbuf 分配占内部堆 108816 字节（182132 -> 73316），
+//             运行后 free=63212 / alloc=162436，conv=6.5ms total=6.6ms
+// 内部占用一分没省，反而多花 3.8ms/帧 —— SPI 主控对非 DMA 内存的源缓冲
+// 会另开一份内部 bounce buffer。所以老老实实放内部 RAM。
+// 又因为这个大小放 .bss 会把 dram0_0_seg 顶爆（实测超 200 字节直接链接失败），
+// 所以运行期从内部堆分配：内存账一模一样，只是把几百字节静态空间让给别的对象。
+static uint8_t *rbuf = nullptr;
+
+static void rbufInit() {
+  rbuf = (uint8_t *)heap_caps_aligned_alloc(64, RBUF_BYTES,
+                                            MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+  if (!rbuf) {
+    dbgPrintf("[dbg] rbuf alloc FAILED\n");
+    while (true) delay(1000);
+  }
+}
 
 // runtime rotation mapping (base orientation is upright)
 //   my = cx              (content horizontal -> memory rows)
@@ -172,9 +191,89 @@ bool invertScreen = false;
 // 换 DMA 后一帧 ~15ms，菜单动画/游戏都跟着变流畅。
 // 注意：单次 DMA 实测上限约 32KB（超过返回 ESP_ERR_INVALID_ARG），所以分 4 块。
 #include "driver/spi_master.h"
+#include "driver/usb_serial_jtag.h"
+#include <stdarg.h>
+#include "esp_heap_caps.h"
+#include "esp_system.h"   // esp_random()（配对码）
 #define LCD_CHUNK 27200                    // 108800/4，且 16 字节对齐
 #define LCD_QUEUE 4                        // 一帧 4 块；队列深度必须 >= 4（曾设 2 导致卡死）
 static spi_device_handle_t lcdSpi = nullptr;
+
+// ---- USB 虚拟串口调试输出 ----------------------------------------------------
+// 插 USB 时那个 303a:1001 口（ESP32-S3 内置 USB-Serial-JTAG），
+// 跟去 Pico 的 UART0（Serial/Serial0）完全独立，互不干扰。
+// 注意：核心只在 CDCOnBoot=cdc 时才导出 HWCDCSerial，我们没开那个选项，
+// 所以直接用 IDF 这层驱动，免得改编译选项把 Serial/UART0 的用法全带偏。
+#define DBG_MAXLEN 160
+static bool dbgReady = false;
+
+static void dbgInit() {
+  usb_serial_jtag_driver_config_t cfg = {};
+  cfg.tx_buffer_size = 512;
+  cfg.rx_buffer_size = 256;
+  dbgReady = (usb_serial_jtag_driver_install(&cfg) == ESP_OK);
+}
+
+static void dbgPrintf(const char *fmt, ...) {   // 非阻塞：主机没开串口就丢，不拖累主循环
+  if (!dbgReady) return;
+  char buf[DBG_MAXLEN];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  if (n > 0) usb_serial_jtag_write_bytes(buf, (size_t)((n < (int)sizeof(buf)) ? n : (int)sizeof(buf) - 1), 0);
+}
+
+static uint32_t dbgFrames = 0;
+static uint32_t dbgLastMs = 0;
+static uint32_t dbgWaitUs = 0, dbgConvUs = 0, dbgTotalUs = 0;
+static uint32_t dbgWaitMax = 0, dbgConvMax = 0, dbgTotalMax = 0;
+
+static uint32_t dbgHeapTotalInt() {
+  multi_heap_info_t info;
+  heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
+  return (uint32_t)(info.total_free_bytes + info.total_allocated_bytes);
+}
+
+static void dbgHeapDump(const char *tag) {
+  dbgPrintf("[dbg] %s heap_int: free=%u largest=%u total=%u | psram: free=%u\n",
+            tag,
+            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+            (unsigned)dbgHeapTotalInt(),
+            (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
+
+static void dbgFrameTick() {          // 每次推屏调用，用来算真实帧率
+  dbgFrames++;
+  uint32_t now = millis();
+  if (dbgLastMs == 0) { dbgLastMs = now; return; }
+  if (now - dbgLastMs < 2000) return;
+  float fps = dbgFrames * 1000.0f / (float)(now - dbgLastMs);
+  uint32_t n = dbgFrames;
+  dbgLastMs = now; dbgFrames = 0;
+  dbgPrintf("[dbg] fps=%.1f heap_int=%u | push wait=%.1f/%.1f conv=%.1f/%.1f total=%.1f/%.1f ms (avg/max)\n",
+            fps,
+            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+            dbgWaitUs / 1000.0f / n, dbgWaitMax / 1000.0f,
+            dbgConvUs / 1000.0f / n, dbgConvMax / 1000.0f,
+            dbgTotalUs / 1000.0f / n, dbgTotalMax / 1000.0f);
+  static uint32_t dbgHeapCnt = 0;
+  if (++dbgHeapCnt % 3 == 0) {          // 每 6 秒打一次详细堆信息
+    multi_heap_info_t ii, dd;
+    heap_caps_get_info(&ii, MALLOC_CAP_INTERNAL);
+    heap_caps_get_info(&dd, MALLOC_CAP_DMA);
+    dbgPrintf("[heap] int: free=%u largest=%u alloc=%u | dma: free=%u largest=%u | psram: free=%u largest=%u\n",
+              (unsigned)ii.total_free_bytes, (unsigned)ii.largest_free_block,
+              (unsigned)ii.total_allocated_bytes,
+              (unsigned)dd.total_free_bytes, (unsigned)dd.largest_free_block,
+              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+  }
+  dbgWaitUs = dbgConvUs = dbgTotalUs = 0;
+  dbgWaitMax = dbgConvMax = dbgTotalMax = 0;
+}
+
 static spi_transaction_t lcdCmdDesc;       // 单字节命令用（tx_data 路径）
 static spi_transaction_t lcdFrameDesc[LCD_QUEUE];
 static int  lcdFrameQueued = 0;            // 已排队、未回收的事务数
@@ -288,7 +387,7 @@ static uint16_t bootBg[SCR_H];     // 每行背景渐变（中心亮、上下暗
 static uint16_t bootBgScan[SCR_H]; // 扫描线行（略亮）
 
 // menu page metadata: titles and icon index into ICONS[]
-static const char* const PAGE_TITLES[NUM_PAGES] = {"设置", "电池", "灯光", "背景", "休眠", "无线", "小游戏"};
+static const char* const PAGE_TITLES[NUM_PAGES] = {"设置", "电池", "灯光", "背景", "休眠", "无线", "小游戏", "蓝牙"};
 
 static const char *const SAVER_NAMES[] = {"关闭", "雪花", "弹跳", "管道", "吐司",
                                           "MATRIX", "GIF"};
@@ -389,6 +488,25 @@ static MenuSection wlSections[] = {
   {"无线", wlOpts, 2},
 };
 
+// ---- bluetooth page (蓝牙) — 手机 App 的入口 ----
+// 手机 App 的控制面（改设置/看状态）走 BLE 常连；数据面（传 ROM/壁纸）走设备热点。
+// 设计：docs/superpowers/specs/2026-09-18-phone-app-design.md
+static MenuOpt btOpts[] = {
+  {"蓝牙开关", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
+  {"清除配对", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
+};
+static MenuSection btSections[] = {
+  {"蓝牙", btOpts, 2},
+};
+
+#define BT_NAME_MAX 20        // "GP-Combine-XXXX"
+#define BT_PAIR_LEN 6         // 6 位配对码
+static char btName[BT_NAME_MAX + 1] = "";
+static char btPairCode[BT_PAIR_LEN + 1] = "";
+// BLE 协议栈接入后会更新下面两个值；接入前恒为 0（页面显示"未接入"）
+volatile uint8_t btLinkState = 0;   // 0=未启动 1=广播中 2=已连接
+volatile uint8_t btClients = 0;     // 已连接手机数
+
 static SubPageDef subDefs[NUM_PAGES] = {
   {settingsSections, 3},  // 设置
   {NULL, 0},              // 电池 - status page later
@@ -397,6 +515,7 @@ static SubPageDef subDefs[NUM_PAGES] = {
   {sleepSections, 1},     // 休眠
   {wlSections, 1},        // 无线
   {NULL, 0},              // 小游戏（按 A 进 ROM 列表，不走普通子页）
+  {btSections, 1},        // 蓝牙（手机 App 入口）
 };
 int subSel = 0;
 int subSection = 0;
@@ -680,6 +799,17 @@ void iconGamepad(int x, int y) { // 手柄（小游戏）
   drawDisc(rx + 5, cy + 4, 4, ACC_BATTERY);
 }
 
+void iconBluetooth(int x, int y) { // 蓝牙：中间竖轴 + 上下两个折角
+  int cx = x + ICON_W / 2;
+  int cy = y + 46;
+  int top = cy - 20, bot = cy + 20, arm = 12;
+  drawLine(cx, top, cx, bot, colRing);
+  drawLine(cx, top, cx + arm, top + 10, ACC_SETTINGS);
+  drawLine(cx + arm, top + 10, cx - arm, cy - 2, ACC_SETTINGS);
+  drawLine(cx - arm, cy + 2, cx + arm, bot - 10, ACC_SETTINGS);
+  drawLine(cx + arm, bot - 10, cx, bot, ACC_SETTINGS);
+}
+
 void drawMenuIcon(int x, int y, int p) {
   switch (p) {
     case 0: iconSettings(x, y); break;
@@ -689,6 +819,7 @@ void drawMenuIcon(int x, int y, int p) {
     case 4: iconMoon(x, y); break;
     case 5: iconWireless(x, y); break;
     case 6: iconGamepad(x, y); break;
+    case 7: iconBluetooth(x, y); break;
   }
 }
 
@@ -1608,6 +1739,21 @@ void renderSub() {
       drawCJKText(301 - cjkTextWidth(lb, 1), 5, lb,
                   radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
     }
+    if (subPage == 7) { // 蓝牙: 状态右对齐（跟无线页同款写法）
+      const char *lb;
+      uint16_t lc = ACC_SETTINGS;
+      char cb[16];
+      if (!btEnabled()) {
+        lb = "已关闭"; lc = RGB565(170,70,70);
+      } else if (btLinkState == 2) {
+        snprintf(cb, sizeof(cb), "已连接 %d", (int)btClients); lb = cb;
+      } else if (btLinkState == 1) {
+        lb = "广播中";
+      } else {
+        lb = "未接入"; lc = RGB565(120,132,150);
+      }
+      drawCJKText(301 - cjkTextWidth(lb, 1), 5, lb, lc, 1);
+    }
     int hY = 28 + (int)(selY - scrollOff);
     lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
     int first = (int)(scrollOff / 24.0f);
@@ -1641,6 +1787,14 @@ void renderSub() {
       }
     }
     drawScrollbar(sec.count, scrollOff, 4, 24, 309, 28, 118);
+    if (subPage == 7) { // 蓝牙: 设备名 / 配对码（两行选项下面正好空着）
+      char ib[40];
+      uint16_t ic = btEnabled() ? colHi : RGB565(120,132,150);
+      snprintf(ib, sizeof(ib), "设备名 %s", btName);
+      drawCJKTextCentered(SCR_CX, 80, ib, ic, 1);
+      snprintf(ib, sizeof(ib), "配对码 %s", btPairCode);
+      drawCJKTextCentered(SCR_CX, 100, ib, ic, 1);
+    }
 #if WALLPAPER_ACTIVE
     if (subPage == 4) {
       drawCJKTextCentered(SCR_CX, 122, "动态壁纸模式 · 屏保已禁用", RGB565(120,132,150), 1);
@@ -1779,6 +1933,7 @@ void restoreOpts() {
   if (subPage == 3) applyBgSettings(); // 背景: re-apply reverted values
   if (subPage == 0 && subSection == 1) applyHistSettings(); // 设置 > 显示
   if (subPage == 5) applyWirelessSettings(); // 无线
+  if (subPage == 7) applyBluetoothSettings(); // 蓝牙
   redrawNeeded = true;
 }
 
@@ -1896,6 +2051,61 @@ void saveWirelessSettings() {
   saveConfigFile();
 }
 
+// ---- bluetooth settings (蓝牙页) ----
+// 设备名/配对码是字符串，单独存 /bt.cfg；开关是整数，跟其它设置一起进 /gpfusion.cfg
+bool btEnabled() { return btOpts[0].value != 0; }
+
+static void btGenPairCode() {
+  snprintf(btPairCode, sizeof(btPairCode), "%06u", (unsigned)(esp_random() % 1000000u));
+}
+
+static void btEnsureIdentity() {   // 首次开机生成一次，之后不变
+  if (btName[0] == 0) {
+    uint64_t mac = ESP.getEfuseMac();
+    snprintf(btName, sizeof(btName), "GP-Combine-%04X", (unsigned)(mac & 0xFFFF));
+  }
+  if (btPairCode[0] == 0) btGenPairCode();
+}
+
+void saveBtSettings() {
+  File f = LittleFS.open("/bt.cfg", "w");
+  if (f) {
+    f.printf("name=%s\n", btName);
+    f.printf("pair=%s\n", btPairCode);
+    f.flush();
+    f.close();
+  }
+  saveConfigFile();   // 开关值
+}
+
+void loadBtSettings() {
+  if (LittleFS.exists("/bt.cfg")) {
+    File f = LittleFS.open("/bt.cfg", "r");
+    if (f) {
+      while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        int eq = line.indexOf('=');
+        if (eq <= 0) continue;
+        String k = line.substring(0, eq), v = line.substring(eq + 1);
+        if (k == "name" && v.length()) {
+          strncpy(btName, v.c_str(), BT_NAME_MAX); btName[BT_NAME_MAX] = 0;
+        } else if (k == "pair" && v.length()) {
+          strncpy(btPairCode, v.c_str(), BT_PAIR_LEN); btPairCode[BT_PAIR_LEN] = 0;
+        }
+      }
+      f.close();
+    }
+  }
+  btEnsureIdentity();
+}
+
+// 开关变化时调用；BLE 协议栈接入后这里改成 bleLinkStart()/bleLinkStop()
+void applyBluetoothSettings() {
+  if (!btEnabled()) { btLinkState = 0; btClients = 0; }
+  redrawNeeded = true;
+}
+
 void saveConfigFile() {
   File f = LittleFS.open("/gpfusion.cfg", "w");
   if (!f) return;
@@ -1910,6 +2120,7 @@ void saveConfigFile() {
   f.printf("saver_ms=%d\n", sleepOpts[1].value);
   f.printf("screenoff=%d\n", sleepOpts[2].value);
   f.printf("wl=%d\n", wlOpts[0].value);
+  f.printf("bt=%d\n", btOpts[0].value);
   f.printf("theme=%d\n", histOpts[2].value);
   f.printf("style=%d\n", histOpts[3].value);
   f.flush();
@@ -1939,6 +2150,7 @@ void loadConfigFile() {
     else if (k == "saver_ms") sleepOpts[1].value = constrain(v, 0, 600);
     else if (k == "screenoff") sleepOpts[2].value = constrain(v, 0, 1);
     else if (k == "wl")   wlOpts[0].value = constrain(v, 0, 1);
+    else if (k == "bt")   btOpts[0].value = constrain(v, 0, 1);
     else if (k == "theme") histOpts[2].value = constrain(v, 0, THEME_COUNT - 1);
     else if (k == "style") histOpts[3].value = constrain(v, 0, 2);
   }
@@ -1946,6 +2158,7 @@ void loadConfigFile() {
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
+  applyBluetoothSettings();
 #if WALLPAPER_ACTIVE
   sleepOpts[0].value = 0;   // 动态壁纸：屏保强制关闭
 #endif
@@ -2057,9 +2270,11 @@ void renderScene(int16_t outX, int16_t inX) {
 }
 
 void pushFrame() {
+  uint32_t tEntry = micros();
   // 关键：必须先把上一帧的异步传输等完，才能往 rbuf 里写新数据。
   // （异步推屏后 rbuf 可能还在被 DMA 读，先填会把传输打断 → 面板黑屏/花屏）
   lcdWait();
+  uint32_t tAfterWait = micros();
   uint8_t *out = rbuf;
   for (int my = 0; my < SCR_W; my++) {        // 面板行 = 内容宽 (320)
     for (int mx = 0; mx < SCR_H; mx++) {      // 面板列 = 内容高 (170)
@@ -2073,7 +2288,14 @@ void pushFrame() {
   }
   setWin(0, 0, SCR_H - 1, SCR_W - 1);
   digitalWrite(DC, HIGH);   // data mode for the bulk transfer
-  lcdSendFrameAsync(rbuf, sizeof(rbuf));   // 异步 DMA：与下一帧模拟重叠
+  uint32_t tAfterConv = micros();
+  lcdSendFrameAsync(rbuf, RBUF_BYTES);     // 异步 DMA：与下一帧模拟重叠
+  uint32_t tEnd = micros();
+  uint32_t w = tAfterWait - tEntry, cv = tAfterConv - tAfterWait, tot = tEnd - tEntry;
+  dbgWaitUs += w;  if (w  > dbgWaitMax)  dbgWaitMax  = w;
+  dbgConvUs += cv; if (cv > dbgConvMax)  dbgConvMax  = cv;
+  dbgTotalUs += tot; if (tot > dbgTotalMax) dbgTotalMax = tot;
+  dbgFrameTick();
 }
 
 void drawPage() {
@@ -2507,6 +2729,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
             else if (subPage == 0 && subSection == 1) saveHistSettings(); // 设置 > 显示
             else if (subPage == 4) saveConfigFile();                  // 休眠 > 屏保设置
             else if (subPage == 5) saveWirelessSettings();            // 无线 > NVS
+            else if (subPage == 7) saveBtSettings();                  // 蓝牙 > NVS
             savedFlashUntil = millis() + 1200;
             snapshotOpts();
           } else {
@@ -2559,6 +2782,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
               if (subPage == 3) applyBgSettings();
               else if (subPage == 0 && subSection == 1) applyHistSettings();
               else if (subPage == 5) applyWirelessSettings();
+              else if (subPage == 7) applyBluetoothSettings();
               lastStepTime = nowMs;
             }
             if (!heldLR) lastStepTime = 0;
@@ -2587,6 +2811,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
               if (subPage == 3) applyBgSettings();
               else if (subPage == 0 && subSection == 1) applyHistSettings();
               else if (subPage == 5) applyWirelessSettings();
+              else if (subPage == 7) applyBluetoothSettings();
               lastStepTime = nowMs;
             }
             if (!heldD && !heldLR) lastStepTime = 0;
@@ -2603,6 +2828,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   saveBgSettings();
                   saveHistSettings();
                   saveWirelessSettings();
+                  saveBtSettings();
                   savedFlashUntil = millis() + 1200;
                   snapshotOpts();
                   subDirty = false;
@@ -2611,6 +2837,12 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                 else if (subPage == 5 && subSel == 1) { // 无线 > 重新配对
                   radio.resetLink();
                   savedFlashUntil = millis() + 1200;
+                }
+                else if (subPage == 7 && subSel == 1) { // 蓝牙 > 清除配对
+                  btGenPairCode();
+                  saveBtSettings();
+                  savedFlashUntil = millis() + 1200;
+                  redrawNeeded = true;
                 }
               }
             }
@@ -2797,6 +3029,9 @@ void handleRxByte(uint8_t b) {
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 void setup(){
+  dbgInit();                  // USB 虚拟串口：调试用，不占用去 Pico 的那条 UART
+  dbgHeapDump("boot");
+  rbufInit();
   ledcAttach(BL, 5000, 8);
   ledcWrite(BL, 255);
   pinMode(CS,OUTPUT);pinMode(DC,OUTPUT);pinMode(RST,OUTPUT);digitalWrite(CS,HIGH);
@@ -2836,6 +3071,7 @@ void setup(){
   xTaskCreatePinnedToCore(radioTask, "radio", 4096, NULL, 1, NULL, 0); // 发送跑在核0
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
+  loadBtSettings();       // 蓝牙设备名/配对码（首次生成后写入 /bt.cfg）
   gifInit();              // GIF 源：卡内 /wp/1.gfr 优先，否则内置 gif_user.h
 }
 

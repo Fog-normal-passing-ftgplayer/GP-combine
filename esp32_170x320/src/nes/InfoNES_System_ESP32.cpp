@@ -15,9 +15,10 @@
 #include "InfoNES_pAPU.h"
 
 // 固件侧提供
-// 注意：固件里的定义是真数组 uint16_t lfb[SCR_W * SCR_H]（320*170），
-// 不能声明成指针，否则会把帧缓冲第一个像素当指针用 -> StoreProhibited 崩溃。
-extern uint16_t lfb[];                // 320x170 内容帧缓冲
+// 注意：声明类型必须和固件里的一致。2026-09-18 起固件把 lfb 定义成指针
+// （缓冲挪去了 PSRAM，给蓝牙腾内部 RAM），所以这里也必须是指针；
+// 两边写反了会把帧缓冲第一个像素当指针用 -> StoreProhibited 崩溃。
+extern uint16_t *lfb;                 // 320x170 内容帧缓冲
 extern volatile uint16_t lastButtons; // B1..A2 位
 extern volatile uint8_t  lastDpad;    // U/D/L/R = 0x01/0x02/0x04/0x08
 extern void pushFrame();

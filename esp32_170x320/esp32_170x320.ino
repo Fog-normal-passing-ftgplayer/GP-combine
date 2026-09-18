@@ -252,9 +252,10 @@ static void dbgFrameTick() {          // 每次推屏调用，用来算真实帧
   float fps = dbgFrames * 1000.0f / (float)(now - dbgLastMs);
   uint32_t n = dbgFrames;
   dbgLastMs = now; dbgFrames = 0;
-  dbgPrintf("[dbg] fps=%.1f heap_int=%u | push wait=%.1f/%.1f conv=%.1f/%.1f total=%.1f/%.1f ms (avg/max)\n",
+  dbgPrintf("[dbg] fps=%.1f heap_int=%u 2g4=%s | push wait=%.1f/%.1f conv=%.1f/%.1f total=%.1f/%.1f ms (avg/max)\n",
             fps,
             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+            radioStatusTag(),  // 2.4G 当前走哪路（互斥状态）
             dbgWaitUs / 1000.0f / n, dbgWaitMax / 1000.0f,
             dbgConvUs / 1000.0f / n, dbgConvMax / 1000.0f,
             dbgTotalUs / 1000.0f / n, dbgTotalMax / 1000.0f);
@@ -492,7 +493,8 @@ static MenuSection wlSections[] = {
 // 手机 App 的控制面（改设置/看状态）走 BLE 常连；数据面（传 ROM/壁纸）走设备热点。
 // 设计：docs/superpowers/specs/2026-09-18-phone-app-design.md
 static MenuOpt btOpts[] = {
-  {"蓝牙开关", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
+  // 默认关：开了就会停掉 nRF 无线手柄输出（互斥），不能默认占着 2.4G
+  {"蓝牙开关", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
   {"清除配对", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
 };
 static MenuSection btSections[] = {
@@ -1731,13 +1733,15 @@ void renderSub() {
     drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
-      if (radioUp && radioLinked) {
+      if (btEnabled()) {                 // 蓝牙占着 2.4G：nRF 输出已停用
+        snprintf(lb, sizeof(lb), "蓝牙模式");
+      } else if (radioUp && radioLinked) {
         snprintf(lb, sizeof(lb), "已连接 %d%%", radioHistOk);
       } else {
         snprintf(lb, sizeof(lb), "断链");
       }
       drawCJKText(301 - cjkTextWidth(lb, 1), 5, lb,
-                  radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
+                  (btEnabled() || radioLinked) ? ACC_SETTINGS : RGB565(170,70,70), 1);
     }
     if (subPage == 7) { // 蓝牙: 状态右对齐（跟无线页同款写法）
       const char *lb;
@@ -1805,8 +1809,12 @@ void renderSub() {
                           RGB565(120,132,150), 1);
     } else
 #endif
-    drawCJKTextCentered(SCR_CX, 122, sliderMode ? "左右调整 B退出" : "左右改值 上下选择 B返回",
-                        RGB565(120,132,150), 1);
+    if (subPage == 7 && btEnabled()) {   // 蓝牙页：提示 nRF 手柄输出已被让位
+      drawCJKTextCentered(SCR_CX, 122, "nRF已关闭 关蓝牙恢复", RGB565(200,140,60), 1);
+    } else {
+      drawCJKTextCentered(SCR_CX, 122, sliderMode ? "左右调整 B退出" : "左右改值 上下选择 B返回",
+                          RGB565(120,132,150), 1);
+    }
   }
   if (confirmOpen) {
     lfbRect(68, 40, 184, 58, RGB565(30,38,52));   // dialog box
@@ -2036,12 +2044,26 @@ void applyHistSettings() {
 }
 
 // ---- wireless settings (nRF24 on the ESP32) ----
+// 调试用：当前 2.4G 输出走的哪一路（nRF / 蓝牙互斥），给 USB 调试口打印
+const char *radioStatusTag() {
+  if (btEnabled()) return "off(BLE)";
+  if (!radioUp)     return "off";
+  return radioLinked ? "nRF+ack" : "nRF";
+}
+
 void applyWirelessSettings() {
-  radioUp = wlOpts[0].value != 0;
-  if (radioUp) {
+  // 互斥：蓝牙（手机助手握手通道）开着的时候，nRF 手柄输出彻底停掉——
+  // 两个 2.4G 发射机挤在同一个壳里会互相压制，索性一次只开一个。
+  // 蓝牙关掉后再按「无线开关」这个偏好恢复。
+  if (btEnabled()) {
+    radio.powerDown();                 // 模块断电，不是发空包
+    radioUp = false;
+  } else if (wlOpts[0].value) {
+    radioUp = true;
     radio.powerUp();
     radio.setChannel(NRF24_CHANNEL);   // 与接收端一致：固定信道
   } else {
+    radioUp = false;
     radio.powerDown();
   }
   redrawNeeded = true;
@@ -2100,9 +2122,10 @@ void loadBtSettings() {
   btEnsureIdentity();
 }
 
-// 开关变化时调用；BLE 协议栈接入后这里改成 bleLinkStart()/bleLinkStop()
+// 开关变化时调用；BLE 协议栈接入后这里再补 bleLinkStart()/bleLinkStop()
 void applyBluetoothSettings() {
   if (!btEnabled()) { btLinkState = 0; btClients = 0; }
+  applyWirelessSettings();   // 互斥：开蓝牙就停 nRF，关蓝牙按「无线开关」恢复
   redrawNeeded = true;
 }
 

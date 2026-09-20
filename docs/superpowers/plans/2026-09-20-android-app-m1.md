@@ -1799,7 +1799,7 @@ git commit -m "feat(android): 扫描/连接/配对码界面与 ViewModel
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk /home/bit/gpcombine-m1.apk`
 Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB）。
 
-- [x] **Step 2: 逐条走 spec §8.7 的验收标准**
+- [ ] **Step 2: 逐条走 spec §8.7 的验收标准**
 
 1. 装上 APK → 打开 → 点「扫描设备」→ 列表里出现 `GP-Combine-XXXX` → 点它
 2. 输入设备屏幕上的 6 位码 → 进入设备页（不是停在"通信中…"）
@@ -1807,7 +1807,7 @@ Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB�
 4. 板子断电再上电 → App 重新扫描能再连上
 5. `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest` 全绿
 
-- [x] **Step 3: 对不上时的排查顺序**
+- [ ] **Step 3: 对不上时的排查顺序**
 
 按这个顺序查，每一步只看一件事，别跳：
 
@@ -1817,7 +1817,7 @@ Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB�
 4. **有 `[ble] rx` 和 `[ble] SENT` 但 App 没收到** → 问题在 notify 分片重组：MTU 可能只有 23，一个 INFO 回包跨 5 条通知，检查 `FrameParser` 有没有被中途 `reset()`。
 5. **版本号/容量显示成 0 或乱码** → `InfoCodec` 的字段顺序问题，见 Task 4 的测试。
 
-- [x] **Step 4: 记下验收结论并提交**
+- [ ] **Step 4: 记下验收结论并提交**
 
 把实际结果（哪几条过、哪几条没过、串口关键日志）写进 spec §10 的进度段，然后：
 

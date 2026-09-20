@@ -60,3 +60,9 @@ void bleLinkDisconnectAll(void);
 // 断开 + 撤销认证 + 丢掉半帧/残帧。换配对码、关开关这类「这次会话作废」的动作都要走它，
 // 否则已经通过 AUTH 的手机在换码之后仍然是 authed=true，还能继续读改设置。
 void bleLinkClearSession(void);
+
+// 调试出口：装一个之后，「收到原始写」「订阅变化」「notify 失败」「连接 MTU」都会经它输出。
+// 默认 nullptr = 一个字节都不打。排查「手机发了没回包」时靠它区分故障在哪一层：
+//   没 WR 日志 = 手机那侧的写入根本没到设备；有 WR 但没 rx = 帧/解析问题；
+//   有 rx 但没 SENT = 回包卡在 notify（多数是对端没订阅 TX）。
+void bleLinkSetDebugSink(void (*fn)(const char *));

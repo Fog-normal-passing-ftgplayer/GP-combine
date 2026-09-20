@@ -81,10 +81,64 @@ static void test_drain_whole_frame() {
   CHECK(calls23 == 13, "MTU=23 时 245 字节应该 13 片，算出来 %d 片", calls23);
 }
 
+// ---- 文本模式收帧 ----
+// 真机实测：nRF Connect 的写入框默认 UTF-8，手敲的十六进制会以 ASCII 发出来，
+// 设备侧按二进制收帧只能静默丢掉（日志里是 "WR n=28: 41 35 20 35 41 ..."）。
+// 这里钉住「文本也要能翻成帧」，顺便钉住真正的二进制帧不能误进文本分支。
+static void test_proto_from_text() {
+  uint8_t buf[PROTO_HEADER + PROTO_MAX_PAYLOAD + 2];
+  ProtoFrame f;
+
+  // 各种写法都翻成帧，再喂给**真**收帧器，确认确实是一帧合法的、cmd 对得上的帧
+  // seq 单独列：十六进制文本是整帧照抄（seq 在字节里），命令词才是设备自己组帧补 seq
+  struct Case { const char *text; uint8_t cmd; size_t payload; uint16_t seq; };
+  const Case cases[] = {
+      {"A5 5A 01 01 00 00 00 00 E1 E1", CMD_PING, 0, 0},
+      {"a5 5a 01 01 00 00 00 00 e1 e1", CMD_PING, 0, 0},
+      {"A5 5A 01 01 00 00 00 00 E1E1", CMD_PING, 0, 0},   // 用户实际发过的：末尾漏了空格
+      {"0xA5 0x5A 0x01 0x01 0x00 0x00 0x00 0x00 0xE1 0xE1", CMD_PING, 0, 0},
+      {"A5 5A 01 03 00 00 00 00 62 A5", CMD_INFO, 0, 0},
+      {"PING", CMD_PING, 0, 7},
+      {"ping", CMD_PING, 0, 7},
+      {"INFO", CMD_INFO, 0, 7},
+      {"PAIR", CMD_PAIR_INFO, 0, 7},
+      {"CFG", CMD_CFG_GET, 0, 7},
+      {"AUTH 280148", CMD_AUTH, 6, 7},
+  };
+  for (const Case &c : cases) {
+    size_t n = protoFromText((const uint8_t *)c.text, std::strlen(c.text), buf, sizeof buf, 7);
+    if (n == 0) { CHECK(false, "翻译不出来：\"%s\"", c.text); continue; }
+    ProtoRx rx;
+    bool got = false;
+    for (size_t i = 0; i < n && !got; i++) got = rx.push(buf[i], f);
+    CHECK(got, "翻译结果不是一整帧：\"%s\"", c.text);
+    if (!got) continue;
+    CHECK(f.cmd == c.cmd, "\"%s\" cmd=%02X 期望 %02X", c.text, f.cmd, c.cmd);
+    CHECK(f.len == c.payload, "\"%s\" payload=%u 期望 %zu", c.text, f.len, c.payload);
+    CHECK(f.seq == c.seq, "\"%s\" seq=%u 期望 %u", c.text, f.seq, c.seq);
+    // AUTH 的 6 位数字必须原样留着，不能被当成十六进制吃掉
+    if (c.cmd == CMD_AUTH)
+      CHECK(std::memcmp(f.payload, "280148", 6) == 0, "AUTH 载荷不对");
+  }
+
+  // 认不出来一律返回 0：调用方要按原字节走正常收帧器，别把垃圾当帧
+  const char *bads[] = {"", "   ", "PINGO", "PING PONG", "A5 5", "AUTH 28014",
+                        "AUTH 2801489", "AUTH abcdef", "HELLO", "ZZ"};
+  for (const char *b : bads)
+    CHECK(protoFromText((const uint8_t *)b, std::strlen(b), buf, sizeof buf, 0) == 0,
+          "不该认出：\"%s\"", b);
+
+  // 二进制帧以 0xA5 开头，不能被文本分支截胡
+  uint8_t bin[PROTO_HEADER + 2];
+  size_t bn = protoBuild(bin, sizeof bin, CMD_PING, 0, nullptr, 0);
+  CHECK(protoFromText(bin, bn, buf, sizeof buf, 0) == 0, "二进制帧被文本分支吃了");
+}
+
 int main() {
   test_nes_path();
   test_ble_chunk();
   test_drain_whole_frame();
+  test_proto_from_text();
   if (failures) {
     std::printf("\n%d 处失败\n", failures);
     return 1;

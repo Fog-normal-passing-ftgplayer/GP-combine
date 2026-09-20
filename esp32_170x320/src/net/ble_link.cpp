@@ -1,7 +1,23 @@
 #include "ble_link.h"
 
 #include <NimBLEDevice.h>
+#include <stdio.h>
 #include <string.h>
+
+// 调试出口（默认关）。onWrite/onSubscribe 是协议栈任务上下文，只能往这里塞格式化好的
+// 短字符串，真正的串口输出由主循环那侧的 sink 决定。
+static void (*dbgSink)(const char *) = nullptr;
+
+void bleLinkSetDebugSink(void (*fn)(const char *)) { dbgSink = fn; }
+
+static void dbgHex(const char *tag, const uint8_t *p, size_t n) {
+  if (!dbgSink) return;
+  char buf[160];
+  int w = snprintf(buf, sizeof(buf), "%s n=%u:", tag, (unsigned)n);
+  for (size_t i = 0; i < n && w > 0 && w < (int)sizeof(buf) - 4; i++)
+    w += snprintf(buf + w, sizeof(buf) - (size_t)w, " %02X", p[i]);
+  dbgSink(buf);
+}
 
 // NUS：手机端（nRF Connect 或以后自己的 App）不用手写自定义服务也能直接连
 static const char *UUID_SVC = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -24,6 +40,9 @@ static uint8_t txFailStreak = 0;
 
 static NimBLEServer          *srv    = nullptr;
 static NimBLECharacteristic  *txChr  = nullptr;
+// 文本模式自己组帧时用的 seq（十六进制文本是整帧照抄，用不到这个）。
+// 递增一下，手机上看回包序号变了就知道是新一轮，不用靠时间猜。
+static uint16_t textSeq = 0;
 static bool  inited    = false;
 static volatile bool enabled = false;   // 广播开着（开关状态）
 static volatile int  clients = 0;       // 已连接手机数
@@ -48,6 +67,12 @@ class SrvCb : public NimBLEServerCallbacks {
     authed  = false;
     connMtu = info.getMTU();          // 协商结果，之后由 onMTUChange 更新
     txLen = txOff = 0; txFailStreak = 0;   // 上一台手机没发完的半帧不要带过来
+    if (dbgSink) {
+      char b[64];
+      snprintf(b, sizeof(b), "[ble] CONN t=%d mtu=%u", (int)info.getConnHandle(),
+               (unsigned)connMtu);
+      dbgSink(b);
+    }
     // 配置助手是"点一下就改一下"，请求快一点的连接间隔（15–30 ms），不加 latency
     s->updateConnParams(info.getConnHandle(), 12, 24, 0, 200);
   }
@@ -66,12 +91,36 @@ class SrvCb : public NimBLEServerCallbacks {
 class RxCb : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &) override {
     NimBLEAttValue v = c->getValue();
-    rxPush(v.data(), v.size());
+    dbgHex("[ble] WR", v.data(), v.size());   // 手机写进来的原始字节，最关键的证据
+    // 手测便利：nRF Connect 的写入框默认 UTF-8，手敲的十六进制/命令词会以 ASCII 进来
+    // （实测 "A5 5A 01 ..." 是 28 个字符）。先试着翻成帧；翻不出来就按原字节走，
+    // 让收帧器自己丢掉 —— 二进制帧首字节 0xA5 不可打印，永远不会落进文本分支。
+    uint8_t frame[PROTO_HEADER + PROTO_MAX_PAYLOAD + 2];
+    size_t n = protoFromText(v.data(), v.size(), frame, sizeof(frame), textSeq);
+    if (n) {
+      textSeq++;
+      dbgHex("[ble] WR->frame", frame, n);
+      rxPush(frame, n);
+    } else {
+      rxPush(v.data(), v.size());
+    }
+  }
+};
+
+// 对端到底有没有订阅 TX —— 没订阅的时候 notify 会一直失败，
+// 现象和"设备收到帧但装死"完全一样，所以必须单独打出来。
+class TxCb : public NimBLECharacteristicCallbacks {
+  void onSubscribe(NimBLECharacteristic *, NimBLEConnInfo &, uint16_t subValue) override {
+    if (!dbgSink) return;
+    char b[64];
+    snprintf(b, sizeof(b), "[ble] SUB tx sub=%u", (unsigned)subValue);
+    dbgSink(b);
   }
 };
 
 static SrvCb srvCb;
 static RxCb  rxCb;
+static TxCb  txCb;
 
 bool bleLinkBegin(const char *deviceName) {
   if (inited) return true;
@@ -88,6 +137,7 @@ bool bleLinkBegin(const char *deviceName) {
   NimBLECharacteristic *rxChr =
       svc->createCharacteristic(UUID_RX, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   if (!txChr || !rxChr) return false;
+  txChr->setCallbacks(&txCb);
   rxChr->setCallbacks(&rxCb);
 
   srv->start();
@@ -139,6 +189,12 @@ void bleLinkTick(void) {
   while (txOff < txLen) {
     size_t chunk = bleNotifyChunk(connMtu, txLen - txOff);
     if (!txChr || !txChr->notify(txBuf + txOff, chunk)) {
+      if (dbgSink) {
+        char b[80];
+        snprintf(b, sizeof(b), "[ble] NOTIFY fail chunk=%u mtu=%u streak=%u",
+                 (unsigned)chunk, (unsigned)connMtu, (unsigned)(txFailStreak + 1));
+        dbgSink(b);
+      }
       if (++txFailStreak >= 20) { txLen = txOff = 0; txFailStreak = 0; }
       return;                          // 下次 tick 再试
     }
@@ -146,13 +202,31 @@ void bleLinkTick(void) {
     txOff += chunk;
   }
   txLen = txOff = 0;                   // 发完清空，下一帧重新开始
+  if (dbgSink) dbgSink("[ble] SENT");
 }
 
 bool bleLinkPollRx(ProtoFrame &out) {
+  size_t consumed = 0;
   while (rxTail != rxHead) {
     uint8_t b = rxRing[rxTail];
     rxTail = (uint16_t)((rxTail + 1) % RX_RING);
-    if (rxParser.push(b, out)) return true;
+    consumed++;
+    if (rxParser.push(b, out)) {
+      // 走的字节比这一帧本身多 = 前面混了垃圾/半帧，收帧器是靠丢弃重新同步的
+      size_t exact = (size_t)PROTO_HEADER + out.len + 2;
+      if (dbgSink && consumed > exact) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "[ble] rx resync dropped=%u", (unsigned)(consumed - exact));
+        dbgSink(buf);
+      }
+      return true;
+    }
+  }
+  // 有字节进来但凑不出一整帧：写到了、但内容不是合法帧（长度/CRC 不符）
+  if (consumed && dbgSink) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "[ble] rx partial bytes=%u", (unsigned)consumed);
+    dbgSink(buf);
   }
   return false;
 }

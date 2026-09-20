@@ -275,6 +275,11 @@ static void dbgPrintf(const char *fmt, ...) {   // 非阻塞：主机没开串�
   if (n > 0) usb_serial_jtag_write_bytes(buf, (size_t)((n < (int)sizeof(buf)) ? n : (int)sizeof(buf) - 1), 0);
 }
 
+// ble_link 里的调试事件（收到原始写 / TX 订阅 / notify 失败）混进同一套串口输出。
+// 注意这个回调是在 BLE 协议栈任务里被调的：dbgPrintf 底下是 USB-Serial-JTAG 的驱动环形
+// 缓冲（写超时 0），多任务安全且不阻塞协议栈。
+static void bleDbgSink(const char *s) { dbgPrintf("%s\n", s); }
+
 static uint32_t dbgFrames = 0;
 static uint32_t dbgLastMs = 0;
 static uint32_t dbgWaitUs = 0, dbgConvUs = 0, dbgTotalUs = 0;
@@ -2207,6 +2212,7 @@ void applyBluetoothSettings() {
       dbgPrintf("[dbg] BLE begin... free_int=%u largest=%u\n",
                 (unsigned)freeInt,
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+      bleLinkSetDebugSink(bleDbgSink);      // 装日志出口：排查发帧没回包时全靠它分层定位
       if (!bleLinkBegin(btName)) {
         dbgPrintf("[dbg] BLE begin 失败\n");
         btOpts[0].value = 0;
@@ -2351,7 +2357,19 @@ void netHandleFrame(ProtoFrame &f) {
 void netTick() {
   bleLinkTick();
   ProtoFrame f;
-  while (bleLinkPollRx(f)) netHandleFrame(f);
+  while (bleLinkPollRx(f)) {
+    // 排查「手机发了没回包」时最缺的就是这个：收不到 = 手机那侧订阅/特征写错了；
+    // 收到了却没回包 = 问题在 TX。以前这两种情况在串口上完全一样（都是静悄悄）。
+    dbgPrintf("[ble] rx cmd=0x%02X len=%u\n", f.cmd, (unsigned)f.len);
+    netHandleFrame(f);
+    bleLinkTick();     // 处理完一帧立刻把回包推出去，别压到下一轮循环
+  }
+  static int lastBleClients = -1;
+  int c = bleLinkClients();
+  if (c != lastBleClients) {
+    lastBleClients = c;
+    dbgPrintf("[ble] clients=%d\n", c);
+  }
   btLinkState = (uint8_t)bleLinkState();
   btClients   = (uint8_t)bleLinkClients();
 }

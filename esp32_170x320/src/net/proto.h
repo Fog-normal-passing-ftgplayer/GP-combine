@@ -61,6 +61,102 @@ struct ProtoFrame {
   uint8_t  payload[PROTO_MAX_PAYLOAD];
 };
 
+// ---- 文本模式：把可打印 ASCII 的写入当成帧收 ----
+//
+// 起因（真机实测）：nRF Connect 的写入框默认是 UTF-8，手敲的十六进制会原样以 ASCII
+// 发过来 —— 日志里就是 `WR n=28: 41 35 20 35 41 ...`（"A5 5A 01 ..." 的字符码）。
+// 设备侧按二进制收帧只能静默丢掉，现象和「设备死了」一模一样；而各个 App 版本把
+// 「UTF-8 / BYTE ARRAY」的切换入口放在哪都不一样，找它比改固件还费劲。
+//
+// 所以设备端两种都认。只有**整段都是可打印字符**才走文本分支，二进制帧首字节是 0xA5，
+// 落不进这个条件，不会互相干扰。两条规则：
+//   1) 十六进制字节串（空格/逗号随便有没有，也接受 0x 前缀）→ 这些字节就是整帧
+//   2) 命令词：PING / INFO / PAIR / CFG / RESET / AUTH <6位数字>
+//
+// 返回整帧长度；0 = 认不出来，调用方应当按原字节喂给收帧器（让它自然丢掉）。
+static inline size_t protoBuild(uint8_t *out, size_t outCap, uint8_t cmd, uint16_t seq,
+                                const uint8_t *payload, uint16_t len);
+
+static inline int protoIsTextSpace(uint8_t c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ',';
+}
+
+static inline int protoHexVal(uint8_t c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+static inline size_t protoFromText(const uint8_t *s, size_t n, uint8_t *out, size_t outCap,
+                                   uint16_t seq) {
+  if (!n) return 0;
+  for (size_t i = 0; i < n; i++)
+    if (s[i] < 0x20 || s[i] > 0x7E) return 0;   // 有不可打印字节 → 不是文本
+
+  size_t b = 0, e = n;
+  while (b < e && protoIsTextSpace(s[b])) b++;
+  while (e > b && protoIsTextSpace(s[e - 1])) e--;
+  if (b >= e) return 0;
+
+  // 规则 1：十六进制。边扫边拼，不留中间缓冲（一帧最长 266 字节，堆栈上放不下 532 个字符）
+  size_t total = 0;
+  int hi = -1;
+  bool hexOk = true;
+  for (size_t i = b; i < e;) {
+    uint8_t c = s[i];
+    if (protoIsTextSpace(c)) { i++; continue; }
+    if (c == '0' && i + 1 < e && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
+      if (hi >= 0) { hexOk = false; break; }    // "0x" 只能出现在字节开头
+      i += 2; continue;
+    }
+    int hv = protoHexVal(c);
+    if (hv < 0) { hexOk = false; break; }
+    if (hi < 0) { hi = hv; i++; continue; }
+    if (total >= outCap) { hexOk = false; break; }
+    out[total++] = (uint8_t)((hi << 4) | hv);
+    hi = -1;
+    i++;
+  }
+  if (hexOk && hi < 0 && total > 0) return total;   // 半字节落单 = 不是十六进制串
+
+  // 规则 2：命令词。取第一个词（不分大小写），最多 7 个字符
+  size_t p = b;
+  while (p < e && !protoIsTextSpace(s[p])) p++;
+  char word[8];
+  size_t wl = p - b;
+  if (wl == 0 || wl >= sizeof(word)) return 0;
+  for (size_t i = 0; i < wl; i++)
+    word[i] = (char)((s[b + i] >= 'a' && s[b + i] <= 'z') ? s[b + i] - 32 : s[b + i]);
+  word[wl] = '\0';
+
+  uint8_t cmd;
+  if      (!strcmp(word, "PING"))  cmd = CMD_PING;
+  else if (!strcmp(word, "INFO"))  cmd = CMD_INFO;
+  else if (!strcmp(word, "PAIR"))  cmd = CMD_PAIR_INFO;
+  else if (!strcmp(word, "CFG"))   cmd = CMD_CFG_GET;
+  else if (!strcmp(word, "RESET")) cmd = CMD_CFG_RESET;
+  else if (!strcmp(word, "AUTH"))  cmd = CMD_AUTH;
+  else return 0;
+
+  if (cmd != CMD_AUTH) {
+    // 后面不该再有多余的词："PING PONG" 这种是发错了，别猜用户想说什么
+    for (size_t i = p; i < e; i++)
+      if (!protoIsTextSpace(s[i])) return 0;
+    return protoBuild(out, outCap, cmd, seq, nullptr, 0);
+  }
+
+  // AUTH 后面必须紧跟正好 6 位数字，多的少的都算发错，别猜
+  size_t q = p;
+  while (q < e && protoIsTextSpace(s[q])) q++;
+  size_t r = e;
+  while (r > q && protoIsTextSpace(s[r - 1])) r--;
+  if (r - q != 6) return 0;
+  for (size_t i = q; i < r; i++)
+    if (s[i] < '0' || s[i] > '9') return 0;
+  return protoBuild(out, outCap, cmd, seq, s + q, 6);
+}
+
 // 组帧。返回整帧长度；0 = 载荷超限或缓冲不够
 static inline size_t protoBuild(uint8_t *out, size_t outCap, uint8_t cmd, uint16_t seq,
                                 const uint8_t *payload, uint16_t len) {

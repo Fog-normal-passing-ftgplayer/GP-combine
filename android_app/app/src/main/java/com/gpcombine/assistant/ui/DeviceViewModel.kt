@@ -18,8 +18,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class Phase { IDLE, SCANNING, NEED_CODE, WORKING, READY }
 
@@ -30,6 +32,8 @@ data class UiState(
     val info: DeviceInfo? = null,
     val pair: PairInfo? = null,
     val error: String? = null,
+    /** 蓝牙栈回调流水账，卡住的时候靠它定位是卡在哪一步。 */
+    val trace: List<String> = emptyList(),
 )
 
 class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidViewModel(app) {
@@ -42,6 +46,14 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     private var scanJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            transport.log.collect { line ->
+                _ui.update { it.copy(trace = (it.trace + line).takeLast(14)) }
+            }
+        }
+    }
 
     fun startScan() {
         scanJob?.cancel()
@@ -79,10 +91,16 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
                 (transport as AndroidBleTransport).connect(device.address)
                 prefs.lastAddress = device.address
                 // 连接是异步完成的：等状态变 CONNECTED 再问配对码
-                transport.state.collect { st ->
-                    if (st == BleState.CONNECTED) {
-                        _ui.update { it.copy(phase = Phase.NEED_CODE) }
+                // 以前这里是无限等，蓝牙栈不回调就永远停在"通信中"，一点线索都没有
+                val ok = withTimeoutOrNull(12_000) {
+                    transport.state.first { it == BleState.CONNECTED }
+                }
+                if (ok == null) {
+                    _ui.update {
+                        it.copy(phase = Phase.IDLE, error = "12 秒没连上，卡在上面那一步")
                     }
+                } else {
+                    _ui.update { it.copy(phase = Phase.NEED_CODE) }
                 }
             } catch (e: Exception) {
                 _ui.update { it.copy(phase = Phase.IDLE, error = e.message) }

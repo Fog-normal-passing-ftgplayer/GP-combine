@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 /** 行为照抄固件 netHandleFrame：PING 原样回；AUTH 校验 6 位码；其余没认证回 ERR_NOT_AUTHED。 */
 class FakeTransport(private val pairCode: String = "280148") : BleTransport {
@@ -20,11 +22,15 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
     private val _state = MutableStateFlow(BleState.IDLE)
     override val state: StateFlow<BleState> = _state.asStateFlow()
 
+    private val _log = MutableSharedFlow<String>(extraBufferCapacity = 32)
+    override val log: Flow<String> = _log.asSharedFlow()
+
     private var authed = false
 
     fun connect() {
         authed = false
         _state.value = BleState.CONNECTED
+        _log.tryEmit("fake: connected")
     }
 
     override suspend fun send(frame: ByteArray) {

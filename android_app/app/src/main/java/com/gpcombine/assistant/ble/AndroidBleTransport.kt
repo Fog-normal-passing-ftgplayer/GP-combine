@@ -16,6 +16,8 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.gpcombine.assistant.proto.Frame
 import com.gpcombine.assistant.proto.FrameParser
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class ScannedDevice(val name: String, val address: String, val rssi: Int)
 
@@ -49,10 +52,20 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
     private val _state = MutableStateFlow(BleState.IDLE)
     override val state: StateFlow<BleState> = _state.asStateFlow()
 
+    private val _log = MutableSharedFlow<String>(replay = 64, extraBufferCapacity = 64)
+    override val log: Flow<String> = _log.asSharedFlow()
+
+    private val main = Handler(Looper.getMainLooper())
+    private val discoveryStarted = AtomicBoolean(false)
+
     private var gatt: BluetoothGatt? = null
     private var rxChar: BluetoothGattCharacteristic? = null
     private var mtu = 23
     private var parser = FrameParser()
+
+    private fun note(s: String) {
+        _log.tryEmit(s)
+    }
 
     // ---- 权限 ----
 
@@ -114,6 +127,8 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
         val adapter = requireAdapter()
         _state.value = BleState.CONNECTING
         parser = FrameParser()
+        discoveryStarted.set(false)
+        note("connect ${address.takeLast(5)}")
         val device = adapter.getRemoteDevice(address)
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
@@ -121,24 +136,44 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            note("conn status=$status newState=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                g.requestMtu(REQUEST_MTU)
-                g.discoverServices()
+                // 服务发现必须单独占住 GATT，不跟 requestMtu 抢（见 onServicesDiscovered 末尾）
+                startDiscovery(g)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 rxChar = null
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    note("断开 status=$status")
+                }
+                _state.value = BleState.DISCONNECTED
+            }
+        }
+
+        /** GATT 一次只能跑一个操作，所以发现服务这件事做成幂等的，谁先到谁触发。 */
+        private fun startDiscovery(g: BluetoothGatt) {
+            if (!discoveryStarted.compareAndSet(false, true)) return
+            if (!g.discoverServices()) {
+                note("discoverServices() 返回 false")
                 _state.value = BleState.DISCONNECTED
             }
         }
 
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            note("svc status=$status")
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                _state.value = BleState.DISCONNECTED
+                return
+            }
             val svc = g.getService(SERVICE) ?: run {
+                note("没找到 NUS 服务，设备只暴露了 ${g.services.map { it.uuid.toString().take(8) }}")
                 _state.value = BleState.DISCONNECTED
                 return
             }
             rxChar = svc.getCharacteristic(RX)
             val tx = svc.getCharacteristic(TX)
             if (rxChar == null || tx == null) {
+                note("NUS 里没有 RX=$RX / TX=$TX")
                 _state.value = BleState.DISCONNECTED
                 return
             }
@@ -157,10 +192,21 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
             }
             g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
             _state.value = BleState.CONNECTED
+            // MTU 放到订阅之后再要，避免它和服务发现互相抢 GATT；协商失败也只是分片变小
+            main.postDelayed({ g.requestMtu(REQUEST_MTU) }, 300)
         }
 
         override fun onMtuChanged(g: BluetoothGatt, newMtu: Int, status: Int) {
             mtu = newMtu
+            note("mtu=$newMtu status=$status")
+        }
+
+        override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
+            note("cccd write status=$status")
+        }
+
+        override fun onCharacteristicWrite(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
+            if (status != BluetoothGatt.GATT_SUCCESS) note("write status=$status")
         }
 
         @Deprecated("Android 13 起走新签名")

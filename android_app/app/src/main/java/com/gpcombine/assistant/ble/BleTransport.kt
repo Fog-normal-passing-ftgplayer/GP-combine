@@ -14,5 +14,7 @@ interface BleTransport {
     /** 收帧流。分片重组已经在实现里做完，这里吐出来的一定是完整帧。 */
     val inbound: Flow<Frame>
     val state: StateFlow<BleState>
+    /** 蓝牙栈回调的流水账。出问题时这是唯一能看见"卡在哪一步"的证据。 */
+    val log: Flow<String>
     suspend fun send(frame: ByteArray)
 }

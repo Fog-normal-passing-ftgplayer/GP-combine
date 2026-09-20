@@ -57,6 +57,7 @@ class DeviceClientTest {
         val silent = object : BleTransport {
             override val inbound = MutableSharedFlow<Frame>()
             override val state = MutableStateFlow(BleState.CONNECTED)
+            override val log = MutableSharedFlow<String>()
             override suspend fun send(frame: ByteArray) = Unit
         }
         val e = runCatching { client(silent).ping() }.exceptionOrNull()
@@ -70,6 +71,7 @@ class DeviceClientTest {
         val t = object : BleTransport {
             override val inbound = MutableSharedFlow<Frame>()
             override val state = MutableStateFlow(BleState.CONNECTED)
+            override val log = MutableSharedFlow<String>()
             override suspend fun send(frame: ByteArray) {
                 val p = FrameParser()
                 frame.forEach { b -> p.push(b)?.let { f -> seen += f.seq } }

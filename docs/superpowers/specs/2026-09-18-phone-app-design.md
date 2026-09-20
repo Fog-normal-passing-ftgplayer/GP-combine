@@ -222,6 +222,28 @@ AGP 8.x + Gradle 8.13 + **JDK 21**。除 Compose / androidx 外不引第三方�
   gitignore —— 否则沙箱每次编译都要弹一次写权限。
 - 产物 `android/app/build/outputs/apk/debug/app-debug.apk`，用户自己拷进手机安装（不接 adb）。
 
+工具链已在本机装好并**冒烟验证**（2026-09-20，最小工程 `assembleDebug test` 通过）：
+
+| 组件 | 版本 | 位置 |
+|---|---|---|
+| JDK | Temurin 21.0.12.1 | `~/.jdks/temurin-21`（系统 JDK 26 不动） |
+| Gradle | 9.7.1 | `~/tools/gradle-9.7.1` |
+| AGP | 9.4.1 | Gradle 依赖 |
+| Kotlin | 2.4.20（含 Compose 编译器插件） | Gradle 依赖 |
+| Android SDK | platform-37 + build-tools 36.1.0 + platform-tools | `~/Android/Sdk` |
+| Compose BOM | 2026.09.00 | Gradle 依赖 |
+
+四条踩出来的结论，实施时别再撞：
+
+1. **AGP 9 自带 Kotlin 支持**，不能再加 `org.jetbrains.kotlin.android` 插件——加了直接构建失败，
+   报"no longer required since AGP 9.0"。只用 `com.android.application` + `org.jetbrains.kotlin.plugin.compose`。
+2. **`compileSdk` 必须 37**：Compose BOM 2026.09.00 带进来的 `runtime-saveable 1.12.1` 硬性要求 37+，
+   36 直接失败。`targetSdk` 仍按 §11 保持 34（只影响运行时行为，不影响能否编译）。
+3. **Gradle 启动器默认用系统 JDK 26**，必须在 `gradle.properties` 里写
+   `org.gradle.java.home=/home/bit/.jdks/temurin-21` 把 daemon 钉到 JDK 21，否则 AGP 起不来。
+4. 冒烟产物 `app-debug.apk` **29 MB**（debug 不混淆 + Compose，属正常量级），JVM 单测正常执行。
+   传输给手机时按这个体积预期。
+
 ### 8.2 工程结构
 
 `android/` 与固件同仓库（spec、代码、进度在一起，不用跨仓库对齐协议）。

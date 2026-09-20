@@ -206,6 +206,9 @@ class ProtoRx {
       if (m_have < 2) return false;
       if (m_buf[0] != PROTO_MAGIC0 || m_buf[1] != PROTO_MAGIC1) { dropFront(1); continue; }
       if (m_have < PROTO_HEADER) return false;
+      // 版本不对就当垃圾丢掉重找。今天只有 ver=1，看着多余；哪天改了布局，
+      // 少了这一句就是「新 App 发新布局，旧固件照老布局解析并执行命令」。
+      if (m_buf[2] != PROTO_VERSION) { dropFront(1); continue; }
 
       uint16_t len = (uint16_t)(m_buf[6] | ((uint16_t)m_buf[7] << 8));
       if (len > PROTO_MAX_PAYLOAD) { dropFront(1); continue; }

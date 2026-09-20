@@ -81,6 +81,37 @@ static void test_drain_whole_frame() {
   CHECK(calls23 == 13, "MTU=23 时 245 字节应该 13 片，算出来 %d 片", calls23);
 }
 
+// ---- 版本字节必须校验 ----
+// 帧里第 3 个字节是协议版本。今天两边都是 1，看着"不校验也没事"；
+// 哪天改了布局就会变成：新 App 发新布局，旧固件照老布局解析并**执行**命令。
+// 坏字节重同步的机制本来就在，多看一眼 ver 的代价只是把这一帧当垃圾丢掉。
+static void test_proto_version_guard() {
+  uint8_t frame[PROTO_HEADER + PROTO_MAX_PAYLOAD + 2];
+  ProtoFrame out;
+  ProtoRx rx;
+
+  size_t n = protoBuild(frame, sizeof(frame), CMD_PING, 7, nullptr, 0);
+  CHECK(n == 10, "PING 帧应该是 10 字节，得到 %zu", n);
+
+  bool got = false;
+  for (size_t i = 0; i < n; i++)
+    if (rx.push(frame[i], out)) got = true;
+  CHECK(got, "版本正确的帧必须收下");
+  CHECK(out.cmd == CMD_PING && out.seq == 7, "收下的帧内容要对");
+
+  // 只有 ver 变、CRC 重算成正确值 —— 除了版本这一关，别的都挑不出毛病
+  frame[2] = (uint8_t)(PROTO_VERSION + 1);
+  uint16_t crc = protoCrc16(frame + 2, (size_t)PROTO_HEADER - 2);
+  frame[n - 2] = (uint8_t)(crc & 0xFF);
+  frame[n - 1] = (uint8_t)(crc >> 8);
+
+  rx.reset();
+  got = false;
+  for (size_t i = 0; i < n; i++)
+    if (rx.push(frame[i], out)) got = true;
+  CHECK(!got, "版本不对但 CRC 正确的帧，不能吐出来");
+}
+
 // ---- 文本模式收帧 ----
 // 真机实测：nRF Connect 的写入框默认 UTF-8，手敲的十六进制会以 ASCII 发出来，
 // 设备侧按二进制收帧只能静默丢掉（日志里是 "WR n=28: 41 35 20 35 41 ..."）。
@@ -137,6 +168,7 @@ static void test_proto_from_text() {
 int main() {
   test_nes_path();
   test_ble_chunk();
+  test_proto_version_guard();
   test_drain_whole_frame();
   test_proto_from_text();
   if (failures) {

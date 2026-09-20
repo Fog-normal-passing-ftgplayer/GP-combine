@@ -125,12 +125,19 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
     @SuppressLint("MissingPermission")
     suspend fun connect(address: String) {
         val adapter = requireAdapter()
+        // 重连前先把上一个 BluetoothGatt 关掉：不关就一直占着一个 GATT client
+        // （系统上限 32，反复"连上→断电→重连"会把配额耗光，之后 connectGatt 直接返回 null）。
+        close()
         _state.value = BleState.CONNECTING
         parser = FrameParser()
         discoveryStarted.set(false)
         note("connect ${address.takeLast(5)}")
         val device = adapter.getRemoteDevice(address)
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        if (gatt == null) {
+            note("connectGatt 返回 null（GATT client 配额用光了？）")
+            _state.value = BleState.IDLE
+        }
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -145,6 +152,9 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     note("断开 status=$status")
                 }
+                note("disconnected")
+                gatt?.close()      // 断连后不 close 同样占着配额
+                gatt = null
                 _state.value = BleState.DISCONNECTED
             }
         }

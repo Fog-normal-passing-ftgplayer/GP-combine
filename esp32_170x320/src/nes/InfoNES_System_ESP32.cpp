@@ -25,6 +25,11 @@ extern void pushFrame();
 
 #define NES_OUT_W 320
 #define NES_OUT_H 170
+// 这两个数必须和主固件 esp32_170x320.ino 的 SCR_W/SCR_H 一致：下面直接往
+// lfb + y*NES_OUT_W 写，不一致就是越界踩内存。主固件那边有对应的断言，
+// 两边合起来堵住「只改一处」这条路。
+static_assert(NES_OUT_W == 320 && NES_OUT_H == 170,
+              "必须和 esp32_170x320.ino 的 SCR_W/SCR_H 一致（lfb 尺寸就是 SCR_W*SCR_H）");
 
 // NES 手柄串行位序：bit0=A bit1=B bit2=Select bit3=Start bit4=Up bit5=Down bit6=Left bit7=Right
 #define NES_PAD_A      0x01

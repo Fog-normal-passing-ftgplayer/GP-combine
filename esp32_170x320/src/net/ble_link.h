@@ -14,6 +14,15 @@
 #include <stddef.h>
 #include "proto.h"
 
+// BLE 一次 notify 最多能带 MTU-3 字节（3 字节是 ATT 头）。
+// 单独抽成 inline 是为了能在主机上测：这个数算错（用期望 MTU 而不是协商后的 MTU）
+// 的后果是 notify 一直失败 → txOff 不前进 → 回包永久卡死。
+// mtu 传 0（还没连上/未知）时退到 BLE 的最小 MTU 23。
+static inline size_t bleNotifyChunk(uint16_t mtu, size_t remaining) {
+  size_t m = (mtu > 3) ? (size_t)(mtu - 3) : 20u;
+  return remaining < m ? remaining : m;
+}
+
 // 装协议栈 + 建服务。deviceName 太长会被截断成 15 字节。返回 false = 内存不够/失败
 bool bleLinkBegin(const char *deviceName);
 
@@ -47,3 +56,7 @@ void bleLinkSetAuthed(bool v);
 
 // 断开所有已连接手机（「清除配对」/关开关时用）
 void bleLinkDisconnectAll(void);
+
+// 断开 + 撤销认证 + 丢掉半帧/残帧。换配对码、关开关这类「这次会话作废」的动作都要走它，
+// 否则已经通过 AUTH 的手机在换码之后仍然是 authed=true，还能继续读改设置。
+void bleLinkClearSession(void);

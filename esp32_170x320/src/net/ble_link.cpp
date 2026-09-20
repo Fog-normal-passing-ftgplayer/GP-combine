@@ -17,6 +17,10 @@ static ProtoRx rxParser;
 // 发：整帧先落 txBuf，bleLinkTick() 里按 MTU 一片一片发
 static uint8_t txBuf[PROTO_HEADER + PROTO_MAX_PAYLOAD + 2];
 static size_t  txLen = 0, txOff = 0;
+// 连续 notify 失败次数。对端没订阅 TX 时 notify 会一直返回 false，
+// 无限重试就等于把 TX 永久卡死（txLen 永不为 0 → bleLinkSend 之后全被拒），
+// 所以到阈值就把这一帧丢掉。
+static uint8_t txFailStreak = 0;
 
 static NimBLEServer          *srv    = nullptr;
 static NimBLECharacteristic  *txChr  = nullptr;
@@ -24,6 +28,10 @@ static bool  inited    = false;
 static volatile bool enabled = false;   // 广播开着（开关状态）
 static volatile int  clients = 0;       // 已连接手机数
 static volatile bool authed  = false;   // 当前连接是否过了 AUTH
+// **协商后**的实际 MTU（0 = 还不知道）。不能用 NimBLEDevice::getMTU() 顶替 ——
+// 那个返回的是本机 setMTU(247) 设的期望值；手机要是只协商到 23，
+// 按 244 切出来的分片会超出单次可发长度，notify 一直失败。
+static volatile uint16_t connMtu = 0;
 
 static void rxPush(const uint8_t *p, size_t n) {
   for (size_t i = 0; i < n; i++) {
@@ -38,6 +46,8 @@ class SrvCb : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer *s, NimBLEConnInfo &info) override {
     clients = (int)s->getConnectedCount();
     authed  = false;
+    connMtu = info.getMTU();          // 协商结果，之后由 onMTUChange 更新
+    txLen = txOff = 0; txFailStreak = 0;   // 上一台手机没发完的半帧不要带过来
     // 配置助手是"点一下就改一下"，请求快一点的连接间隔（15–30 ms），不加 latency
     s->updateConnParams(info.getConnHandle(), 12, 24, 0, 200);
   }
@@ -45,10 +55,12 @@ class SrvCb : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer *s, NimBLEConnInfo &, int) override {
     clients = (int)s->getConnectedCount();
     authed  = false;
+    connMtu = 0;
+    txLen = txOff = 0; txFailStreak = 0;   // 同上：半帧不能留给下一台手机
     if (enabled) NimBLEDevice::startAdvertising();   // 还开着开关就继续等下一台手机
   }
 
-  void onMTUChange(uint16_t, NimBLEConnInfo &) override {}
+  void onMTUChange(uint16_t mtu, NimBLEConnInfo &) override { connMtu = mtu; }
 };
 
 class RxCb : public NimBLECharacteristicCallbacks {
@@ -92,9 +104,20 @@ bool bleLinkBegin(const char *deviceName) {
 
 void bleLinkDisconnectAll(void) {
   if (!srv) return;
-  uint8_t n = srv->getConnectedCount();
-  if (n) srv->disconnect(0);          // 最大连接数按 1 配，一个够用
+  // NimBLE 默认允许 3 个连接，写死 disconnect(0) 只会踢掉其中一台
+  for (uint16_t h : srv->getPeerDevices()) srv->disconnect(h);
   clients = (int)srv->getConnectedCount();
+}
+
+void bleLinkClearSession(void) {
+  bleLinkDisconnectAll();
+  authed = false;
+  connMtu = 0;
+  txLen = txOff = 0;
+  txFailStreak = 0;
+  rxParser.reset();
+  uint16_t t = rxTail;                 // 清掉没处理完的残帧，别带到下次连接
+  while (t != rxHead) { t = (uint16_t)((t + 1) % RX_RING); rxTail = t; }
 }
 
 void bleLinkEnable(bool on) {
@@ -104,22 +127,25 @@ void bleLinkEnable(bool on) {
     NimBLEDevice::startAdvertising();
   } else {
     NimBLEDevice::stopAdvertising();
-    bleLinkDisconnectAll();
-    authed = false;
-    rxParser.reset();
-    txLen = txOff = 0;
-    uint16_t t = rxTail;               // 清掉没处理完的残帧，别带到下次连接
-    while (t != rxHead) { t = (uint16_t)((t + 1) % RX_RING); rxTail = t; }
+    bleLinkClearSession();
   }
 }
 
 void bleLinkTick(void) {
   if (txLen == 0) return;
-  size_t chunk = NimBLEDevice::getMTU();
-  chunk = (chunk > 3) ? (chunk - 3) : 20;
-  if (chunk > txLen - txOff) chunk = txLen - txOff;
-  if (txChr && txChr->notify(txBuf + txOff, chunk)) txOff += chunk;
-  if (txOff >= txLen) txLen = txOff = 0;   // 发完清空，下一帧重新开始
+  // 一次 tick 就把整帧吐完。netTick() 是「tick 一次 → 把收到的帧全处理掉」，
+  // 如果这里只推一片，一个 loop 周期里连着收到两帧时，第二帧的回包会被
+  // bleLinkSend 以「上一帧还没吐完」为由拒掉，然后就没有然后了。
+  while (txOff < txLen) {
+    size_t chunk = bleNotifyChunk(connMtu, txLen - txOff);
+    if (!txChr || !txChr->notify(txBuf + txOff, chunk)) {
+      if (++txFailStreak >= 20) { txLen = txOff = 0; txFailStreak = 0; }
+      return;                          // 下次 tick 再试
+    }
+    txFailStreak = 0;
+    txOff += chunk;
+  }
+  txLen = txOff = 0;                   // 发完清空，下一帧重新开始
 }
 
 bool bleLinkPollRx(ProtoFrame &out) {

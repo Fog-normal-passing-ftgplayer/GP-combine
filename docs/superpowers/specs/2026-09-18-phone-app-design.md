@@ -352,6 +352,27 @@ android_app/
   另：手测的十六进制被 nRF Connect 按 UTF-8 发成 ASCII 字符，设备侧加了文本模式收帧
   （`protoFromText()`，纯函数 + 主机测试），二进制帧不受影响。
 
+**M1 App 进度（2026-09-20，已真机验收）**
+
+代码在 `android_app/`（main 分支，单 module，包名 `com.gpcombine.assistant`）。§8.7 的五条验收：
+
+- ✅ 扫描到 `GP-Combine-72E0` 并连上
+- ✅ 输 6 位码，AUTH 通过，进入设备页
+- ✅ 设备页数字正确（用户目视确认；当次没插数据线，未与串口 `[heap]` 逐项对数）
+- ✅ 板子断电重开后 App 重新扫描能再连上
+- ✅ `:app:testDebugUnitTest` 22 个用例全绿（Proto 4 / FrameParser 7 / InfoCodec 5 / DeviceClient 6），向量取自真机日志
+
+**真机踩到的坑（值得记住）**：第一次连真机时界面永远停在"通信中"，而设备侧显示已连手机。
+根因在 App 的连接回调里把 `requestMtu(247)` 和 `discoverServices()` 背靠背发出——
+`BluetoothGatt` 同一时刻只允许一个操作在飞，MTU 请求还没回调就发服务发现，
+`onServicesDiscovered` 一直不来，状态永远停在 CONNECTING。
+对照实验：nRF Connect 在同一台手机上能正常发现服务（它有正经的操作队列）。
+固件 `onConnect` 里还会立刻发 `updateConnParams`，等于再插一脚。
+改法：连接后只做服务发现，MTU 挪到订阅完成之后 300ms 再要；discovery 用 `AtomicBoolean` 做成幂等并检查 `status`。
+
+同时给 `BleTransport` 加了 `log` 流（蓝牙栈每个回调记一行）并把最近 14 行显示在界面上，
+连接等待也从无限改成 12 秒超时——这类"没回调就干等"的故障不能再靠猜。
+
 **P2 数据面 + App**
 
 - 固件加 SoftAP + HTTP；App 写出来（含手机端 GIF 转换）

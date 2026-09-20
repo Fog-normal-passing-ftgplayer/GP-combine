@@ -40,6 +40,7 @@ fun ConnectScreen(
     onScan: () -> Unit,
     onConnect: (ScannedDevice) -> Unit,
     onCode: (String) -> Unit,
+    onFake: () -> Unit,
 ) {
     var code by remember { mutableStateOf("") }
 
@@ -78,6 +79,13 @@ fun ConnectScreen(
 
             Phase.IDLE -> Button(onClick = onScan, modifier = Modifier.padding(top = 16.dp)) {
                 Text("扫描设备")
+            }
+        }
+
+        // 没有板子时也能把整条状态机走通（假设备照抄固件的回包行为）
+        if (ui.phase == Phase.IDLE) {
+            Button(onClick = onFake, modifier = Modifier.padding(top = 8.dp)) {
+                Text("假设备模式")
             }
         }
     }

@@ -50,7 +50,7 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
         val fake = transport as? FakeTransport
         if (fake != null) {
             fake.connect()
-            _ui.update { it.copy(phase = Phase.NEED_CODE, deviceName = "GP-Combine-FAKE") }
+            _ui.update { it.copy(phase = Phase.NEED_CODE, deviceName = "GP-Combine-FAKE（配对码 280148）") }
             // 存过配对码就直接过认证，省得每次手输
             prefs.pairCode?.let { submitCode(it) }
             return

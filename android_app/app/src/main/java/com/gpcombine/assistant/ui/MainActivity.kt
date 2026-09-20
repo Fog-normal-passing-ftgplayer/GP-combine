@@ -58,8 +58,10 @@ class MainActivity : ComponentActivity() {
                 if (!granted) {
                     PermissionScreen(onRequest = { launcher.launch(permissionsToRequest()) })
                 } else {
+                    var fakeMode by remember { mutableStateOf(useFake) }
                     val vm: DeviceViewModel = viewModel(
-                        factory = DeviceViewModel.factory(application, useFake),
+                        key = if (fakeMode) "fake" else "real",
+                        factory = DeviceViewModel.factory(application, fakeMode),
                     )
                     val ui by vm.ui.collectAsStateWithLifecycle()
                     ConnectScreen(
@@ -67,6 +69,7 @@ class MainActivity : ComponentActivity() {
                         onScan = vm::startScan,
                         onConnect = vm::connect,
                         onCode = vm::submitCode,
+                        onFake = { fakeMode = true },
                     )
                 }
             }

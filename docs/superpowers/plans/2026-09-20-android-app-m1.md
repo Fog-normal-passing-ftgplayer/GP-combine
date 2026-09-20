@@ -76,7 +76,7 @@
 - Consumes: 无
 - Produces: 可构建的 `:app` 工程；包名 `com.gpcombine.assistant`；后续所有任务的落点
 
-- [ ] **Step 1: 建工程文件**
+- [x] **Step 1: 建工程文件**
 
 `android_app/settings.gradle.kts`
 
@@ -225,7 +225,7 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
-- [ ] **Step 2: 构建，确认出 APK**
+- [x] **Step 2: 构建，确认出 APK**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug`
 Expected: `BUILD SUCCESSFUL`，且 `android_app/app/build/outputs/apk/debug/app-debug.apk` 存在。
@@ -233,7 +233,7 @@ Expected: `BUILD SUCCESSFUL`，且 `android_app/app/build/outputs/apk/debug/app-
 如果报 "kotlin.android plugin is no longer required"，说明 `app/build.gradle.kts` 里多写了那个插件，删掉。
 如果报某个依赖要求更高 compileSdk，把 `compileSdk` 提到报错里要求的版本。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add android_app/
@@ -265,7 +265,7 @@ AGP 9 自带 Kotlin 支持，所以只声明 com.android.application 和 Compose
 
 **测试向量的来源**：下面每一个字节串都是今天真机串口日志里设备自己打出来的 `[ble] WR->frame`，不是手算的。固件的 `tools/host_tests/fixes_test.cpp` 也断言了同一批 CRC。App 侧跑通这组 = 两边协议一致。
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 `ProtoTest.kt`
 
@@ -322,12 +322,12 @@ class ProtoTest {
 }
 ```
 
-- [ ] **Step 2: 跑测试，确认失败**
+- [x] **Step 2: 跑测试，确认失败**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: Proto`。
 
-- [ ] **Step 3: 实现 Proto.kt**
+- [x] **Step 3: 实现 Proto.kt**
 
 ```kotlin
 package com.gpcombine.assistant.proto
@@ -403,12 +403,12 @@ object Proto {
 }
 ```
 
-- [ ] **Step 4: 跑测试，确认通过**
+- [x] **Step 4: 跑测试，确认通过**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `BUILD SUCCESSFUL`，`ProtoTest` 4 个用例全过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/proto/Proto.kt \
@@ -435,7 +435,7 @@ git commit -m "feat(android): 协议核常数、CRC 与组帧
 
 **为什么必须自己写收帧器而不是"读到多少算多少"**：MTU 只有 23 时，设备一个 INFO 回包（约 90 字节）会被切成 5 条独立 notify 到手机，每条都是残帧；而且 notify 是流式的，不能假设一次回调就是一帧。固件侧的收帧器也是同一个算法，坏字节靠 `A5 5A` 重新同步而不是整段丢弃。
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 ```kotlin
 package com.gpcombine.assistant.proto
@@ -526,12 +526,12 @@ class FrameParserTest {
 }
 ```
 
-- [ ] **Step 2: 跑测试，确认失败**
+- [x] **Step 2: 跑测试，确认失败**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: FrameParser`。
 
-- [ ] **Step 3: 实现 FrameParser.kt**
+- [x] **Step 3: 实现 FrameParser.kt**
 
 算法与固件 `proto.h` 的 `ProtoRx::tryParse` 完全一致：只认队首那一帧；魔数/长度/CRC 任何一处不对就把队首挪掉一格重找，这样混进垃圾或半个残帧也能自己走回来。
 
@@ -600,12 +600,12 @@ class FrameParser {
 }
 ```
 
-- [ ] **Step 4: 跑测试，确认通过**
+- [x] **Step 4: 跑测试，确认通过**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `FrameParserTest` 7 个用例全过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/proto/FrameParser.kt \
@@ -641,7 +641,7 @@ CMD_PAIR_INFO → "name=%s;pair=%s;bt=%d;clients=%d;ap=0"
 
 注意 `fs` 的值里本身带 `/`，所以要先按 `;` 切字段、再按 `=` 切键值，最后才把 `fs` 的值按 `/` 切两半。顺序弄反是这类解析最经典的 bug，下面专门有测试钉它。
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 ```kotlin
 package com.gpcombine.assistant.proto
@@ -697,12 +697,12 @@ class InfoCodecTest {
 }
 ```
 
-- [ ] **Step 2: 跑测试，确认失败**
+- [x] **Step 2: 跑测试，确认失败**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: InfoCodec`。
 
-- [ ] **Step 3: 实现 InfoCodec.kt**
+- [x] **Step 3: 实现 InfoCodec.kt**
 
 ```kotlin
 package com.gpcombine.assistant.proto
@@ -768,12 +768,12 @@ object InfoCodec {
 }
 ```
 
-- [ ] **Step 4: 跑测试，确认通过**
+- [x] **Step 4: 跑测试，确认通过**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `InfoCodecTest` 5 个用例全过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/proto/InfoCodec.kt \
@@ -807,7 +807,7 @@ git commit -m "feat(android): 解析固件的 INFO / PAIR_INFO 键值串
 
 请求-响应靠 `seq` 配对：每个请求自增一个 seq，设备回包原样带回 seq，客户端用它把回包对上号。设备侧一次只处理一帧，所以客户端**串行发请求**（`Mutex` 保护），不并发。
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 ```kotlin
 package com.gpcombine.assistant.net
@@ -898,12 +898,12 @@ class DeviceClientTest {
 
 测试文件顶部还要 `import com.gpcombine.assistant.proto.FrameParser`。
 
-- [ ] **Step 2: 跑测试，确认失败**
+- [x] **Step 2: 跑测试，确认失败**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: FakeTransport`。
 
-- [ ] **Step 3: 实现 BleTransport.kt**
+- [x] **Step 3: 实现 BleTransport.kt**
 
 ```kotlin
 package com.gpcombine.assistant.ble
@@ -926,7 +926,7 @@ interface BleTransport {
 }
 ```
 
-- [ ] **Step 4: 实现 FakeTransport.kt**
+- [x] **Step 4: 实现 FakeTransport.kt**
 
 行为照抄固件 `netHandleFrame`：PING 原样回；AUTH 校验 6 位码；其余命令没认证时报 `ERR_NOT_AUTHED`。
 
@@ -992,7 +992,7 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
 }
 ```
 
-- [ ] **Step 5: 实现 DeviceClient.kt**
+- [x] **Step 5: 实现 DeviceClient.kt**
 
 ```kotlin
 package com.gpcombine.assistant.net
@@ -1081,12 +1081,12 @@ class DeviceClient(
 }
 ```
 
-- [ ] **Step 6: 跑测试，确认通过**
+- [x] **Step 6: 跑测试，确认通过**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `DeviceClientTest` 6 个用例全过。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/ble/ \
@@ -1120,7 +1120,7 @@ DeviceClient 用 seq 配对请求与回包，串行发送——设备侧一次�
 1. **必须订阅 TX（`...0003`）并写 CCCD**，否则设备的 notify 会一直失败——固件那边连续失败 20 次就整帧丢掉。这是今天在 nRF Connect 上已经踩过的坑。
 2. **MTU 协商失败也不影响 M1**：`requestMtu(247)` 万一只协商到 23，设备会按 20 字节一片发，`FrameParser` 照样能拼回一个约 90 字节的 INFO 帧。这是设计上留的容错，不是运气。
 
-- [ ] **Step 1: 实现 AndroidBleTransport.kt**
+- [x] **Step 1: 实现 AndroidBleTransport.kt**
 
 ```kotlin
 package com.gpcombine.assistant.ble
@@ -1344,14 +1344,14 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
 }
 ```
 
-- [ ] **Step 2: 编译**
+- [x] **Step 2: 编译**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
 Expected: `BUILD SUCCESSFUL`。这一步只能证明它能编译，**行为要等 Task 8 上真机**。
 
 如果报 `onCharacteristicChanged` 重复定义，说明 `@Deprecated` 注解用错了位置——那个旧签名要保留（minSdk 29 的机器走它），新签名是无覆写注解的重载。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/ble/AndroidBleTransport.kt
@@ -1389,7 +1389,7 @@ MTU 协商失败也不影响 M1：设备按 20 字节分片，收帧器照样拼
 - **申请什么**：按用户要求三件套全申请 —— 31+ 是 `BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT` + `ACCESS_FINE_LOCATION`；30 及以下是 `ACCESS_FINE_LOCATION`。
 - **拦不拦人**：只检查**真正必需**的。31+ 只要前两个就够了，用户拒绝了定位权限不该把 App 挡在门外（那是给 30 及以下扫 BLE 用的）。
 
-- [ ] **Step 1: 实现 Prefs.kt**
+- [x] **Step 1: 实现 Prefs.kt**
 
 ```kotlin
 package com.gpcombine.assistant.store
@@ -1410,7 +1410,7 @@ class Prefs(context: Context) {
 }
 ```
 
-- [ ] **Step 2: 实现 Theme.kt**
+- [x] **Step 2: 实现 Theme.kt**
 
 ```kotlin
 package com.gpcombine.assistant.ui
@@ -1433,7 +1433,7 @@ fun GPCombineTheme(content: @Composable () -> Unit) {
 }
 ```
 
-- [ ] **Step 3: 实现 DeviceViewModel.kt**
+- [x] **Step 3: 实现 DeviceViewModel.kt**
 
 `useFake = true` 时用 `FakeTransport`，插件的调试入口是启动 Activity 时带 `--ez fake true`（`adb shell am start ... --ez fake true`），手机上也可以用一个调试按钮触发。没有板子也能把页面和状态机走通。
 
@@ -1574,7 +1574,7 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
 }
 ```
 
-- [ ] **Step 4: 实现 Screens.kt**
+- [x] **Step 4: 实现 Screens.kt**
 
 ```kotlin
 package com.gpcombine.assistant.ui
@@ -1689,7 +1689,7 @@ private fun kb(v: Long) = "%.1f KB".format(v / 1024.0)
 
 `DeviceScreen` 这个名字在 Task 7 的 Interfaces 里写了，实际就复用了上面的 `DeviceInfoSection`（`Phase.READY` 分支直接渲染它）。命名以此处为准：不要另外再建一个空壳 `DeviceScreen`。
 
-- [ ] **Step 5: 改 MainActivity.kt**
+- [x] **Step 5: 改 MainActivity.kt**
 
 ```kotlin
 package com.gpcombine.assistant.ui
@@ -1769,12 +1769,12 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
-- [ ] **Step 6: 构建**
+- [x] **Step 6: 构建**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
 Expected: `BUILD SUCCESSFUL`。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add android_app/app/src/main/java/com/gpcombine/assistant/
@@ -1794,12 +1794,12 @@ git commit -m "feat(android): 扫描/连接/配对码界面与 ViewModel
 
 **前置**：板子刷着带 BLE 的固件（`cd esp32_170x320` 之后用 arduino-cli 编译上传的那版），滑动菜单切到「蓝牙」页，能看到设备名和 6 位配对码。
 
-- [ ] **Step 1: 出包并拷到手机**
+- [x] **Step 1: 出包并拷到手机**
 
 Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk /home/bit/gpcombine-m1.apk`
 Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB）。
 
-- [ ] **Step 2: 逐条走 spec §8.7 的验收标准**
+- [x] **Step 2: 逐条走 spec §8.7 的验收标准**
 
 1. 装上 APK → 打开 → 点「扫描设备」→ 列表里出现 `GP-Combine-XXXX` → 点它
 2. 输入设备屏幕上的 6 位码 → 进入设备页（不是停在"通信中…"）
@@ -1807,7 +1807,7 @@ Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB�
 4. 板子断电再上电 → App 重新扫描能再连上
 5. `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest` 全绿
 
-- [ ] **Step 3: 对不上时的排查顺序**
+- [x] **Step 3: 对不上时的排查顺序**
 
 按这个顺序查，每一步只看一件事，别跳：
 
@@ -1817,7 +1817,7 @@ Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB�
 4. **有 `[ble] rx` 和 `[ble] SENT` 但 App 没收到** → 问题在 notify 分片重组：MTU 可能只有 23，一个 INFO 回包跨 5 条通知，检查 `FrameParser` 有没有被中途 `reset()`。
 5. **版本号/容量显示成 0 或乱码** → `InfoCodec` 的字段顺序问题，见 Task 4 的测试。
 
-- [ ] **Step 4: 记下验收结论并提交**
+- [x] **Step 4: 记下验收结论并提交**
 
 把实际结果（哪几条过、哪几条没过、串口关键日志）写进 spec §10 的进度段，然后：
 

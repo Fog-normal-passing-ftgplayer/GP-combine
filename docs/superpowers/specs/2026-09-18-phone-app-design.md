@@ -208,15 +208,95 @@ BLE 上：`len ≤ MTU-3`，一帧可能跨多个 GATT 写，接收端按 `len` 
 
 ## 8. App 侧设计（Android）
 
-- 技术：**Kotlin + Jetpack Compose**，`minSdk 29`（Android 10，为了 `WifiNetworkSpecifier` 一键连热点）、`targetSdk 34`。理由：BLE 是原生 API，不用额外运行时；比 Flutter 少一层依赖。
-- 模块划分
-  - `ble/`：扫描、连接、MTU 协商、帧编解码、分片重组
-  - `http/`：WiFi 上传下载（`HttpURLConnection`/OkHttp 即可，无第三方依赖更好）
-  - `gif/`：手机端转换管线 —— GIF 解码（`ImageDecoder`/`Movie`）→ 32 色量化 → 索引 RLE → `.gfr`，**必须与 PC 助手 `gif_convert.py` 输出逐字节一致**（可直接拿助手的输出做回归比对）
-  - `ui/`：连接页 → 设备页（信息 + 设置）→ 文件页（壁纸/NES）
-  - `store/`：上次设备地址、PIN、主题
-- 权限：`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT`（API 31+）、`ACCESS_FINE_LOCATION`（API 30 及以下扫 BLE 必需）、`INTERNET`
-- 断线策略：App 前台自动重连（指数退避），上传中断保留 offset 下次续传
+技术栈：**Kotlin + Jetpack Compose (Material 3)**，`minSdk 29`（Android 10）、`targetSdk 34`、
+AGP 8.x + Gradle 8.13 + **JDK 21**。除 Compose / androidx 外不引第三方库（HTTP 那步用
+`HttpURLConnection`）。界面中文。选 Kotlin + Compose 而不是 Flutter：BLE 是原生 API，
+不需要额外运行时，也少一层依赖。
+
+### 8.1 构建与验证闭环（2026-09-20 定）
+
+- **本地产出 APK**，不走 CI 出包。CI 留给以后正式版；App 从零到能用要编译几十次，本机迭代快得多。
+- 工具链装在本机：Temurin **JDK 21** 解到 `~/.jdks/`（系统只有 JDK 26，AGP 跑不动，但不动系统 `java`）、
+  Android SDK 装到 `~/Android/Sdk`、Gradle 8.13 解到本机目录。
+- Gradle 缓存和 SDK 路径写进 `android/gradle.properties` / `local.properties`，缓存目录放仓库内并
+  gitignore —— 否则沙箱每次编译都要弹一次写权限。
+- 产物 `android/app/build/outputs/apk/debug/app-debug.apk`，用户自己拷进手机安装（不接 adb）。
+
+### 8.2 工程结构
+
+`android/` 与固件同仓库（spec、代码、进度在一起，不用跨仓库对齐协议）。
+
+```
+android/
+  settings.gradle.kts, build.gradle.kts, gradle.properties
+  local.properties                      # gitignore：指向本机 SDK
+  app/src/main/java/com/gpcombine/assistant/
+    proto/    帧编解码（纯 Kotlin，不依赖 Android）
+    ble/      Android BLE：扫描 / 连接 / MTU / 读写 / 通知
+    ui/       Compose 页面
+    store/    上次设备、PIN 等偏好
+  app/src/test/                         # JVM 单测
+```
+
+单个 Gradle module（`app`）。规模还撑不起多 module，拆了只有构建负担；分层靠 package +
+接口约束，不靠 module 边界。
+
+### 8.3 协议核（纯 Kotlin）—— 本期最关键的设计决定
+
+- `proto/Frame.kt`：`buildFrame()` / `FrameParser`（增量收帧）/ `crc16()` / `bleChunk()`，与固件
+  `esp32_170x320/src/net/proto.h` **逐字段对应**，字节布局相同。
+- 不 import 任何 `android.*`，所以**能在这台没有蓝牙适配器的机器上跑 JVM 单测**。
+- **测试向量与固件共用**：`app/src/test/.../FrameTest.kt` 直接照抄
+  `tools/host_tests/fixes_test.cpp` 的用例——PING/AUTH/INFO/CFG 的字节串与 CRC、MTU 分片边界、
+  文本模式的那些写法。两边跑同一组向量，「手机和板子说的是同一种话」就成了机器可验证的事实，
+  而不是靠人肉核对。
+- 只做编解码：不做 I/O、不做线程、不持状态（`FrameParser` 除外，它是纯状态机）。
+- 这里也是最容易出错的地方（CRC、MTU 分片、17 字节设置镜像的字段布局），所以放在唯一可测的层。
+
+### 8.4 BLE 层
+
+- `BleTransport` 接口：`inbound: Flow<Frame>` / `suspend fun send(frame)` / `state: StateFlow<BleState>`。
+- `AndroidBleTransport`：`BluetoothLeScanner` → `connectGatt` → `requestMtu(247)` → 发现服务 →
+  订阅 TX（`...0003`）→ 写 RX（`...0002`）。
+- 写用 **WRITE_NR**（不等 ATT 响应，快），可靠性和顺序由协议自己的 seq 负责。
+- 收：notify 回调里先按 `len` 重组分片，再喂给 `FrameParser`——MTU 只有 23 时一个回包会跨好几片，
+  这是真机上已经踩到过的情况。
+- 断线自动重连（指数退避 1/2/4/8s，上限 30s），连接间隔请求 15–30 ms。
+- 因为 `BleTransport` 是接口，UI 可以挂一个内置的 `FakeTransport`（假设备）——没板子也能把页面和
+  状态机跑起来看。
+
+### 8.5 UI
+
+- 单 Activity + Compose；`DeviceViewModel` 持有 transport，对外只暴露 `StateFlow<UiState>`。
+- M1 页面：连接页（扫描列表 / 上次设备 / 输 6 位码）→ 设备页（INFO 解析后的字段）。
+- 断线、认证失败、权限被拒都要有明确文案，不能静默转圈。
+
+### 8.6 权限
+
+三件套一次全申请（按用户要求，不做"用不到就不申请"的裁剪），按 `SDK_INT` 分支：
+
+- `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`：API 31+ 的运行时权限
+- `ACCESS_FINE_LOCATION`：API 30 及以下扫 BLE 必需
+- `INTERNET`：P2 的 HTTP 数据面
+
+被拒后给可操作提示（跳系统设置页），不是静默失败。
+
+### 8.7 M1 验收标准
+
+1. APK 装进手机 → 打开 → 扫描到 `GP-Combine-XXXX` 并能连上
+2. 输入屏幕上的 6 位码，AUTH 通过（回包第 9 字节 `01`）
+3. 设备页显示的固件版本 / 分区 / 内部 RAM / PSRAM / LittleFS 余量，**与串口 `[heap]` 日志对得上**
+4. 板子断电重开后 App 能自动重连
+5. `gradlew test` 全绿，且用例向量与固件 `tools/host_tests` 一致
+
+### 8.8 本期风险
+
+| 风险 | 对策 |
+|---|---|
+| 本机 JDK 26 与 AGP 不兼容 | 单独装 JDK 21，只给 gradle 用，系统 `java` 不动 |
+| 本机无蓝牙适配器，BLE 层无法集成测试 | 协议核纯 Kotlin 可测；BLE 层靠 `FakeTransport` + 用户手机实测 |
+| MTU 23 时回包跨多片 | 收帧器按 `len` 重组，测试向量覆盖 13 片那组边界 |
+| API 30 与 31+ 权限分支不同 | 两条分支都写、都测 |
 
 ## 9. 风险与对策
 
@@ -243,7 +323,11 @@ BLE 上：`len ≤ MTU-3`，一帧可能跨多个 GATT 写，接收端按 `len` 
 
 - ✅ 滑动菜单第 8 页「蓝牙」已实现并刷机运行：蓝牙开关 + 清除配对两个选项，标题行右侧显示状态（已关闭 / 未接入 / 广播中 / 已连接 N），下方两行显示 `设备名 GP-Combine-XXXX`（取 efuse MAC 低 16 位）与 `配对码 6 位`；后者首次开机用 `esp_random()` 生成后写 `/bt.cfg`，开关值写 `/gpfusion.cfg` 的 `bt=`。`btLinkState`/`btClients` 留给 BLE 协议栈填（接入前显示"未接入"）。
 - ✅ `rbuf` 按实测结论留在内部 RAM（PSRAM 方案否掉，见 §2 结论 1）；新增 USB-Serial-JTAG 调试口（115200，独立于去 Pico 的 UART0）：每 2 秒打印 fps + push 分段耗时 + 内部堆。
-- ⬜ 待做：BLE 协议栈（NimBLE）、协议帧、CFG/INFO/PAIR_INFO 命令。
+- ✅ BLE 协议栈（NimBLE）+ 协议帧 + CFG/INFO/PAIR_INFO 命令已实现并**真机验证**（2026-09-20）：
+  nRF Connect 连上 → `AUTH 280148` / `INFO` / `PAIR` / `CFG` 四条全部收到回包，AUTH 回 `01` 通过。
+  `netTick()` 改成每处理完一帧立刻推回包（原来一个 loop 周期里连收两帧时第二帧的回包会被静默丢掉）。
+  另：手测的十六进制被 nRF Connect 按 UTF-8 发成 ASCII 字符，设备侧加了文本模式收帧
+  （`protoFromText()`，纯函数 + 主机测试），二进制帧不受影响。
 
 **P2 数据面 + App**
 
@@ -265,8 +349,9 @@ BLE 上：`len ≤ MTU-3`，一帧可能跨多个 GATT 写，接收端按 `len` 
 4. 壁纸走**路线 2**：App 内置压缩，手机上直接选 GIF。
 5. 设备端入口 = 滑动菜单新增「蓝牙」页。
 6. BLE 只做**手机配置助手的握手/配置通道**，不做游戏输入链路（不用 BLE HID 打游戏）：延迟差一个数量级（nRF 一包 0.3–0.5 ms vs BLE 端到端 15–30 ms）。所以蓝牙和 nRF 是**互斥**的：蓝牙开 ⇒ nRF 停（见 §4.2）。
+7. **App 本地构建**：本机装 JDK 21 + Android SDK 出 APK，不走 CI 出包（见 §8.1）。
+8. App 权限**三件套全申请**（附近设备 / 位置 / 网络），不做裁剪（见 §8.6）。
 
 **待定（不阻塞 P1）**
 
 1. **OTA 要不要**（要就得改分区表拆 `app1`，属于 P3）。
-2. **App 怎么构建**：本地装 Android SDK（推荐，迭代快）还是 GitHub Actions 出 APK 包。

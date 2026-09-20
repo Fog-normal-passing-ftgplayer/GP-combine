@@ -217,10 +217,11 @@ AGP 8.x + Gradle 8.13 + **JDK 21**。除 Compose / androidx 外不引第三方�
 
 - **本地产出 APK**，不走 CI 出包。CI 留给以后正式版；App 从零到能用要编译几十次，本机迭代快得多。
 - 工具链装在本机：Temurin **JDK 21** 解到 `~/.jdks/`（系统只有 JDK 26，AGP 跑不动，但不动系统 `java`）、
-  Android SDK 装到 `~/Android/Sdk`、Gradle 8.13 解到本机目录。
-- Gradle 缓存和 SDK 路径写进 `android/gradle.properties` / `local.properties`，缓存目录放仓库内并
-  gitignore —— 否则沙箱每次编译都要弹一次写权限。
-- 产物 `android/app/build/outputs/apk/debug/app-debug.apk`，用户自己拷进手机安装（不接 adb）。
+  Android SDK 装到 `~/Android/Sdk`、Gradle 9.7.1 解到 `~/tools/`（版本表见下）。
+- `android_app/local.properties` 指向本机 SDK 且不进 git；Gradle 缓存走默认的 `~/.gradle`，
+  不塞进仓库（塞进去只是把 700 MB 缓存搬个地方，没别的收益）。
+  **编译命令一律在沙箱外跑**（要写 `~/.gradle` 和 `~/Android/Sdk`），跟 arduino-cli 一样。
+- 产物 `android_app/app/build/outputs/apk/debug/app-debug.apk`，用户自己拷进手机安装（不接 adb）。
 
 工具链已在本机装好并**冒烟验证**（2026-09-20，最小工程 `assembleDebug test` 通过）：
 
@@ -246,10 +247,10 @@ AGP 8.x + Gradle 8.13 + **JDK 21**。除 Compose / androidx 外不引第三方�
 
 ### 8.2 工程结构
 
-`android/` 与固件同仓库（spec、代码、进度在一起，不用跨仓库对齐协议）。
+`android_app/` 与固件同仓库（spec、代码、进度在一起，不用跨仓库对齐协议）。
 
 ```
-android/
+android_app/
   settings.gradle.kts, build.gradle.kts, gradle.properties
   local.properties                      # gitignore：指向本机 SDK
   app/src/main/java/com/gpcombine/assistant/

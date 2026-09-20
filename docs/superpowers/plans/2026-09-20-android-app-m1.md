@@ -13,11 +13,11 @@
 ## Global Constraints
 
 - 包名 `com.gpcombine.assistant`；应用名 `GP-Combine`；界面中文。
-- 目录 `android/`，单 Gradle module `:app`。所有路径都相对于仓库根。
+- 目录 `android_app/`，单 Gradle module `:app`。所有路径都相对于仓库根。
 - `compileSdk = 37`、`minSdk = 29`、`targetSdk = 34`。
 - **不要加 `org.jetbrains.kotlin.android` 插件**：AGP 9 自带 Kotlin 支持，加了直接构建失败（报 "no longer required since AGP 9.0"）。
-- `android/gradle.properties` 必须含 `org.gradle.java.home=/home/bit/.jdks/temurin-21`，否则 Gradle 用系统 JDK 26 起 daemon，AGP 起不来。
-- 构建命令固定为：`cd android && /home/bit/tools/gradle-9.7.1/bin/gradle <task>`。**这些命令必须在沙箱外执行**（要写 `~/.gradle` 和 `~/Android/Sdk`）。
+- `android_app/gradle.properties` 必须含 `org.gradle.java.home=/home/bit/.jdks/temurin-21`，否则 Gradle 用系统 JDK 26 起 daemon，AGP 起不来。
+- 构建命令固定为：`cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle <task>`。**这些命令必须在沙箱外执行**（要写 `~/.gradle` 和 `~/Android/Sdk`）。
 - `local.properties` 不进 git（内含本机 SDK 绝对路径）。
 - 依赖只用 androidx / Compose / JUnit；**不引第三方库**（HTTP 那步以后用 `HttpURLConnection`）。
 - 协议常数与字节布局必须与固件 `esp32_170x320/src/net/proto.h` 逐字一致，改一边必须改另一边。
@@ -31,12 +31,12 @@
 
 | 文件 | 职责 |
 |---|---|
-| `android/settings.gradle.kts` | 工程名、包含 `:app`、仓库源 |
-| `android/build.gradle.kts` | 根插件声明（AGP + Compose 编译器插件） |
-| `android/gradle.properties` | JVM 参数、`org.gradle.java.home`、`android.useAndroidX` |
-| `android/local.properties` | `sdk.dir`（不进 git） |
-| `android/.gitignore` | 构建产物、`.gradle`、`local.properties` |
-| `android/app/build.gradle.kts` | `:app` 的 android 配置与依赖 |
+| `android_app/settings.gradle.kts` | 工程名、包含 `:app`、仓库源 |
+| `android_app/build.gradle.kts` | 根插件声明（AGP + Compose 编译器插件） |
+| `android_app/gradle.properties` | JVM 参数、`org.gradle.java.home`、`android.useAndroidX` |
+| `android_app/local.properties` | `sdk.dir`（不进 git） |
+| `android_app/.gitignore` | 构建产物、`.gradle`、`local.properties` |
+| `android_app/app/build.gradle.kts` | `:app` 的 android 配置与依赖 |
 | `app/src/main/AndroidManifest.xml` | 权限声明、BLE feature、Activity |
 | `app/src/main/res/values/themes.xml` | 无 ActionBar 主题（不引 appcompat） |
 | `.../proto/Proto.kt` | 帧常数、`crc16`、`build`、`notifyChunk`（纯 Kotlin） |
@@ -62,15 +62,15 @@
 ## Task 1: 工程骨架，能出 APK
 
 **Files:**
-- Create: `android/settings.gradle.kts`
-- Create: `android/build.gradle.kts`
-- Create: `android/gradle.properties`
-- Create: `android/local.properties`
-- Create: `android/.gitignore`
-- Create: `android/app/build.gradle.kts`
-- Create: `android/app/src/main/AndroidManifest.xml`
-- Create: `android/app/src/main/res/values/themes.xml`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
+- Create: `android_app/settings.gradle.kts`
+- Create: `android_app/build.gradle.kts`
+- Create: `android_app/gradle.properties`
+- Create: `android_app/local.properties`
+- Create: `android_app/.gitignore`
+- Create: `android_app/app/build.gradle.kts`
+- Create: `android_app/app/src/main/AndroidManifest.xml`
+- Create: `android_app/app/src/main/res/values/themes.xml`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
 
 **Interfaces:**
 - Consumes: 无
@@ -78,7 +78,7 @@
 
 - [ ] **Step 1: 建工程文件**
 
-`android/settings.gradle.kts`
+`android_app/settings.gradle.kts`
 
 ```kotlin
 pluginManagement {
@@ -91,7 +91,7 @@ rootProject.name = "gpcombine"
 include(":app")
 ```
 
-`android/build.gradle.kts`
+`android_app/build.gradle.kts`
 
 ```kotlin
 plugins {
@@ -100,7 +100,7 @@ plugins {
 }
 ```
 
-`android/gradle.properties`
+`android_app/gradle.properties`
 
 ```properties
 org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
@@ -108,13 +108,13 @@ org.gradle.java.home=/home/bit/.jdks/temurin-21
 android.useAndroidX=true
 ```
 
-`android/local.properties`（不进 git）
+`android_app/local.properties`（不进 git）
 
 ```properties
 sdk.dir=/home/bit/Android/Sdk
 ```
 
-`android/.gitignore`
+`android_app/.gitignore`
 
 ```gitignore
 .gradle/
@@ -124,7 +124,7 @@ local.properties
 .idea/
 ```
 
-`android/app/build.gradle.kts`
+`android_app/app/build.gradle.kts`
 
 ```kotlin
 plugins {
@@ -165,7 +165,7 @@ dependencies {
 }
 ```
 
-`android/app/src/main/AndroidManifest.xml`
+`android_app/app/src/main/AndroidManifest.xml`
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -198,7 +198,7 @@ dependencies {
 </manifest>
 ```
 
-`android/app/src/main/res/values/themes.xml`（用系统 Material 主题，不引 appcompat）
+`android_app/app/src/main/res/values/themes.xml`（用系统 Material 主题，不引 appcompat）
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -207,7 +207,7 @@ dependencies {
 </resources>
 ```
 
-`android/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
+`android_app/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
 
 ```kotlin
 package com.gpcombine.assistant.ui
@@ -227,8 +227,8 @@ class MainActivity : ComponentActivity() {
 
 - [ ] **Step 2: 构建，确认出 APK**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug`
-Expected: `BUILD SUCCESSFUL`，且 `android/app/build/outputs/apk/debug/app-debug.apk` 存在。
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug`
+Expected: `BUILD SUCCESSFUL`，且 `android_app/app/build/outputs/apk/debug/app-debug.apk` 存在。
 
 如果报 "kotlin.android plugin is no longer required"，说明 `app/build.gradle.kts` 里多写了那个插件，删掉。
 如果报某个依赖要求更高 compileSdk，把 `compileSdk` 提到报错里要求的版本。
@@ -236,7 +236,7 @@ Expected: `BUILD SUCCESSFUL`，且 `android/app/build/outputs/apk/debug/app-debu
 - [ ] **Step 3: 提交**
 
 ```bash
-git add android/
+git add android_app/
 git commit -m "feat(android): 建 GP-Combine App 工程骨架
 
 单 module + Compose，compileSdk 37（Compose BOM 2026.09.00 的硬要求）。
@@ -250,8 +250,8 @@ AGP 9 自带 Kotlin 支持，所以只声明 com.android.application 和 Compose
 ## Task 2: 协议核 —— 常数、CRC、组帧
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/proto/Proto.kt`
-- Test: `android/app/src/test/java/com/gpcombine/assistant/proto/ProtoTest.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/proto/Proto.kt`
+- Test: `android_app/app/src/test/java/com/gpcombine/assistant/proto/ProtoTest.kt`
 
 **Interfaces:**
 - Consumes: 无
@@ -324,7 +324,7 @@ class ProtoTest {
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: Proto`。
 
 - [ ] **Step 3: 实现 Proto.kt**
@@ -405,14 +405,14 @@ object Proto {
 
 - [ ] **Step 4: 跑测试，确认通过**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `BUILD SUCCESSFUL`，`ProtoTest` 4 个用例全过。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/proto/Proto.kt \
-        android/app/src/test/java/com/gpcombine/assistant/proto/ProtoTest.kt
+git add android_app/app/src/main/java/com/gpcombine/assistant/proto/Proto.kt \
+        android_app/app/src/test/java/com/gpcombine/assistant/proto/ProtoTest.kt
 git commit -m "feat(android): 协议核常数、CRC 与组帧
 
 测试向量直接取自 2026-09-20 真机串口日志里设备自己打出的 WR->frame，不是手算的，
@@ -424,8 +424,8 @@ git commit -m "feat(android): 协议核常数、CRC 与组帧
 ## Task 3: 增量收帧器
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/proto/FrameParser.kt`
-- Test: `android/app/src/test/java/com/gpcombine/assistant/proto/FrameParserTest.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/proto/FrameParser.kt`
+- Test: `android_app/app/src/test/java/com/gpcombine/assistant/proto/FrameParserTest.kt`
 
 **Interfaces:**
 - Consumes: `Proto`（Task 2）
@@ -528,7 +528,7 @@ class FrameParserTest {
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: FrameParser`。
 
 - [ ] **Step 3: 实现 FrameParser.kt**
@@ -602,14 +602,14 @@ class FrameParser {
 
 - [ ] **Step 4: 跑测试，确认通过**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `FrameParserTest` 7 个用例全过。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/proto/FrameParser.kt \
-        android/app/src/test/java/com/gpcombine/assistant/proto/FrameParserTest.kt
+git add android_app/app/src/main/java/com/gpcombine/assistant/proto/FrameParser.kt \
+        android_app/app/src/test/java/com/gpcombine/assistant/proto/FrameParserTest.kt
 git commit -m "feat(android): 增量收帧器，支持分片重组与坏字节重同步
 
 MTU 只有 23 时一个 INFO 回包会被切成 5 条 notify，每条都是残帧，
@@ -621,8 +621,8 @@ MTU 只有 23 时一个 INFO 回包会被切成 5 条 notify，每条都是残�
 ## Task 4: INFO / PAIR_INFO 键值解析
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/proto/InfoCodec.kt`
-- Test: `android/app/src/test/java/com/gpcombine/assistant/proto/InfoCodecTest.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/proto/InfoCodec.kt`
+- Test: `android_app/app/src/test/java/com/gpcombine/assistant/proto/InfoCodecTest.kt`
 
 **Interfaces:**
 - Consumes: 无
@@ -699,7 +699,7 @@ class InfoCodecTest {
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: InfoCodec`。
 
 - [ ] **Step 3: 实现 InfoCodec.kt**
@@ -770,14 +770,14 @@ object InfoCodec {
 
 - [ ] **Step 4: 跑测试，确认通过**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `InfoCodecTest` 5 个用例全过。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/proto/InfoCodec.kt \
-        android/app/src/test/java/com/gpcombine/assistant/proto/InfoCodecTest.kt
+git add android_app/app/src/main/java/com/gpcombine/assistant/proto/InfoCodec.kt \
+        android_app/app/src/test/java/com/gpcombine/assistant/proto/InfoCodecTest.kt
 git commit -m "feat(android): 解析固件的 INFO / PAIR_INFO 键值串
 
 固件回的是 ASCII 键值串而不是二进制，照原样解析即可。fs 字段的值里自带 '/'，
@@ -790,10 +790,10 @@ git commit -m "feat(android): 解析固件的 INFO / PAIR_INFO 键值串
 ## Task 5: 传输抽象 + 会话层（seq 配对的请求-响应）
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ble/BleTransport.kt`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ble/FakeTransport.kt`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/net/DeviceClient.kt`
-- Test: `android/app/src/test/java/com/gpcombine/assistant/net/DeviceClientTest.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ble/BleTransport.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ble/FakeTransport.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/net/DeviceClient.kt`
+- Test: `android_app/app/src/test/java/com/gpcombine/assistant/net/DeviceClientTest.kt`
 
 **Interfaces:**
 - Consumes: `Proto`, `Frame`, `FrameParser`（Task 2/3）、`InfoCodec`, `DeviceInfo`, `PairInfo`（Task 4）
@@ -900,7 +900,7 @@ class DeviceClientTest {
 
 - [ ] **Step 2: 跑测试，确认失败**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: 编译失败，`unresolved reference: FakeTransport`。
 
 - [ ] **Step 3: 实现 BleTransport.kt**
@@ -1083,15 +1083,15 @@ class DeviceClient(
 
 - [ ] **Step 6: 跑测试，确认通过**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest`
 Expected: `DeviceClientTest` 6 个用例全过。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/ble/ \
-        android/app/src/main/java/com/gpcombine/assistant/net/ \
-        android/app/src/test/java/com/gpcombine/assistant/net/
+git add android_app/app/src/main/java/com/gpcombine/assistant/ble/ \
+        android_app/app/src/main/java/com/gpcombine/assistant/net/ \
+        android_app/app/src/test/java/com/gpcombine/assistant/net/
 git commit -m "feat(android): BLE 传输抽象、假设备与会话层
 
 BleTransport 接口把真机蓝牙和 UI 隔开：真机实现要权限和蓝牙栈，FakeTransport
@@ -1104,7 +1104,7 @@ DeviceClient 用 seq 配对请求与回包，串行发送——设备侧一次�
 ## Task 6: 真机 BLE 层
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ble/AndroidBleTransport.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ble/AndroidBleTransport.kt`
 
 **Interfaces:**
 - Consumes: `BleTransport`, `BleState`（Task 5）、`Frame`, `FrameParser`（Task 3）
@@ -1346,7 +1346,7 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
 
 - [ ] **Step 2: 编译**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
 Expected: `BUILD SUCCESSFUL`。这一步只能证明它能编译，**行为要等 Task 8 上真机**。
 
 如果报 `onCharacteristicChanged` 重复定义，说明 `@Deprecated` 注解用错了位置——那个旧签名要保留（minSdk 29 的机器走它），新签名是无覆写注解的重载。
@@ -1354,7 +1354,7 @@ Expected: `BUILD SUCCESSFUL`。这一步只能证明它能编译，**行为要�
 - [ ] **Step 3: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/ble/AndroidBleTransport.kt
+git add android_app/app/src/main/java/com/gpcombine/assistant/ble/AndroidBleTransport.kt
 git commit -m "feat(android): 真机 BLE 收发层
 
 逻辑刻意做薄：只搬运字节，协议解析全在已测过的纯 Kotlin 层。
@@ -1368,11 +1368,11 @@ MTU 协商失败也不影响 M1：设备按 20 字节分片，收帧器照样拼
 ## Task 7: 界面、权限与 ViewModel
 
 **Files:**
-- Create: `android/app/src/main/java/com/gpcombine/assistant/store/Prefs.kt`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ui/Theme.kt`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ui/DeviceViewModel.kt`
-- Create: `android/app/src/main/java/com/gpcombine/assistant/ui/Screens.kt`
-- Modify: `android/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/store/Prefs.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ui/Theme.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ui/DeviceViewModel.kt`
+- Create: `android_app/app/src/main/java/com/gpcombine/assistant/ui/Screens.kt`
+- Modify: `android_app/app/src/main/java/com/gpcombine/assistant/ui/MainActivity.kt`
 
 **Interfaces:**
 - Consumes: `DeviceClient`, `DeviceException`（Task 5）、`AndroidBleTransport`, `ScannedDevice`（Task 6）、`DeviceInfo`, `PairInfo`（Task 4）
@@ -1771,13 +1771,13 @@ class MainActivity : ComponentActivity() {
 
 - [ ] **Step 6: 构建**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:assembleDebug`
 Expected: `BUILD SUCCESSFUL`。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add android/app/src/main/java/com/gpcombine/assistant/
+git add android_app/app/src/main/java/com/gpcombine/assistant/
 git commit -m "feat(android): 扫描/连接/配对码界面与 ViewModel
 
 权限的'申请清单'和'拦截清单'是两回事：按用户要求三件套都申请，
@@ -1796,7 +1796,7 @@ git commit -m "feat(android): 扫描/连接/配对码界面与 ViewModel
 
 - [ ] **Step 1: 出包并拷到手机**
 
-Run: `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk /home/bit/gpcombine-m1.apk`
+Run: `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk /home/bit/gpcombine-m1.apk`
 Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB）。
 
 - [ ] **Step 2: 逐条走 spec §8.7 的验收标准**
@@ -1805,7 +1805,7 @@ Expected: `BUILD SUCCESSFUL`，`/home/bit/gpcombine-m1.apk` 存在（约 29 MB�
 2. 输入设备屏幕上的 6 位码 → 进入设备页（不是停在"通信中…"）
 3. 设备页显示的版本 / 固件大小 / 卡空间 / RAM / PSRAM **与串口 `[heap]` 日志对得上**
 4. 板子断电再上电 → App 重新扫描能再连上
-5. `cd android && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest` 全绿
+5. `cd android_app && /home/bit/tools/gradle-9.7.1/bin/gradle :app:testDebugUnitTest` 全绿
 
 - [ ] **Step 3: 对不上时的排查顺序**
 

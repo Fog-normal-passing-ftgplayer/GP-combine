@@ -48,6 +48,24 @@
 #define DEFAULT_LAYOUT 1
 #endif
 
+// ---- 板上占用脚（加外设/改硬件前先看这里）------------------------------------
+//   8 / 9 / 10 / 13  屏 RST / DC / CS / BL
+//   11 / 12          屏 SPI MOSI / SCLK
+//   14 / 15          nRF24 CSN / CE
+//   16 / 17 / 18     nRF24 SCK / MOSI / MISO
+//   22               摇杆灯环
+//   48               输出
+//   43 / 44          去 Pico 的 UART0（ESP_TX / ESP_RX）
+//   19 / 20          原生 USB：D- / D+（保留给 USB-Serial-JTAG，见下面 dbgInit）
+//   26-32 flash、33-37 OPI PSRAM（N16R8 模组）被内部占用，不可外接
+//
+// 19/20 是 ESP32-S3 内置 USB PHY 的固定脚位，硅片里就焊死在这两个脚上，不能重映射。
+// 板上引出的 USB 下载口就接它们（D- 串 22Ω、D+ 串 22Ω，另加 VBUS/GND）；
+// 代码里不要再把 19/20 当普通 GPIO 用。也不要改编译选项为 CDCOnBoot=cdc ——
+// 那会把 `Serial` 换成 USB CDC，去 Pico 的那条 UART0 就全断了。
+#define USB_DM_PIN 19
+#define USB_DP_PIN 20
+
 #define CS 10
 #define DC 9
 #define RST 8
@@ -3314,6 +3332,13 @@ SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 void setup(){
   dbgInit();                  // USB 虚拟串口：调试用，不占用去 Pico 的那条 UART
+  // 原生 USB 口自检：焊好下载口后插到电脑，能看到这一行就说明 19/20 通了
+  if (dbgReady) {
+    dbgPrintf("[usb] native port up: GPIO%d=D- GPIO%d=D+ (USB-Serial-JTAG)\n",
+              USB_DM_PIN, USB_DP_PIN);
+  } else {
+    dbgRaw("[usb] USB-Serial-JTAG driver install failed\n");
+  }
   dbgHeapDump("boot");
   rbufInit();
   lfbInit();

@@ -23,7 +23,7 @@ from ..app_config import (
     local_nes_dir,
 )
 from ..jobs import JobRunner
-from ..uploader import compile_cmd
+from ..uploader import compile_cmd, prepare_build_dir
 from ..wallpaper_fs import (
     erase_flash_cmd,
     full_flash_cmd,
@@ -135,7 +135,10 @@ class ReflashPage(QWidget):
         self._build = default_tool_dir() / (
             "build_esp32s3_170x320" if res == "170x320" else "build_esp32s3")
         self._fqbn = fqbn_for(res)
+        stale = prepare_build_dir(self._build)
         self._log("目标：%s（%s）" % (res, self._fqbn))
+        if stale:
+            self._log("已清理旧 core.a（防归档损坏导致的满屏 undefined reference）")
         self._log("① 编译固件…")
         self.start_btn.setEnabled(False)
         self._stage = "compile"

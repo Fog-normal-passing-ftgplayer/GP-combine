@@ -26,7 +26,7 @@ from ..app_config import (
     local_wallpaper_gfr,
 )
 from ..jobs import JobRunner, compile_progress
-from ..uploader import compile_cmd, upload_cmd
+from ..uploader import compile_cmd, prepare_build_dir, upload_cmd
 from ..wizard_state import WizardState
 
 
@@ -165,7 +165,10 @@ class UploadPage(QWidget):
         fqbn = fqbn_for(res)
         build_dir = default_tool_dir() / (
             "build_esp32s3_170x320" if res == "170x320" else "build_esp32s3")
+        stale = prepare_build_dir(build_dir)
         self.log.clear()
+        if stale:
+            self._log("已清理旧 core.a（防归档损坏导致的满屏 undefined reference）")
         self._log("目标：N16R8（16MB flash + 8MB PSRAM），自定义分区 "
                   "app 3MB / LittleFS 12.94MB")
         self._log("提示：首次写入会重排分区表，板内 LittleFS 会被清空"

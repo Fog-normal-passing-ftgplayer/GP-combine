@@ -92,6 +92,7 @@ fun AppShell(
                     state = termState,
                     onSend = vm::terminalSend,
                     onClear = vm::terminalClear,
+                    onTogglePush = vm::terminalShowPush,
                 )
                 Tab.DIAG -> DiagScreen(ui, vm)
                 Tab.ABOUT -> AboutScreen(

@@ -178,6 +178,37 @@ class TerminalTest {
         assertTrue("不该有套帧的请求记录", t.sent().none { it.cmd == Proto.CMD_PING })
     }
 
+    /**
+     * 日志开着时设备每 2 秒推一行，默认不能让它把命令回包顶出屏幕
+     * （实测就是这个问题：终端里全是推送，敲的命令看不见了）。
+     */
+    @Test
+    fun devicePushIsCollapsedByDefaultAndCanBeShown() = runTest {
+        val t = FakeTransport().apply { connect() }
+        val c = DeviceClient(t, backgroundScope)
+        c.auth("280148")                     // 假设备也认配对码：没认证的话 logs 会被拒
+        val term = TerminalController(c, t, backgroundScope)
+
+        term.send("logs on")          // 订阅后假设备会像真设备那样推日志
+        runCurrent()
+        runCurrent()
+
+        val texts = term.state.value.lines.map { it.text }
+        assertTrue("推送不该出现在终端里：$texts", texts.none { it.contains("LOG_EVT") })
+        assertTrue("折叠了要有计数，别让人以为推送坏了", term.state.value.hiddenPush > 0)
+
+        term.setShowPush(true)
+        assertEquals("展开后计数清零", 0, term.state.value.hiddenPush)
+        term.send("logs replay 2")
+        runCurrent()
+        runCurrent()
+
+        assertTrue(
+            "展开后推送要能看到：${term.state.value.lines.map { it.text }}",
+            term.state.value.lines.any { it.text.contains("LOG_EVT") },
+        )
+    }
+
     @Test
     fun clearEmptiesTheScreen() = runTest {
         val t = FakeTransport().apply { connect() }

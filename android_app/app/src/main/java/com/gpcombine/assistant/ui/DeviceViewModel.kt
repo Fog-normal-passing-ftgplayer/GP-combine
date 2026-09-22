@@ -271,6 +271,7 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
 
     fun terminalSend(line: String) = terminal.send(line)
     fun terminalClear() = terminal.clear()
+    fun terminalShowPush(on: Boolean) = terminal.setShowPush(on)
 
     fun setLogPaused(paused: Boolean) {
         _ui.update { s ->

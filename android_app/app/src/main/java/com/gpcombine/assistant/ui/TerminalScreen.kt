@@ -40,7 +40,12 @@ import com.gpcombine.assistant.term.TermState
  * 翻译了成人话（pong / 认证通过 / 主题=翠绿…）。
  */
 @Composable
-fun TerminalScreen(state: TermState, onSend: (String) -> Unit, onClear: () -> Unit) {
+fun TerminalScreen(
+    state: TermState,
+    onSend: (String) -> Unit,
+    onClear: () -> Unit,
+    onTogglePush: (Boolean) -> Unit,
+) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
@@ -92,12 +97,20 @@ fun TerminalScreen(state: TermState, onSend: (String) -> Unit, onClear: () -> Un
             QUICK.forEach { q ->
                 OutlinedButton(onClick = { onSend(q) }) { Text(q) }
             }
+            OutlinedButton(onClick = { onTogglePush(!state.showPush) }) {
+                Text(if (state.showPush) "折叠推送" else "显示推送")
+            }
             OutlinedButton(onClick = onClear) { Text("清屏") }
         }
 
         state.lastCommand.takeIf { it.isNotEmpty() }?.let {
             Text("上一条：$it", style = MaterialTheme.typography.bodySmall)
         }
+        Text(
+            text = if (state.showPush) "设备推送：显示中（日志行会插进来）"
+            else "设备推送：已折叠" + if (state.hiddenPush > 0) "（已藏 ${state.hiddenPush} 条）" else "",
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             items(state.lines) { l -> TermRow(l) }

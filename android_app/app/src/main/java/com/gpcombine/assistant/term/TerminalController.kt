@@ -27,6 +27,14 @@ data class TermState(
     val busy: Boolean = false,
     /** 上一条命令（输入框的"重发"用）。 */
     val lastCommand: String = "",
+    /**
+     * 是否显示"设备主动推"的帧（目前就是日志行）。
+     * 默认关：日志开着时它每 2 秒一条，会把命令回包顶出屏幕——终端是拿来敲命令的，
+     * 不是看日志的（日志有专门的日志页）。
+     */
+    val showPush: Boolean = false,
+    /** 折叠期间攒了多少条推送，界面上如实说出来，别让人以为"推送没了"。 */
+    val hiddenPush: Int = 0,
 )
 
 /**
@@ -49,8 +57,20 @@ class TerminalController(
     init {
         // 帧流水直接进终端：发出去的、收回来的、设备主动推的，都在这一条时间线上
         scope.launch {
-            client.frames.collect { r -> append(FrameLine(kind = TermLine.Kind.INFO, record = r)) }
+            client.frames.collect { r ->
+                if (Proto.isDevicePush(r.cmd) && !_state.value.showPush) {
+                    // 不记流水，只记数：终端要的是"我敲的命令和它的回包"
+                    _state.update { it.copy(hiddenPush = it.hiddenPush + 1) }
+                    return@collect
+                }
+                append(FrameLine(kind = TermLine.Kind.INFO, record = r))
+            }
         }
+    }
+
+    /** 显示/折叠设备推送。展开时把计数清零（折叠期间的没留底，不假装能补回来）。 */
+    fun setShowPush(on: Boolean) = _state.update {
+        it.copy(showPush = on, hiddenPush = if (on) 0 else it.hiddenPush)
     }
 
     fun send(line: String) {

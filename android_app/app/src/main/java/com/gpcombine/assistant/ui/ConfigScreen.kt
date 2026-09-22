@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +52,10 @@ fun ConfigScreen(
     onRefresh: () -> Unit,
 ) {
     var inner by remember { mutableIntStateOf(0) }
+    val scroll = rememberScrollState()
     var confirmReset by remember { mutableStateOf(false) }
+    // 换页回到顶部：现在所有 Tab 共用这一层滚动，不重置的话从长页面切到短页面会停在半空
+    LaunchedEffect(inner) { scroll.scrollTo(0) }
     // 八格太多，用可横向滚动的 TabRow：手机上滑一下就到，比再套一层页面选择省事
     val titles = listOf("显示", "界面", "休眠", "无线", "手柄", "灯光", "蓝牙", "配置档")
     val cfg = state.cfg
@@ -99,7 +103,10 @@ fun ConfigScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+            // 所有 Tab 的内容都由这一层滚。下面每个 Tab **不能再套 verticalScroll/LazyColumn**：
+            // 套了就会拿到无穷大最大高度，foundation 在测量第一步直接 throw（App 崩）。
+            // 这条护栏有测试盯着：UiScrollGuardTest。
+            modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(12.dp),
         ) {
             when (inner) {
                 0 -> {

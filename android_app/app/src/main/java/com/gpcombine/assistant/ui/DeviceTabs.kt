@@ -3,12 +3,9 @@ package com.gpcombine.assistant.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -54,7 +51,7 @@ internal fun PadTab(
     val cfg = state.cfg
     val restart = state.onDevice != null && cfg.rebootsDeviceComparedTo(state.onDevice)
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        Modifier.fillMaxWidth().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
@@ -110,7 +107,7 @@ internal fun LedTab(
 ) {
     val cfg = state.cfg
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        Modifier.fillMaxWidth().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
@@ -159,7 +156,7 @@ internal fun BluetoothTab(
     val info = state.info
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        Modifier.fillMaxWidth().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Card {
@@ -219,7 +216,8 @@ internal fun BluetoothTab(
             style = MaterialTheme.typography.bodySmall,
         )
         state.note?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
-        state.sessionReset?.let {
+        // sessionReset 是不可空 Boolean：写成 `?.let` 会永远成立，这行提示就一直挂着
+        if (state.sessionReset) {
             Text("会话已被设备作废，App 正在用新配对码重连…",
                 color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         }
@@ -304,7 +302,7 @@ internal fun ProfileTab(
     var deleteSlot by remember { mutableStateOf<Int?>(null) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        Modifier.fillMaxWidth().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("配置档存在设备里（/profiles/1..5.cfg）。", style = MaterialTheme.typography.bodySmall)

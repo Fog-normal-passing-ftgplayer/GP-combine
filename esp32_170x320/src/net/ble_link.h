@@ -26,6 +26,11 @@ static inline size_t bleNotifyChunk(uint16_t mtu, size_t remaining) {
 // 装协议栈 + 建服务。deviceName 太长会被截断成 15 字节。返回 false = 内存不够/失败
 bool bleLinkBegin(const char *deviceName);
 
+// 改广播名（App 的「蓝牙页」改设备名用）。协议栈没装就什么都不做，等
+// applyBluetoothSettings() 用新名字 begin。广播中会重启一次广播；
+// 已经连上的手机不受影响（改名不该把正在配设置的手机踢掉）。
+void bleLinkSetName(const char *deviceName);
+
 // 开关广播。关的时候顺便断开已连接的手机（菜单里关开关就是要它停）
 void bleLinkEnable(bool on);
 

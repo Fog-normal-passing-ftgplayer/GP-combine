@@ -24,6 +24,17 @@ object Proto {
     const val CMD_CFG_SET = 0x11
     const val CMD_CFG_RESET = 0x12
     const val CMD_CFG_APPLY = 0x13
+    const val CMD_GP_GET = 0x20
+    const val CMD_GP_SET = 0x21
+    const val CMD_LED_GET = 0x22
+    const val CMD_LED_SET = 0x23
+    const val CMD_BT_SET = 0x25
+    const val CMD_BT_CLEAR = 0x26
+    const val CMD_PROF_LIST = 0x27
+    const val CMD_PROF_SAVE = 0x28
+    const val CMD_PROF_LOAD = 0x29
+    const val CMD_PROF_DEL = 0x2A
+    const val CMD_PROF_RENAME = 0x2B
     const val CMD_ERR = 0x7F
 
     /** 设备主动推的事件（不带 seq，不能拿它等回包） */
@@ -36,6 +47,9 @@ object Proto {
     const val ERR_BAD_LEN = 0x02
     const val ERR_UNKNOWN_CMD = 0x03
     const val ERR_NOT_AUTHED = 0x04
+    const val ERR_BAD_ARG = 0x05
+    const val ERR_NO_MEM = 0x06
+    const val ERR_IO = 0x07
 
     val EMPTY = ByteArray(0)
 

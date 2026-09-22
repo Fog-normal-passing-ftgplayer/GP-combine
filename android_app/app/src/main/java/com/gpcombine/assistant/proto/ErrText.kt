@@ -9,6 +9,7 @@ object ErrText {
     const val ERR_NOT_AUTHED = 0x04
     const val ERR_BAD_ARG = 0x05
     const val ERR_NO_MEM = 0x06
+    const val ERR_IO = 0x07
 
     fun of(code: Int): String = when (code) {
         ERR_OK -> "成功"
@@ -18,6 +19,7 @@ object ErrText {
         ERR_NOT_AUTHED -> "还没认证：先输配对码"
         ERR_BAD_ARG -> "参数不合法"
         ERR_NO_MEM -> "设备内存不够（日志队列申请失败）"
+        ERR_IO -> "设备存储读写失败（文件不存在 / 写不进去）"
         else -> "未知错误码 0x%02X".format(code)
     }
 }

@@ -9,6 +9,10 @@ import com.gpcombine.assistant.proto.LogCodec
 import com.gpcombine.assistant.proto.LogEvent
 import com.gpcombine.assistant.proto.PairInfo
 import com.gpcombine.assistant.proto.Proto
+import com.gpcombine.assistant.proto.BtSet
+import com.gpcombine.assistant.proto.LedConfig
+import com.gpcombine.assistant.proto.PadConfig
+import com.gpcombine.assistant.proto.Profiles
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -138,6 +142,58 @@ class DeviceClient(
     suspend fun cfgSet(cfg: EspConfig): Boolean = ack(Proto.CMD_CFG_SET, cfg.toBytes())
 
     suspend fun cfgReset(): Boolean = ack(Proto.CMD_CFG_RESET, Proto.EMPTY)
+
+    // ---- 手柄 / 灯光（Pico 侧的设置，改完 Pico 自己落盘）----
+
+    suspend fun padGet(): PadConfig? = PadConfig.fromBytes(request(Proto.CMD_GP_GET).payload)
+
+    /**
+     * 下发手柄设置。**换输入模式会让 Pico 立刻重启**（输入模式在驱动启动时才应用），
+     * 所以调用方拿到 true 之后要自己等设备回来，别再紧接着发下一帧。
+     */
+    suspend fun padSet(cfg: PadConfig): Boolean = ack(Proto.CMD_GP_SET, cfg.toBytes())
+
+    suspend fun ledGet(): LedConfig? = LedConfig.fromBytes(request(Proto.CMD_LED_GET).payload)
+
+    suspend fun ledSet(cfg: LedConfig): Boolean = ack(Proto.CMD_LED_SET, cfg.toBytes())
+
+    // ---- 蓝牙（设备名 / 配对码 / 开关）----
+
+    /** 改设备名/配对码/开关。返回 false = 参数不合法（不会真的发帧）。 */
+    suspend fun btSet(name: String? = null, pairCode: String? = null, btOn: Boolean? = null): Boolean {
+        val p = BtSet.payload(name, pairCode, btOn) ?: return false
+        return ack(Proto.CMD_BT_SET, p)
+    }
+
+    /** 让设备重新生成配对码。返回新的 6 位码；设备随后会踢掉所有手机。 */
+    suspend fun btClear(): String {
+        val p = request(Proto.CMD_BT_CLEAR).payload
+        return String(p, Charsets.US_ASCII)
+    }
+
+    // ---- 配置档 ----
+
+    suspend fun profiles(): List<Profiles.Entry>? =
+        Profiles.parseList(request(Proto.CMD_PROF_LIST).payload)
+
+    /** 把**设备此刻**的设置存进该档（不是 App 手里那份）。 */
+    suspend fun profileSave(slot: Int, name: String = ""): Boolean =
+        ack(Proto.CMD_PROF_SAVE, Profiles.savePayload(slot, name))
+
+    /** 加载该档：设备当场改成那份设置并落盘。返回 false = 合法槽位之外的参数。 */
+    suspend fun profileLoad(slot: Int): Boolean {
+        val p = Profiles.slotPayload(slot) ?: return false
+        return ack(Proto.CMD_PROF_LOAD, p)
+    }
+
+    suspend fun profileDelete(slot: Int): Boolean {
+        val p = Profiles.slotPayload(slot) ?: return false
+        return ack(Proto.CMD_PROF_DEL, p)
+    }
+
+    /** 只改名字：档里存着的那份设置原样留着（不是拿当前设置重存一遍）。 */
+    suspend fun profileRename(slot: Int, name: String): Boolean =
+        ack(Proto.CMD_PROF_RENAME, Profiles.savePayload(slot, name))
 
     /** 固件对 CFG_* 的约定：能把这一帧回出来就算成功（出错会走 CMD_ERR，request() 会抛）。 */
     private suspend fun ack(cmd: Int, payload: ByteArray): Boolean = request(cmd, payload).cmd == cmd

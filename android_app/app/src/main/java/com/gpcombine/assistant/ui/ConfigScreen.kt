@@ -17,15 +17,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -43,6 +44,7 @@ import kotlin.math.roundToInt
 @Composable
 fun ConfigScreen(
     state: ConfigState,
+    vm: DeviceViewModel,
     onEdit: (EspConfig) -> Unit,
     onSave: () -> Unit,
     onReset: () -> Unit,
@@ -50,8 +52,13 @@ fun ConfigScreen(
 ) {
     var inner by remember { mutableIntStateOf(0) }
     var confirmReset by remember { mutableStateOf(false) }
-    val titles = listOf("显示", "输入", "休眠", "无线")
+    // 八格太多，用可横向滚动的 TabRow：手机上滑一下就到，比再套一层页面选择省事
+    val titles = listOf("显示", "界面", "休眠", "无线", "手柄", "灯光", "蓝牙", "配置档")
     val cfg = state.cfg
+    val padState by vm.pad.state.collectAsStateWithLifecycle()
+    val ledState by vm.led.state.collectAsStateWithLifecycle()
+    val btState by vm.bt.state.collectAsStateWithLifecycle()
+    val profState by vm.profiles.state.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -85,7 +92,7 @@ fun ConfigScreen(
             }
         }
 
-        TabRow(selectedTabIndex = inner) {
+        ScrollableTabRow(selectedTabIndex = inner, edgePadding = 0.dp) {
             titles.forEachIndexed { i, t ->
                 Tab(selected = inner == i, onClick = { inner = i }, text = { Text(t) })
             }
@@ -133,15 +140,46 @@ fun ConfigScreen(
                     )
                 }
                 else -> {
-                    SwitchRow("nRF 无线", cfg.wireless == 1) {
-                        onEdit(cfg.copy(wireless = if (it) 1 else 0))
-                    }
-                    Card {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("互斥关系", style = MaterialTheme.typography.titleSmall)
-                            Text("蓝牙开着时 nRF 会停：两者共用一个 2.4G 射频，固件里就是这么干的。")
-                            Text("蓝牙开关 / 设备名 / 配对码在设备菜单的「蓝牙」页改（App 改这些要单独的命令，排在下一批）。")
+                    when (inner) {
+                        3 -> {
+                            SwitchRow("nRF 无线", cfg.wireless == 1) {
+                                onEdit(cfg.copy(wireless = if (it) 1 else 0))
+                            }
+                            Card {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("互斥关系", style = MaterialTheme.typography.titleSmall)
+                                    Text("蓝牙开着时 nRF 会停：两者共用一个 2.4G 射频，固件里就是这么干的。")
+                                    Text("设备名 / 配对码 / 蓝牙开关在「蓝牙」这一格。")
+                                }
+                            }
                         }
+                        4 -> PadTab(
+                            state = padState,
+                            onEdit = vm::padEdit,
+                            onApply = vm::padApply,
+                            onRefresh = vm::padRefresh,
+                        )
+                        5 -> LedTab(
+                            state = ledState,
+                            onEdit = vm::ledEdit,
+                            onFlush = vm::ledFlush,
+                        )
+                        6 -> BluetoothTab(
+                            state = btState,
+                            onSetName = vm::btSetName,
+                            onSetPairCode = vm::btSetPairCode,
+                            onRegenerate = vm::btRegenerate,
+                            onSetEnabled = vm::btSetEnabled,
+                            onRefresh = vm::btRefresh,
+                        )
+                        else -> ProfileTab(
+                            state = profState,
+                            onSave = vm::profileSave,
+                            onLoad = vm::profileLoad,
+                            onRename = vm::profileRename,
+                            onDelete = vm::profileDelete,
+                            onRefresh = vm::profilesRefresh,
+                        )
                     }
                 }
             }
@@ -163,7 +201,7 @@ fun ConfigScreen(
 
 /** 枚举项：◀ 值 ▶，和设备菜单的左右切换一致。 */
 @Composable
-private fun EnumRow(label: String, names: List<String>, value: Int, onChange: (Int) -> Unit) {
+internal fun EnumRow(label: String, names: List<String>, value: Int, onChange: (Int) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -180,7 +218,7 @@ private fun EnumRow(label: String, names: List<String>, value: Int, onChange: (I
 }
 
 @Composable
-private fun StepperRow(
+internal fun StepperRow(
     label: String,
     shown: String,
     step: Int,
@@ -202,7 +240,7 @@ private fun StepperRow(
 }
 
 @Composable
-private fun SliderRow(label: String, value: Int, onChange: (Int) -> Unit) {
+internal fun SliderRow(label: String, value: Int, onChange: (Int) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text("$label：$value")
         Slider(
@@ -214,7 +252,7 @@ private fun SliderRow(label: String, value: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,

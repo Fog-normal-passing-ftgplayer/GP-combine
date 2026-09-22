@@ -12,6 +12,8 @@
 #include "../../esp32_170x320/src/net/ble_link.h"
 #include "../../esp32_170x320/src/net/esp_cfg.h"
 #include "../../esp32_170x320/src/net/log_queue.h"
+#include "../../esp32_170x320/src/net/pad_cfg.h"
+#include "../../esp32_170x320/src/net/profiles.h"
 
 static int failures = 0;
 
@@ -351,6 +353,254 @@ static void test_esp_cfg() {
   CHECK(!espCfgDecode(badMagic, ESP_CFG_BYTES, back), "magic 不对必须拒绝");
 }
 
+// ---- 手柄 / 灯光透传载荷 ----
+// App 侧 PadConfigTest 用的是同一组数字：偏移挪一格必有一套红。
+static void test_pad_cfg() {
+  PadCfgFields g;
+  g.inputMode = 2;      // PS3
+  g.socdMode  = 3;      // 1ST
+  g.dpadMode  = 1;      // LAN
+  g.fourWay   = 1;
+  g.invertX   = 0;
+  g.invertY   = 1;
+  g.debounce  = 7;
+
+  uint8_t buf[PAD_CFG_BYTES];
+  padCfgEncode(g, buf);
+  const uint8_t want[PAD_CFG_BYTES] = {2, 3, 1, 0x05, 7};
+  for (size_t i = 0; i < PAD_CFG_BYTES; i++)
+    CHECK(buf[i] == want[i], "手柄第 %zu 字节 = %u，应为 %u", i, (unsigned)buf[i], (unsigned)want[i]);
+
+  PadCfgFields back;
+  CHECK(padCfgDecode(buf, PAD_CFG_BYTES, back), "自己编出来的手柄载荷必须能解回来");
+  CHECK(back.inputMode == 2 && back.socdMode == 3 && back.dpadMode == 1, "手柄枚举往返错位");
+  CHECK(back.fourWay == 1 && back.invertX == 0 && back.invertY == 1, "手柄标志位往返错位");
+  CHECK(back.debounce == 7, "去抖往返错位：%u", (unsigned)back.debounce);
+
+  // 越界必须钳住：原样落进 gpOpts 会让设备菜单显示乱码，Pico 那边还会收到非法枚举
+  PadCfgFields wild;
+  wild.inputMode = 200;
+  wild.socdMode  = 9;
+  wild.dpadMode  = 7;
+  wild.fourWay   = 3;
+  wild.invertX   = 2;
+  wild.invertY   = 5;
+  wild.debounce  = 0;      // 去抖 0 等于没去抖，下限是 1
+  padCfgEncode(wild, buf);
+  CHECK(buf[0] == PAD_INPUT_MAX, "输入模式该钳到 %u，实际 %u", (unsigned)PAD_INPUT_MAX, (unsigned)buf[0]);
+  CHECK(buf[1] == 4, "SOCD 该钳到 4，实际 %u", (unsigned)buf[1]);
+  CHECK(buf[2] == 2, "D-Pad 该钳到 2，实际 %u", (unsigned)buf[2]);
+  CHECK(buf[3] == 0x07, "标志位该按位钳成 1，实际 0x%02X", (unsigned)buf[3]);
+  CHECK(buf[4] == 1, "去抖该钳到下限 1，实际 %u", (unsigned)buf[4]);
+
+  CHECK(!padCfgDecode(want, PAD_CFG_BYTES - 1, back), "短一字节的手柄载荷必须拒绝");
+
+  LedCfgFields l;
+  l.animation    = 4;   // 自定义
+  l.brightness   = 5;
+  l.staticColor  = 12;  // MAG
+  l.turnOffSuspended = 1;
+  l.chaseSpeed   = 92;
+  l.rainbowSpeed = 96;
+  l.flowSpeed    = 100;
+
+  uint8_t lbuf[LED_CFG_BYTES];
+  ledCfgEncode(l, lbuf);
+  const uint8_t lwant[LED_CFG_BYTES] = {4, 5, 12, 1, 92, 96, 100};
+  for (size_t i = 0; i < LED_CFG_BYTES; i++)
+    CHECK(lbuf[i] == lwant[i], "灯光第 %zu 字节 = %u，应为 %u", i, (unsigned)lbuf[i], (unsigned)lwant[i]);
+
+  LedCfgFields lback;
+  CHECK(ledCfgDecode(lbuf, LED_CFG_BYTES, lback), "自己编出来的灯光载荷必须能解回来");
+  CHECK(lback.animation == 4 && lback.brightness == 5 && lback.staticColor == 12, "灯光枚举往返错位");
+  CHECK(lback.turnOffSuspended == 1, "挂起关灯往返错位");
+  CHECK(lback.chaseSpeed == 92 && lback.rainbowSpeed == 96 && lback.flowSpeed == 100, "速度往返错位");
+
+  LedCfgFields lwild;
+  lwild.animation = 99;
+  lwild.brightness = 250;
+  lwild.staticColor = 200;
+  lwild.turnOffSuspended = 0xFF;
+  lwild.chaseSpeed = 250;
+  lwild.rainbowSpeed = 0;
+  lwild.flowSpeed = 101;
+  ledCfgEncode(lwild, lbuf);
+  CHECK(lbuf[0] == 5, "动画模式该钳到 5，实际 %u", (unsigned)lbuf[0]);
+  CHECK(lbuf[1] == 5, "亮度该钳到 5，实际 %u", (unsigned)lbuf[1]);
+  CHECK(lbuf[2] == 15, "静态颜色该钳到 15，实际 %u", (unsigned)lbuf[2]);
+  CHECK(lbuf[3] == 0x01, "挂起关灯只该留 bit0，实际 0x%02X", (unsigned)lbuf[3]);
+  CHECK(lbuf[4] == 100 && lbuf[6] == 100, "速度该钳到 100，实际 %u/%u", (unsigned)lbuf[4], (unsigned)lbuf[6]);
+  CHECK(lbuf[5] == 0, "速度下限是 0，实际 %u", (unsigned)lbuf[5]);
+  CHECK(!ledCfgDecode(lwant, LED_CFG_BYTES - 1, lback), "短一字节的灯光载荷必须拒绝");
+
+  // 速度 ↔ 周期时间：换算只在 pad_cfg.h 里有一份，.ino 收发都调它。
+  // 表错了的后果是「App 上写 92%，设备实际跑的是另一档」。
+  CHECK(ledSpeedToCycle(100) == 1, "100%% 该换算成 cycle=1，实际 %u", (unsigned)ledSpeedToCycle(100));
+  CHECK(ledSpeedToCycle(92) == 81, "92%% 该换算成 cycle=81，实际 %u", (unsigned)ledSpeedToCycle(92));
+  CHECK(ledSpeedToCycle(0) == 1001, "0%% 该换算成 cycle=1001，实际 %u", (unsigned)ledSpeedToCycle(0));
+  CHECK(ledCycleToSpeed(1) == 100, "cycle=1 该换算成 100%%，实际 %u", (unsigned)ledCycleToSpeed(1));
+  CHECK(ledCycleToSpeed(81) == 92, "cycle=81 该换算成 92%%，实际 %u", (unsigned)ledCycleToSpeed(81));
+  CHECK(ledCycleToSpeed(1001) == 0, "cycle=1001 该换算成 0%%，实际 %u", (unsigned)ledCycleToSpeed(1001));
+  // Pico 可能回 0（没配置过）——不能让菜单显示成 101%
+  CHECK(ledCycleToSpeed(0) == 100, "cycle=0 该当速度上限，实际 %u", (unsigned)ledCycleToSpeed(0));
+  for (int s = 0; s <= 100; s++)
+    CHECK(ledCycleToSpeed(ledSpeedToCycle((uint8_t)s)) == s,
+          "速度 %d 往返对不上：回来是 %u", s, (unsigned)ledCycleToSpeed(ledSpeedToCycle((uint8_t)s)));
+}
+
+// ---- 配置档（/profiles/N.cfg） ----
+static void test_profiles() {
+  char path[24];
+  CHECK(profSlotPath(path, sizeof(path), 1), "档位 1 该有路径");
+  CHECK(!strcmp(path, "/profiles/1.cfg"), "档 1 路径是 %s", path);
+  CHECK(profSlotPath(path, sizeof(path), 5), "档位 5 该有路径");
+  CHECK(!strcmp(path, "/profiles/5.cfg"), "档 5 路径是 %s", path);
+  CHECK(!profSlotPath(path, sizeof(path), 0), "档位 0 非法，必须拒绝");
+  CHECK(!profSlotPath(path, sizeof(path), 6), "档位 6 非法，必须拒绝");
+  // 缓冲不够要拒绝而不是截断：截成 "/pro" 会写进一个不存在的目录，
+  // 现象是「保存了但读不回来」
+  CHECK(!profSlotPath(path, 4, 1), "缓冲不够必须拒绝");
+
+  // 名字清洗：控制字符（含换行）会破坏配置文件行结构，必须去掉；超长截断
+  char name[PROF_NAME_MAX + 1];
+  size_t n = profSanitizeName("  街机档\n", name, sizeof(name));
+  CHECK(!strcmp(name, "街机档"), "名字该去掉空白，实际 `%s`", name);
+  CHECK(n == strlen(name), "返回长度 %zu 与字符串 %zu 不符", n, strlen(name));
+  n = profSanitizeName("", name, sizeof(name));
+  CHECK(n == 0 && name[0] == 0, "空名字该是空串");
+  n = profSanitizeName("abcdefghijklmnopqrstuvwxyz", name, sizeof(name));
+  CHECK(n == PROF_NAME_MAX, "超长名字该截到 %zu，实际 %zu", (size_t)PROF_NAME_MAX, n);
+  n = profSanitizeName("abcd", name, 4);   // 只能放 3 个字符 + '\0'
+  CHECK(n == 3 && !strcmp(name, "abc"), "小缓冲该截到 3，实际 %zu `%s`", n, name);
+
+  // 容器：名字 + 17 字节设置镜像，自带魔数与格式版本
+  uint8_t img[ESP_CFG_BYTES];
+  EspCfgFields f;
+  f.inputHistory = 1; f.layout = 3; f.bgOpacity = 2; f.backlight = 40;
+  f.flipX = 0; f.flipY = 1; f.invert = 1; f.saverMode = 5; f.saverSecs = 120;
+  f.screenOff = 0; f.wireless = 1; f.theme = 3; f.style = 1;
+  espCfgEncode(f, img);
+
+  uint8_t file[PROF_FILE_BYTES];
+  CHECK(profEncodeFile(file, sizeof(file), 2, "街机档", img), "编码该成功");
+  CHECK(file[0] == 'G' && file[1] == 'P' && file[2] == 'F', "魔数不对");
+  CHECK(file[3] == PROF_FILE_FORMAT, "格式版本不对：%u", (unsigned)file[3]);
+
+  char rname[PROF_NAME_MAX + 1];
+  uint8_t rimg[ESP_CFG_BYTES];
+  uint8_t rslot = 0;
+  CHECK(profDecodeFile(file, sizeof(file), &rslot, rname, sizeof(rname), rimg), "解码该成功");
+  CHECK(rslot == 2, "档位往返错位：%u", (unsigned)rslot);
+  CHECK(!strcmp(rname, "街机档"), "名字往返错位：`%s`", rname);
+  for (size_t i = 0; i < ESP_CFG_BYTES; i++)
+    CHECK(rimg[i] == img[i], "镜像第 %zu 字节往返错位", i);
+  EspCfgFields f2;
+  CHECK(espCfgDecode(rimg, ESP_CFG_BYTES, f2) && f2.backlight == 40 && f2.saverSecs == 120,
+        "存回来的镜像解不出原值");
+
+  // 坏文件整份拒绝，不能「解一半」把用户设置写花
+  uint8_t bad[PROF_FILE_BYTES];
+  memcpy(bad, file, sizeof(bad));
+  bad[3] = 99;
+  CHECK(!profDecodeFile(bad, sizeof(bad), &rslot, rname, sizeof(rname), rimg), "格式版本不对该拒绝");
+  CHECK(!profDecodeFile(file, PROF_FILE_BYTES - 1, &rslot, rname, sizeof(rname), rimg), "短一字节该拒绝");
+  CHECK(!profEncodeFile(file, PROF_FILE_BYTES - 1, 1, "x", img), "缓冲不够该拒绝");
+
+  // 列表记录：定长，App 侧不用做变长解析
+  uint8_t recs[PROF_SLOTS * PROF_RECORD_BYTES];
+  memset(recs, 0, sizeof(recs));
+  // 固件永远吐满 5 条（没占用的也带上槽号），App 侧直接按下标取
+  for (uint8_t i = 1; i <= PROF_SLOTS; i++)
+    profEncodeRecord(&recs[(i - 1) * PROF_RECORD_BYTES], i, false, "", 0);
+  profEncodeRecord(&recs[0 * PROF_RECORD_BYTES], 1, true, "街机档", (uint8_t)strlen("街机档"));
+  profEncodeRecord(&recs[2 * PROF_RECORD_BYTES], 3, true, "", 0);
+  uint8_t outSlot = 0, outLen = 0;
+  bool outUsed = false;
+  char outName[PROF_NAME_MAX + 1];
+  profDecodeRecord(&recs[0], outSlot, outUsed, outName, sizeof(outName), outLen);
+  CHECK(outSlot == 1 && outUsed && outLen == (uint8_t)strlen("街机档"), "记录 1 的档位/占用/长度不对");
+  CHECK(!strcmp(outName, "街机档"), "记录 1 的名字不对：`%s`", outName);
+  profDecodeRecord(&recs[1 * PROF_RECORD_BYTES], outSlot, outUsed, outName, sizeof(outName), outLen);
+  CHECK(outSlot == 2 && !outUsed && outLen == 0, "空档必须报未占用");
+  profDecodeRecord(&recs[2 * PROF_RECORD_BYTES], outSlot, outUsed, outName, sizeof(outName), outLen);
+  CHECK(outSlot == 3 && outUsed && outLen == 0, "空名字的档也是已占用");
+}
+
+// ---- 蓝牙设置载荷（CMD_BT_SET） ----
+static void test_proto_bt_set() {
+  uint8_t p[64];
+  p[0] = PROTO_BT_SET_NAME | PROTO_BT_SET_PAIR | PROTO_BT_SET_SW;
+  p[1] = 1;
+  p[2] = 12;                              // "GP-Combine-7"
+  memcpy(p + 3, "GP-Combine-7", 12);
+  size_t n = 3 + 12;
+  p[n++] = 6;
+  memcpy(p + n, "280148", 6);
+  n += 6;
+
+  ProtoBtSet s;
+  CHECK(protoParseBtSet(p, (uint16_t)n, s), "正规载荷该被接受");
+  CHECK(s.flags == 0x07 && s.sw == 1, "flags/开关解析错");
+  CHECK(s.nameLen == 12 && !strcmp(s.name, "GP-Combine-7"), "名字解析错：`%s`", s.name);
+  CHECK(s.pairLen == 6 && !strcmp(s.pair, "280148"), "配对码解析错：`%s`", s.pair);
+
+  // 只切开关：名字/配对码段都是空的，也得能解
+  uint8_t q[4] = {PROTO_BT_SET_SW, 1, 0, 0};
+  CHECK(protoParseBtSet(q, 4, s), "只切蓝牙开关该被接受");
+  CHECK(s.nameLen == 0 && s.pairLen == 0, "只切开关时不该带出名字/配对码");
+
+  // 只改名字：不带配对码段（长度 0）也合法
+  uint8_t r[16] = {PROTO_BT_SET_NAME, 0, 3};
+  memcpy(r + 3, "ABC", 3);
+  r[6] = 0;
+  CHECK(protoParseBtSet(r, 7, s), "只改名字该被接受");
+  CHECK(!strcmp(s.name, "ABC") && s.pairLen == 0, "只改名字解析错：`%s`", s.name);
+
+  // 非法载荷：一律拒绝，不能"猜用户想说什么"
+  uint8_t bad1[4] = {0, 0, 0, 0};
+  CHECK(!protoParseBtSet(bad1, 4, s), "flags=0（什么都没改）该拒绝");
+  uint8_t bad2[64];
+  memcpy(bad2, p, n);
+  bad2[2] = 21;
+  CHECK(!protoParseBtSet(bad2, (uint16_t)n, s), "名字超 20 字节该拒绝");
+  uint8_t bad3[64];
+  memcpy(bad3, p, n);
+  bad3[3 + 12 + 1 + 2] = 'x';
+  CHECK(!protoParseBtSet(bad3, (uint16_t)n, s), "配对码里混进非数字该拒绝");
+  uint8_t bad4[64];
+  memcpy(bad4, p, n);
+  bad4[3 + 12] = 5;
+  CHECK(!protoParseBtSet(bad4, (uint16_t)n, s), "配对码长度不是 6 该拒绝");
+  CHECK(!protoParseBtSet(p, (uint16_t)(n - 1), s), "长度截断该拒绝");
+  uint8_t bad5[4] = {0x80, 1, 0, 0};
+  CHECK(!protoParseBtSet(bad5, 4, s), "未知 flag 该拒绝");
+  CHECK(!protoParseBtSet(p, 2, s), "少于 3 字节该拒绝");
+  uint8_t bad6[8] = {PROTO_BT_SET_NAME, 0, 0, 0};
+  CHECK(!protoParseBtSet(bad6, 4, s), "说要改名字却给 0 长度该拒绝");
+}
+
+// ---- 配置档保存载荷（CMD_PROF_SAVE） ----
+static void test_proto_prof_save() {
+  uint8_t p[32];
+  p[0] = 3;
+  p[1] = 6;
+  memcpy(p + 2, "街机", 6);
+  ProtoProfSave s;
+  CHECK(protoParseProfSave(p, 8, s), "正规载荷该被接受");
+  CHECK(s.slot == 3 && s.nameLen == 6 && !strcmp(s.name, "街机"), "档位/名字解析错");
+
+  uint8_t q[2] = {1, 0};
+  CHECK(protoParseProfSave(q, 2, s), "空名字（用设备默认名）该被接受");
+  CHECK(s.slot == 1 && s.nameLen == 0, "空名字时档位/长度错");
+
+  uint8_t bad[32];
+  memcpy(bad, p, 8);
+  bad[1] = 21;
+  CHECK(!protoParseProfSave(bad, 8, s), "名字超 20 字节该拒绝");
+  CHECK(!protoParseProfSave(p, 7, s), "长度不够该拒绝");
+  CHECK(!protoParseProfSave(p, 1, s), "少于 2 字节该拒绝");
+}
+
 int main() {
   test_nes_path();
   test_ble_chunk();
@@ -360,6 +610,10 @@ int main() {
   test_log_queue();
   test_log_sub_parse();
   test_esp_cfg();
+  test_pad_cfg();
+  test_profiles();
+  test_proto_bt_set();
+  test_proto_prof_save();
   if (failures) {
     std::printf("\n%d 处失败\n", failures);
     return 1;

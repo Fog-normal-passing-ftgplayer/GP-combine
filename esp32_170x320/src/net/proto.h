@@ -32,11 +32,90 @@ enum proto_cmd : uint8_t {
   CMD_CFG_SET   = 0x11,   // 17 字节设置镜像
   CMD_CFG_RESET = 0x12,   // 恢复默认
   CMD_CFG_APPLY = 0x13,   // 17 字节设置镜像：只应用不落盘（拖滑条时的实时下发）
+  CMD_GP_GET    = 0x20,   // → 5 字节手柄设置（布局见 pad_cfg.h）
+  CMD_GP_SET    = 0x21,   // 5 字节手柄设置：应用 + 推给 Pico（Pico 侧自己落盘）
+  CMD_LED_GET   = 0x22,   // → 7 字节灯光设置
+  CMD_LED_SET   = 0x23,   // 7 字节灯光设置
+  // 0x24 空着：蓝牙状态复用 0x04 PAIR_INFO（那串文本已经带了 name/pair/bt/clients/link）
+  CMD_BT_SET    = 0x25,   // 改设备名 / 配对码 / 蓝牙开关（见 ProtoBtSet）
+  CMD_BT_CLEAR  = 0x26,   // 重新生成配对码 → 回 6 位新码，然后断开所有手机
+  CMD_PROF_LIST = 0x27,   // → PROF_SLOTS × 23 字节配置档记录（布局见 profiles.h）
+  CMD_PROF_SAVE = 0x28,   // [档位][名字长][名字]：把设备当前设置存进该档
+  CMD_PROF_LOAD = 0x29,   // [档位]：加载该档（应用 + 落盘）
+  CMD_PROF_DEL  = 0x2A,   // [档位]：删除该档
+  CMD_PROF_RENAME = 0x2B, // [档位][名字长][名字]：只改名字，**不动**档里存着的那份设置
   CMD_ERR       = 0x7F,   // 错误码 + 文本
 
   // 0x80 以上是"设备主动推"，不带 seq（固定 0），App 侧不能拿它等回包。
   CMD_LOG_EVT   = 0x86,   // 1 字节等级 + 文本（一行日志）
 };
+
+// ---- CMD_BT_SET 载荷 ----
+// 0      flags：bit0 改名字 / bit1 改配对码 / bit2 改蓝牙开关
+// 1      开关值（0/1，只有 bit2 置位时才算数）
+// 2      名字长度 0..PROTO_NAME_MAX
+// 3..    名字（UTF-8）
+// 之后   配对码长度 + 配对码（ASCII，正好 6 位数字）
+#define PROTO_BT_SET_NAME 0x01u
+#define PROTO_BT_SET_PAIR 0x02u
+#define PROTO_BT_SET_SW   0x04u
+#define PROTO_NAME_MAX 20u
+
+struct ProtoBtSet {
+  uint8_t flags;
+  uint8_t sw;
+  uint8_t nameLen;
+  char    name[PROTO_NAME_MAX + 1];
+  uint8_t pairLen;
+  char    pair[8];
+};
+
+// 任何一处对不上就整帧拒绝：改设备名/换配对码是不可逆动作，宁可报错让 App 重发。
+static inline bool protoParseBtSet(const uint8_t *p, uint16_t len, ProtoBtSet &out) {
+  if (p == nullptr || len < 3) return false;
+  out.flags = p[0];
+  if (out.flags & ~(PROTO_BT_SET_NAME | PROTO_BT_SET_PAIR | PROTO_BT_SET_SW)) return false;
+  if (out.flags == 0) return false;                 // 什么都没说要改，别回个空洞的成功
+  out.sw = p[1] ? 1 : 0;
+  out.nameLen = p[2];
+  if (out.nameLen > PROTO_NAME_MAX) return false;
+  size_t off = 3;
+  if ((size_t)len < off + out.nameLen + 1) return false;
+  if ((out.flags & PROTO_BT_SET_NAME) && out.nameLen == 0) return false;
+  memcpy(out.name, p + off, out.nameLen);
+  out.name[out.nameLen] = '\0';
+  off += out.nameLen;
+
+  out.pairLen = p[off++];
+  if ((size_t)len < off + out.pairLen) return false;
+  if ((out.flags & PROTO_BT_SET_PAIR)) {
+    if (out.pairLen != 6) return false;              // 配对码就是 6 位，多了少了都是发错
+    for (uint8_t i = 0; i < 6; i++)
+      if (p[off + i] < '0' || p[off + i] > '9') return false;
+  }
+  if (out.pairLen > sizeof(out.pair) - 1) return false;
+  memcpy(out.pair, p + off, out.pairLen);
+  out.pair[out.pairLen] = '\0';
+  return true;
+}
+
+// ---- CMD_PROF_SAVE 载荷：[档位][名字长][名字] ----
+struct ProtoProfSave {
+  uint8_t slot;
+  uint8_t nameLen;
+  char    name[PROTO_NAME_MAX + 1];
+};
+
+static inline bool protoParseProfSave(const uint8_t *p, uint16_t len, ProtoProfSave &out) {
+  if (p == nullptr || len < 2) return false;
+  out.slot = p[0];
+  out.nameLen = p[1];
+  if (out.nameLen > PROTO_NAME_MAX) return false;
+  if ((size_t)len < (size_t)2 + out.nameLen) return false;
+  memcpy(out.name, p + 2, out.nameLen);
+  out.name[out.nameLen] = '\0';
+  return true;
+}
 
 // CMD_LOG_SUB 的载荷。mode 2 = 打开并把最近 replay 行回放一遍（默认 14 行）。
 struct ProtoLogSub {
@@ -156,6 +235,10 @@ static inline size_t protoFromText(const uint8_t *s, size_t n, uint8_t *out, siz
   else if (!strcmp(word, "PAIR"))  cmd = CMD_PAIR_INFO;
   else if (!strcmp(word, "CFG"))   cmd = CMD_CFG_GET;
   else if (!strcmp(word, "RESET")) cmd = CMD_CFG_RESET;
+  else if (!strcmp(word, "GP"))    cmd = CMD_GP_GET;
+  else if (!strcmp(word, "LED"))   cmd = CMD_LED_GET;
+  else if (!strcmp(word, "BT"))    cmd = CMD_PAIR_INFO;   // 蓝牙页的 name/pair/开关/连接数
+  else if (!strcmp(word, "PROF"))  cmd = CMD_PROF_LIST;
   else if (!strcmp(word, "AUTH"))  cmd = CMD_AUTH;
   else return 0;
 

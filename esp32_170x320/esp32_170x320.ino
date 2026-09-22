@@ -299,13 +299,19 @@ static portMUX_TYPE logMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool logSub = false;        // 手机订阅中
 static uint8_t  logReplayLeft = 0;          // 还要回放几行
 static uint64_t logReplayNext = 0, logReplayEnd = 0;
+static const char *logMemWhere = "none";    // 队列最后落在哪块内存上（写进日志便于核对）
 
 static bool logQueueEnsure() {
   if (logQ.ready()) return true;
   if (logStore == nullptr) {
     const size_t bytes = (size_t)LOG_LINES * LogQueue::LOG_LINE_MAX;
     logStore = (char *)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
-    if (logStore == nullptr) logStore = (char *)heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL);
+    if (logStore != nullptr) {
+      logMemWhere = "PSRAM";
+    } else {
+      logStore = (char *)heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL);
+      if (logStore != nullptr) logMemWhere = "internal";
+    }
     if (logStore == nullptr) {
       dbgRaw("[log] 队列内存申请失败，日志出口关闭\n");
       return false;
@@ -3453,6 +3459,14 @@ SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 void setup(){
   dbgInit();                  // USB 虚拟串口：调试用，不占用去 Pico 的那条 UART
+  // 开机就把日志队列备好：队列是"首次订阅时才申请"的话，第一次订阅时回放窗口是空的，
+  // 开机那几行（USB 自检 / 蓝牙启动 / 堆余量）永远传不到手机上。
+  if (logQueueEnsure()) {
+    dbgPrintf("[log] queue ready: %d lines x %d bytes (%s)\n",
+              LOG_LINES, (int)LogQueue::LOG_LINE_MAX, logMemWhere);
+  } else {
+    dbgRaw("[log] queue unavailable: out of memory\n");
+  }
   // 原生 USB 口自检：焊好下载口后插到电脑，能看到这一行就说明 19/20 通了
   if (dbgReady) {
     dbgPrintf("[usb] native port up: GPIO%d=D- GPIO%d=D+ (USB-Serial-JTAG)\n",

@@ -10,6 +10,7 @@
 
 #include "../../esp32_170x320/src/nes_path.h"
 #include "../../esp32_170x320/src/net/ble_link.h"
+#include "../../esp32_170x320/src/net/esp_cfg.h"
 #include "../../esp32_170x320/src/net/log_queue.h"
 
 static int failures = 0;
@@ -278,6 +279,78 @@ static void test_log_sub_parse() {
   CHECK(!protoParseLogSub(p, 1, sub), "mode=0xFF 应拒绝");
 }
 
+// ---- 17 字节配置镜像 ----
+// 这份向量 App 侧（android_app 的 EspConfigTest）用的是同一组数字：
+// 两边只要有一边把偏移挪了，两套测试里必有一套红。
+static void test_esp_cfg() {
+  EspCfgFields f;
+  f.inputHistory = 1;   // 输入历史开
+  f.layout       = 2;   // WASD
+  f.bgOpacity    = 3;   // 70%
+  f.backlight    = 55;
+  f.flipX        = 1;
+  f.flipY        = 0;
+  f.invert       = 0;
+  f.saverMode    = 4;   // 吐司
+  f.saverSecs    = 300;
+  f.screenOff    = 1;
+  f.wireless     = 0;
+  f.theme        = 6;
+  f.style        = 2;
+
+  uint8_t buf[ESP_CFG_BYTES];
+  espCfgEncode(f, buf);
+
+  const uint8_t want[ESP_CFG_BYTES] = {1, 1, 1, 2, 3, 55, 1, 0, 0, 4,
+                                       0x2C, 0x01, 1, 0, 6, 2, 0};
+  for (size_t i = 0; i < ESP_CFG_BYTES; i++) {
+    CHECK(buf[i] == want[i], "第 %zu 字节 = %u，应为 %u", i, (unsigned)buf[i], (unsigned)want[i]);
+  }
+  CHECK(want[10] == 0x2C && want[11] == 0x01, "夹具自身有问题：300 的小端应该是 2C 01");
+
+  EspCfgFields back;
+  CHECK(espCfgDecode(buf, ESP_CFG_BYTES, back), "自己编出来的镜像必须能解回来");
+  CHECK(back.saverSecs == 300, "屏保时间往返丢失：%u", (unsigned)back.saverSecs);
+  CHECK(back.theme == 6 && back.style == 2, "主题/风格往返错位");
+  CHECK(back.inputHistory == 1 && back.layout == 2, "输入历史/按键布局往返错位");
+  CHECK(back.backlight == 55, "背光往返错位：%u", (unsigned)back.backlight);
+
+  // 越界值必须被钳到范围里，不能原样落进选项数组（那会让菜单显示乱码）
+  EspCfgFields wild;
+  wild.inputHistory = 9;
+  wild.layout       = 200;
+  wild.bgOpacity    = 99;
+  wild.backlight    = 250;
+  wild.flipX        = 7;
+  wild.saverMode    = 42;
+  wild.saverSecs    = 60000;
+  wild.theme        = 250;
+  wild.style        = 9;
+  espCfgEncode(wild, buf);
+  CHECK(buf[2] == 1, "输入历史该钳到 1，实际 %u", (unsigned)buf[2]);
+  CHECK(buf[3] == 3, "按键布局该钳到 3，实际 %u", (unsigned)buf[3]);
+  CHECK(buf[4] == 4, "透明度该钳到 4，实际 %u", (unsigned)buf[4]);
+  CHECK(buf[5] == 100, "背光该钳到 100，实际 %u", (unsigned)buf[5]);
+  CHECK(buf[9] == 6, "屏保模式该钳到 6，实际 %u", (unsigned)buf[9]);
+  CHECK((buf[10] | ((uint16_t)buf[11] << 8)) == 600, "屏保时间该钳到 600");
+  CHECK(buf[14] == ESP_CFG_THEME_MAX, "主题该钳到上限 %u，实际 %u",
+        (unsigned)ESP_CFG_THEME_MAX, (unsigned)buf[14]);
+  CHECK(buf[15] == 2, "风格该钳到 2，实际 %u", (unsigned)buf[15]);
+  CHECK(buf[0] == ESP_CFG_MAGIC && buf[1] == ESP_CFG_FORMAT, "magic/format 被钳坏了");
+  CHECK(buf[16] == 0, "保留字节必须是 0");
+
+  // 长度不够 / 版本不对 → 明确返回 false（调用方据此走"用当前设置重建镜像"）
+  CHECK(!espCfgDecode(want, ESP_CFG_BYTES - 1, back), "短一字节必须拒绝");
+  uint8_t oldFmt[ESP_CFG_BYTES];
+  memcpy(oldFmt, want, ESP_CFG_BYTES);
+  oldFmt[1] = 99;
+  CHECK(!espCfgDecode(oldFmt, ESP_CFG_BYTES, back), "格式版本不对必须拒绝");
+  uint8_t badMagic[ESP_CFG_BYTES];
+  memcpy(badMagic, want, ESP_CFG_BYTES);
+  badMagic[0] = 0;
+  CHECK(!espCfgDecode(badMagic, ESP_CFG_BYTES, back), "magic 不对必须拒绝");
+}
+
 int main() {
   test_nes_path();
   test_ble_chunk();
@@ -286,6 +359,7 @@ int main() {
   test_proto_from_text();
   test_log_queue();
   test_log_sub_parse();
+  test_esp_cfg();
   if (failures) {
     std::printf("\n%d 处失败\n", failures);
     return 1;

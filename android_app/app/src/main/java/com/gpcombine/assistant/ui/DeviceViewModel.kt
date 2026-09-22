@@ -10,6 +10,7 @@ import com.gpcombine.assistant.ble.BleState
 import com.gpcombine.assistant.ble.BleTransport
 import com.gpcombine.assistant.ble.FakeTransport
 import com.gpcombine.assistant.ble.ScannedDevice
+import com.gpcombine.assistant.config.ConfigController
 import com.gpcombine.assistant.diag.LogFormat
 import com.gpcombine.assistant.diag.LogLine
 import com.gpcombine.assistant.diag.LogStore
@@ -18,9 +19,11 @@ import com.gpcombine.assistant.net.FrameRecord
 import com.gpcombine.assistant.net.HealthProbe
 import com.gpcombine.assistant.net.HealthReport
 import com.gpcombine.assistant.proto.DeviceInfo
+import com.gpcombine.assistant.proto.EspConfig
 import com.gpcombine.assistant.proto.LogCodec
 import com.gpcombine.assistant.proto.PairInfo
 import com.gpcombine.assistant.store.Prefs
+import com.gpcombine.assistant.term.TerminalController
 import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -68,6 +71,17 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
     private val prefs = Prefs(app)
     private val probe = HealthProbe(client, mtu = { transport.mtu.value })
     private val logStore = LogStore(File(app.filesDir, "logs"))
+
+    /** 设置页的状态机（17 字节镜像）。连上并认证后自动读一次。 */
+    val config = ConfigController(client, viewModelScope)
+
+    /** 终端页：手打命令直接发帧。auth 成功时把配对码记下来，省得再去首页输一遍。 */
+    val terminal = TerminalController(
+        client = client,
+        transport = transport,
+        scope = viewModelScope,
+        onPairCode = { prefs.pairCode = it },
+    )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -220,6 +234,8 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
         val pair = client.pairInfo()
         _ui.update { it.copy(phase = Phase.READY, info = info, pair = pair, error = null) }
         subscribeLogs()
+        // 设置页的数据：连上就先读一份，进"配置"页时不用等
+        runCatching { config.refresh() }
     }
 
     /** 连上并认证通过后订阅日志：带 40 行回放，开机那几行（含 USB 自检）就不会漏。 */
@@ -242,6 +258,19 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
     }
 
     // ---- 诊断页 ----
+
+    // ---- 设置页 / 终端页 ----
+
+    fun configEdit(cfg: EspConfig) = config.edit(cfg)
+    fun configSave() { viewModelScope.launch { config.save() } }
+    fun configReset() { viewModelScope.launch { config.resetToDefaults() } }
+    fun configRefresh() { viewModelScope.launch { config.refresh() } }
+
+    /** 离开配置页时把还在 debounce 里的最后一次改动送出去，别让它烂在手里。 */
+    fun configFlush() { viewModelScope.launch { config.applyNow() } }
+
+    fun terminalSend(line: String) = terminal.send(line)
+    fun terminalClear() = terminal.clear()
 
     fun setLogPaused(paused: Boolean) {
         _ui.update { s ->

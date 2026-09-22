@@ -301,6 +301,70 @@ App（`android_app/`）：
 
 ---
 
+## 8c. M2-B 任务清单（2026-09-22 拍板后开工）
+
+**拍板**：按键映射**不做进 App**（继续在设备菜单里改）；其余三块全做，外加底栏新开一格「终端」。
+
+分期：
+
+1. **M2-B1 设备/显示/输入/休眠/无线**（本批）—— 覆盖 17 字节配置镜像里的全部项，
+   顺手加一条 `0x13 CFG_APPLY`（只应用不落盘），让"改一下立刻生效、点保存才写 flash"成立。
+2. **M2-B2 手柄 + 灯光** —— 固件加 `0x20 GP_GET / 0x21 GP_SET / 0x22 LED_GET / 0x23 LED_SET`
+   四条透传（载荷就是现有 `0x04 CONFIG` / `0x06 LED` 的原文）。
+3. **M2-B3 蓝牙页 + 配置档 1–5** —— 设备名 / 配对码 / 清配对 / `/profiles/N.cfg`，
+   顺带补设备菜单那三个死 UI。
+4. **不做**：按键映射（Pico 侧完整配置表），要改走设备菜单。
+
+已跑过的检查（2026-09-22）：
+
+| 检查 | 结果 |
+|---|---|
+| 固件编译 | 829226 B（4%），RAM 78352 B（23%） |
+| 固件刷机 + 启动 | ✅ 原生 USB 口刷入校验通过；串口抓到 `[log] queue ready` / `[usb] native port up` / `[dbg] BLE ok` |
+| 主机测试 `sh tools/host_tests/run.sh` | 全部通过（新增 `test_esp_cfg`：与 App 同一组向量 + 越界钳制 + 拒收坏镜像） |
+| App 单测 `gradle testDebugUnitTest` | **65/65 通过**（新增 EspConfig 7、ConfigController 6、Terminal 12） |
+| App 打包 | `app-debug.apk` 30.3 MB |
+| 手机端实测设置页/终端 | **未做：本机没有蓝牙适配器，BLE 端到端只能手机测** |
+
+**实现期踩到的坑**：`esp_cfg.h` 的钳制函数第一版返回 `uint8_t`，屏保时间 300 被截成 44——
+主机测试当场抓到（`test_esp_cfg` 的 u16 往返断言），所以那组断言是值钱的。
+
+固件：
+
+- **B1 ✅** `src/net/esp_cfg.h`（新）：17 字节镜像的纯函数编解码 + 钳制，无 Arduino 依赖，
+  这样主机测试能拿它和 App 对同一组向量。`espCfgPack()/applyEspCfg()` 改成调它。
+- **B2 ✅** `esp32_170x320.ino`：新增 `CMD_CFG_APPLY (0x13)` —— 应用 + 重绘，**不**写 flash；
+  原 `0x11 CFG_SET` 保持"应用 + 落盘"。
+- **B3 ✅** `tools/host_tests/fixes_test.cpp`：`test_esp_cfg()`，向量与 App 侧同一份。
+
+App：
+
+- **B4 ✅** `proto/EspConfig.kt`：17 字段快照 + `toBytes/fromBytes/defaults` + 范围表（和镜像逐字节对齐）。
+- **B5 ✅** `net/DeviceClient`：`cfgGet() / cfgApply() / cfgSet() / cfgReset()` + `sendRequest()`（终端用）。
+- **B6 ✅** `ble/FakeTransport`：假设备也吃 `0x10/0x11/0x13/0x12` 并存一份快照，
+  这样假模式能整套试，`ConfigController` 也能在本机跑测试。
+- **B7 ✅** `config/ConfigController.kt`：快照 + `dirty` + 300ms debounce 下发 + 显式保存 + 恢复默认；
+  去重用的是"最后一次真正发出去的快照"而不是 dirty，否则"还没读到设备设置"时改动会被静默丢弃。
+- **B8 ✅** 单测：`EspConfigTest`（同一份向量 + 越界钳制）、`ConfigControllerTest`（合并下发、
+  dirty 语义、reset、未认证时报错、未读也能下发）。
+- **B9 ✅** `ui/ConfigScreen.kt`：二级 tab（显示 / 输入 / 休眠 / 无线）+ 控件 + 顶部状态提示 +
+  「保存到设备」「恢复默认」（二次确认）。
+- **B10 ✅** `term/Terminal.kt`（新）：命令行解析 —— `ping`、`info`、`pair`、`auth <6位>`、
+  `logs on|off|replay <n>`、`cfg get|reset`、`cfg set <34位hex>`、`raw <hex>`，以及直接贴裸 hex。
+- **B11 ✅** `term/TerminalController.kt`：执行命令 + 输出行。流水不另记一份，
+  直接渲染 `DeviceClient.frames`：终端和帧监视器看到的永远是同一件事，回包翻译成人话。
+- **B12 ✅** `ui/TerminalScreen.kt`：输入框（回车即发）+ 常用命令快捷按钮 + 输出列表 + 清屏。
+- **B13 ✅** 单测：`TerminalTest`（命令解析、hex 解析、未知命令、载荷字节与固件期望一致、
+  错误帧变人话、cfg get 翻译成设备菜单里的名字、裸字节不套帧）。
+- **B14 ✅** 底栏接入：五格（首页 / 配置 / 终端 / 诊断(隐藏) / 关于）；离开配置页会把
+  debounce 里的最后一次改动补发出去。
+- **B15 ⏳** 编译 / 刷机 / 主机测试 / App 单测 / 出包 ✅；**手机端逐项验收待做**。
+
+验收（沿用 §3.4）：App 改的项设备屏幕当场可见；设备菜单改的项 App 重新进页面能读到；
+「保存到设备」后断电重启仍保持；恢复默认会二次确认。
+
+---
+
 ## 9. 历史：当初需要拍板
 
 1. **`.gfr` 一致性**（§4.3）：我建议从"字节一致"降级成"格式合法 + 观感一致"

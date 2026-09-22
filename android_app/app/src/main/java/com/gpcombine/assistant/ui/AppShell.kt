@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,6 +43,7 @@ import com.gpcombine.assistant.store.Prefs
 private enum class Tab(val label: String) {
     HOME("首页"),
     CONFIG("配置"),
+    TERM("终端"),
     DIAG("诊断"),
     ABOUT("关于"),
 }
@@ -60,18 +62,37 @@ fun AppShell(
     var unlocked by remember { mutableStateOf(prefs.diagUnlocked) }
     var tab by remember { mutableStateOf(Tab.HOME) }
     var taps by remember { mutableIntStateOf(0) }
+    val cfgState by vm.config.state.collectAsStateWithLifecycle()
+    val termState by vm.terminal.state.collectAsStateWithLifecycle()
 
     val tabs = Tab.entries.filter { it != Tab.DIAG || unlocked }
     // 解锁后又点了"关于"：别停在一个已经不存在的 tab 上
     if (tab !in tabs) tab = Tab.HOME
 
     Scaffold(
-        bottomBar = { BottomBar(tabs, tab) { tab = it } },
+        bottomBar = {
+            BottomBar(tabs, tab) { next ->
+                // 离开配置页时把 debounce 里的最后一次改动送出去
+                if (tab == Tab.CONFIG && next != Tab.CONFIG) vm.configFlush()
+                tab = next
+            }
+        },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
             when (tab) {
                 Tab.HOME -> ConnectScreen(ui, onScan, onConnect, onCode, onFake)
-                Tab.CONFIG -> ConfigPlaceholder()
+                Tab.CONFIG -> ConfigScreen(
+                    state = cfgState,
+                    onEdit = vm::configEdit,
+                    onSave = vm::configSave,
+                    onReset = vm::configReset,
+                    onRefresh = vm::configRefresh,
+                )
+                Tab.TERM -> TerminalScreen(
+                    state = termState,
+                    onSend = vm::terminalSend,
+                    onClear = vm::terminalClear,
+                )
                 Tab.DIAG -> DiagScreen(ui, vm)
                 Tab.ABOUT -> AboutScreen(
                     ui = ui,
@@ -111,27 +132,6 @@ private fun BottomBar(tabs: List<Tab>, current: Tab, onSelect: (Tab) -> Unit) {
                             )
                     )
                 }
-            }
-        }
-    }
-}
-
-/** M2-B 还没动工。这里如实写清楚，别让人以为"配置"是坏掉的。 */
-@Composable
-private fun ConfigPlaceholder() {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("配置", style = MaterialTheme.typography.titleMedium)
-        Card {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("这一页还没做（M2-B 未开工）")
-                Text("现在改手柄设置还是走设备菜单或 PC 配置助手。规划搬进来的：")
-                Text("· 手柄：按键映射 / 去抖 / 输入历史 / 配置档 1–5")
-                Text("· 灯光：灯效 / 颜色 / 亮度 / 速度")
-                Text("· 显示：主题 / 透明度 / 背光 / 翻转 / 反色 / 屏保")
-                Text("· 蓝牙：设备名 / 配对码 / 清除配对（会踢掉所有手机）/ nRF 开关")
             }
         }
     }

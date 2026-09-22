@@ -31,6 +31,7 @@ enum proto_cmd : uint8_t {
   CMD_CFG_GET   = 0x10,   // 17 字节设置镜像
   CMD_CFG_SET   = 0x11,   // 17 字节设置镜像
   CMD_CFG_RESET = 0x12,   // 恢复默认
+  CMD_CFG_APPLY = 0x13,   // 17 字节设置镜像：只应用不落盘（拖滑条时的实时下发）
   CMD_ERR       = 0x7F,   // 错误码 + 文本
 
   // 0x80 以上是"设备主动推"，不带 seq（固定 0），App 侧不能拿它等回包。

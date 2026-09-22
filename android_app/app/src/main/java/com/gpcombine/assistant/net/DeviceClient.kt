@@ -2,6 +2,7 @@ package com.gpcombine.assistant.net
 
 import com.gpcombine.assistant.ble.BleTransport
 import com.gpcombine.assistant.proto.DeviceInfo
+import com.gpcombine.assistant.proto.EspConfig
 import com.gpcombine.assistant.proto.Frame
 import com.gpcombine.assistant.proto.InfoCodec
 import com.gpcombine.assistant.proto.LogCodec
@@ -121,4 +122,29 @@ class DeviceClient(
 
     suspend fun pairInfo(): PairInfo =
         InfoCodec.parsePairInfo(String(request(Proto.CMD_PAIR_INFO).payload, Charsets.US_ASCII))
+
+    // ---- 设置镜像（17 字节）----
+
+    /** 读设备当前的设置镜像。长度/版本对不上就当没读到（返回 null），别把垃圾值摊给用户。 */
+    suspend fun cfgGet(): EspConfig? = EspConfig.fromBytes(request(Proto.CMD_CFG_GET).payload)
+
+    /**
+     * 应用但**不**落盘。拖滑条、连点开关走这条：设备屏幕立刻变，flash 一点没动。
+     * "保存到设备"才用 [cfgSet]。
+     */
+    suspend fun cfgApply(cfg: EspConfig): Boolean = ack(Proto.CMD_CFG_APPLY, cfg.toBytes())
+
+    /** 应用 + 落盘（等价于设备菜单的"保存设置"，断电重启仍然保持）。 */
+    suspend fun cfgSet(cfg: EspConfig): Boolean = ack(Proto.CMD_CFG_SET, cfg.toBytes())
+
+    suspend fun cfgReset(): Boolean = ack(Proto.CMD_CFG_RESET, Proto.EMPTY)
+
+    /** 固件对 CFG_* 的约定：能把这一帧回出来就算成功（出错会走 CMD_ERR，request() 会抛）。 */
+    private suspend fun ack(cmd: Int, payload: ByteArray): Boolean = request(cmd, payload).cmd == cmd
+
+    /**
+     * 发任意一条请求帧并等回包（终端页用）。回包走的是同一套 seq 匹配 + 超时 +
+     * 错误帧变异常的逻辑，所以终端里看到的"错误 0x04 ..."和别处一致。
+     */
+    suspend fun sendRequest(cmd: Int, payload: ByteArray = Proto.EMPTY): Frame = request(cmd, payload)
 }

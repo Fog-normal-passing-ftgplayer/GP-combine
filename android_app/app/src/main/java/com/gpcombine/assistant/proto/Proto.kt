@@ -23,6 +23,7 @@ object Proto {
     const val CMD_CFG_GET = 0x10
     const val CMD_CFG_SET = 0x11
     const val CMD_CFG_RESET = 0x12
+    const val CMD_CFG_APPLY = 0x13
     const val CMD_ERR = 0x7F
 
     /** 设备主动推的事件（不带 seq，不能拿它等回包） */

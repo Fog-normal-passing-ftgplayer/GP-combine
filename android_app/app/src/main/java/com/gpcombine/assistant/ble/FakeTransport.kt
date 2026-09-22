@@ -2,6 +2,7 @@ package com.gpcombine.assistant.ble
 
 import com.gpcombine.assistant.proto.Frame
 import com.gpcombine.assistant.proto.FrameParser
+import com.gpcombine.assistant.proto.EspConfig
 import com.gpcombine.assistant.proto.Proto
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,12 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
     private var authed = false
     private var logSub = false
     private var fakeSeq = 0
+    /** 假设备也存一份设置镜像：假模式下配置页能整套试，ConfigController 也能在本机跑测试。 */
+    private var cfg: ByteArray = EspConfig().toBytes()
+
+    /** 发出去过什么（给测试和"假模式下看看发了啥"用，只留最近 64 条）。 */
+    private val sentFrames = ArrayDeque<Frame>()
+    fun sent(): List<Frame> = sentFrames.toList()
 
     fun connect() {
         authed = false
@@ -57,6 +64,10 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
                 req = f
                 break
             }
+        }
+        req?.let {
+            sentFrames.addLast(it)
+            if (sentFrames.size > 64) sentFrames.removeFirst()
         }
         rx.trySend(reply(req ?: return))
     }
@@ -93,6 +104,19 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
             Proto.CMD_INFO, req.seq,
             "ver=0.0.0-fake;app=825776;fs=12517376/2540000;ram=67056;psram=5588080".toByteArray(),
         )
+
+        req.cmd == Proto.CMD_CFG_GET -> Frame(Proto.CMD_CFG_GET, req.seq, cfg)
+
+        req.cmd == Proto.CMD_CFG_APPLY || req.cmd == Proto.CMD_CFG_SET -> {
+            // 真固件只接受正好 17 字节；假设备照抄这条，免得测试里漏掉长度 bug
+            if (req.payload.size == EspConfig.BYTES) cfg = req.payload.copyOf()
+            Frame(req.cmd, req.seq, byteArrayOf(0))
+        }
+
+        req.cmd == Proto.CMD_CFG_RESET -> {
+            cfg = EspConfig().toBytes()
+            Frame(Proto.CMD_CFG_RESET, req.seq, byteArrayOf(0))
+        }
 
         req.cmd == Proto.CMD_PAIR_INFO -> Frame(
             Proto.CMD_PAIR_INFO, req.seq,

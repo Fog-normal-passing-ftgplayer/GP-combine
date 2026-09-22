@@ -82,7 +82,12 @@ internal fun PadTab(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = onApply, enabled = !state.applying && state.dirty) {
+            // 还没读到设备值（onDevice == null）时也让按：否则读取失败一次，
+            // 这一页就彻底按不动了
+            Button(
+                onClick = onApply,
+                enabled = !state.applying && (state.dirty || state.onDevice == null),
+            ) {
                 Text(if (state.applying) "下发中…" else "应用到设备")
             }
             OutlinedButton(onClick = onRefresh, enabled = !state.loading) { Text("重新读取") }
@@ -150,7 +155,6 @@ internal fun BluetoothTab(
 ) {
     var nameDialog by remember { mutableStateOf<String?>(null) }
     var pairDialog by remember { mutableStateOf<String?>(null) }
-    var showPair by remember { mutableStateOf(false) }
     var confirmRegen by remember { mutableStateOf(false) }
     val info = state.info
 
@@ -197,12 +201,6 @@ internal fun BluetoothTab(
                 enabled = info != null && !state.busy,
             ) { Text("改设备名") }
             OutlinedButton(
-                onClick = { showPair = !showPair },
-                enabled = info != null,
-            ) { Text(if (showPair) "隐藏配对码" else "显示配对码") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
                 onClick = { pairDialog = info?.pairCode ?: "" },
                 enabled = info != null && !state.busy,
             ) { Text("自定义配对码") }
@@ -214,9 +212,6 @@ internal fun BluetoothTab(
             OutlinedButton(onClick = onRefresh, enabled = !state.loading) { Text("重新读取") }
         }
 
-        if (showPair) {
-            Text("当前配对码：${info?.pairCode ?: "—"}　（手机 App 连的就是它）")
-        }
         Text(
             "改名字：只重启广播，正在连的手机不断。\n" +
                 "换配对码：设备会作废当前会话并断开所有手机 —— 换码不踢人等于没换。" +

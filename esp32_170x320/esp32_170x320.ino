@@ -2914,10 +2914,17 @@ static bool profEnsureDir() {
 
 static bool profSaveSlot(uint8_t slot, const char *name) {
   if (!profValidSlot(slot) || !profEnsureDir()) return false;
+  // 没给名字又不是新档：沿用原来那个名字。设备菜单里的"存入配置档"不输入名字，
+  // 直接覆盖会把 App 里起好的名字抹掉。
+  char keepName[PROF_NAME_MAX + 1] = "";
+  if (name == nullptr || name[0] == 0)
+    profReadSlot(slot, keepName, sizeof(keepName), nullptr);
   uint8_t img[ESP_CFG_BYTES];
   espCfgPack(img);
   uint8_t file[PROF_FILE_BYTES];
-  if (!profEncodeFile(file, sizeof(file), slot, name, img)) return false;
+  if (!profEncodeFile(file, sizeof(file), slot,
+                      (name && name[0]) ? name : keepName, img))
+    return false;
   char path[PROF_PATH_BYTES];
   if (!profSlotPath(path, sizeof(path), slot)) return false;
   File f = LittleFS.open(path, "w");

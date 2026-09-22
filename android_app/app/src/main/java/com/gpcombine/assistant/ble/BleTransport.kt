@@ -16,5 +16,7 @@ interface BleTransport {
     val state: StateFlow<BleState>
     /** 蓝牙栈回调的流水账。出问题时这是唯一能看见"卡在哪一步"的证据。 */
     val log: Flow<String>
+    /** 协商后的 ATT MTU（0 = 还不知道）。健康检查与帧监视器要显示它。 */
+    val mtu: StateFlow<Int>
     suspend fun send(frame: ByteArray)
 }

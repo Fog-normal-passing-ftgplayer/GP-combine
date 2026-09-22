@@ -19,10 +19,16 @@ object Proto {
     const val CMD_AUTH = 0x02
     const val CMD_INFO = 0x03
     const val CMD_PAIR_INFO = 0x04
+    const val CMD_LOG_SUB = 0x06
     const val CMD_CFG_GET = 0x10
     const val CMD_CFG_SET = 0x11
     const val CMD_CFG_RESET = 0x12
     const val CMD_ERR = 0x7F
+
+    /** 设备主动推的事件（不带 seq，不能拿它等回包） */
+    const val CMD_LOG_EVT = 0x86
+
+    fun isDevicePush(cmd: Int): Boolean = cmd >= 0x80
 
     const val ERR_OK = 0x00
     const val ERR_BAD_CRC = 0x01

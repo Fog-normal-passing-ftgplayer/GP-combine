@@ -27,11 +27,30 @@ enum proto_cmd : uint8_t {
   CMD_AUTH      = 0x02,   // 6 位配对码（ASCII）→ 1 字节结果
   CMD_INFO      = 0x03,   // 固件/分区/存储/内存
   CMD_PAIR_INFO = 0x04,   // 配对码、蓝牙开关、已连接手机数、热点状态
+  CMD_LOG_SUB   = 0x06,   // 日志订阅：1 字节 mode（0 关 / 1 开 / 2 开+回放），可选第 2 字节回放行数
   CMD_CFG_GET   = 0x10,   // 17 字节设置镜像
   CMD_CFG_SET   = 0x11,   // 17 字节设置镜像
   CMD_CFG_RESET = 0x12,   // 恢复默认
   CMD_ERR       = 0x7F,   // 错误码 + 文本
+
+  // 0x80 以上是"设备主动推"，不带 seq（固定 0），App 侧不能拿它等回包。
+  CMD_LOG_EVT   = 0x86,   // 1 字节等级 + 文本（一行日志）
 };
+
+// CMD_LOG_SUB 的载荷。mode 2 = 打开并把最近 replay 行回放一遍（默认 14 行）。
+struct ProtoLogSub {
+  uint8_t mode;
+  uint8_t replay;
+};
+
+static inline bool protoParseLogSub(const uint8_t *p, uint16_t len, ProtoLogSub &out) {
+  if (len < 1 || p == nullptr) return false;
+  if (p[0] > 2u) return false;
+  out.mode = p[0];
+  out.replay = (len >= 2) ? p[1] : (uint8_t)14;
+  if (out.replay == 0) out.replay = 14;   // 0 行回放没有意义，按默认走
+  return true;
+}
 
 enum proto_err : uint8_t {
   ERR_OK          = 0x00,

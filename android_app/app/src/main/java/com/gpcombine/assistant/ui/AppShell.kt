@@ -1,0 +1,183 @@
+package com.gpcombine.assistant.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.gpcombine.assistant.BuildConfig
+import com.gpcombine.assistant.ble.ScannedDevice
+import com.gpcombine.assistant.store.Prefs
+
+/**
+ * 底栏四格。诊断默认不出现，连点"关于"页的版本号 5 次才放出来。
+ *
+ * 用自己的底栏而不是 Material 的 NavigationBar：后者必须给图标，而这版不想为了
+ * 四个图标去拉 material-icons 依赖（本地离线构建里没有）。
+ */
+private enum class Tab(val label: String) {
+    HOME("首页"),
+    CONFIG("配置"),
+    DIAG("诊断"),
+    ABOUT("关于"),
+}
+
+@Composable
+fun AppShell(
+    vm: DeviceViewModel,
+    ui: UiState,
+    onScan: () -> Unit,
+    onConnect: (ScannedDevice) -> Unit,
+    onCode: (String) -> Unit,
+    onFake: () -> Unit,
+) {
+    val ctx = LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    var unlocked by remember { mutableStateOf(prefs.diagUnlocked) }
+    var tab by remember { mutableStateOf(Tab.HOME) }
+    var taps by remember { mutableIntStateOf(0) }
+
+    val tabs = Tab.entries.filter { it != Tab.DIAG || unlocked }
+    // 解锁后又点了"关于"：别停在一个已经不存在的 tab 上
+    if (tab !in tabs) tab = Tab.HOME
+
+    Scaffold(
+        bottomBar = { BottomBar(tabs, tab) { tab = it } },
+    ) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad)) {
+            when (tab) {
+                Tab.HOME -> ConnectScreen(ui, onScan, onConnect, onCode, onFake)
+                Tab.CONFIG -> ConfigPlaceholder()
+                Tab.DIAG -> DiagScreen(ui, vm)
+                Tab.ABOUT -> AboutScreen(
+                    ui = ui,
+                    unlocked = unlocked,
+                    onVersionTap = {
+                        taps++
+                        if (taps >= 5 && !unlocked) {
+                            unlocked = true
+                            prefs.diagUnlocked = true
+                            tab = Tab.DIAG
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomBar(tabs: List<Tab>, current: Tab, onSelect: (Tab) -> Unit) {
+    Surface(tonalElevation = 3.dp) {
+        Row(Modifier.fillMaxWidth().height(58.dp)) {
+            tabs.forEach { t ->
+                val selected = t == current
+                val color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight().clickable { onSelect(t) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(t.label, color = color, style = MaterialTheme.typography.titleSmall)
+                    Box(
+                        Modifier.padding(top = 4.dp).height(3.dp).fillMaxWidth(0.4f)
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** M2-B 还没动工。这里如实写清楚，别让人以为"配置"是坏掉的。 */
+@Composable
+private fun ConfigPlaceholder() {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("配置", style = MaterialTheme.typography.titleMedium)
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("这一页还没做（M2-B 未开工）")
+                Text("现在改手柄设置还是走设备菜单或 PC 配置助手。规划搬进来的：")
+                Text("· 手柄：按键映射 / 去抖 / 输入历史 / 配置档 1–5")
+                Text("· 灯光：灯效 / 颜色 / 亮度 / 速度")
+                Text("· 显示：主题 / 透明度 / 背光 / 翻转 / 反色 / 屏保")
+                Text("· 蓝牙：设备名 / 配对码 / 清除配对（会踢掉所有手机）/ nRF 开关")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutScreen(ui: UiState, unlocked: Boolean, onVersionTap: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("关于", style = MaterialTheme.typography.titleMedium)
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("GP-Combine 配置助手", style = MaterialTheme.typography.titleSmall)
+                Row {
+                    Text("当前版本：${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）")
+                }
+                // 版本号这一行是诊断页的暗门：连点 5 次
+                Text(
+                    text = if (unlocked) "诊断已解锁（底栏多一格）" else "连点这一行 5 次可以打开诊断",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clickableText(onVersionTap),
+                )
+            }
+        }
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("设备", style = MaterialTheme.typography.titleSmall)
+                if (ui.phase == Phase.READY) {
+                    Text("名称：${ui.pair?.name ?: ui.deviceName}")
+                    Text("固件：${ui.info?.version ?: "未知"}")
+                    Text("协议：A5 5A，CRC16-CCITT")
+                } else {
+                    Text("还没连上设备。先回首页扫描。")
+                }
+            }
+        }
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("日志落盘", style = MaterialTheme.typography.titleSmall)
+                Text(ui.logFile ?: "还没开日志文件", style = MaterialTheme.typography.bodySmall)
+                Text("每次开 App 一个文件，只留最近 5 个会话。导出在诊断 → 日志页。")
+            }
+        }
+    }
+}
+
+private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable { onClick() }

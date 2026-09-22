@@ -4,11 +4,16 @@ import com.gpcombine.assistant.ble.BleTransport
 import com.gpcombine.assistant.proto.DeviceInfo
 import com.gpcombine.assistant.proto.Frame
 import com.gpcombine.assistant.proto.InfoCodec
+import com.gpcombine.assistant.proto.LogCodec
+import com.gpcombine.assistant.proto.LogEvent
 import com.gpcombine.assistant.proto.PairInfo
 import com.gpcombine.assistant.proto.Proto
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,10 +35,20 @@ class DeviceClient(
     private val transport: BleTransport,
     scope: CoroutineScope,
     private val timeoutMs: Long = 3000,
+    private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     private val pending = mutableMapOf<Int, CompletableDeferred<Frame>>()
     private val lock = Mutex()
     private var nextSeq = 0
+
+    // 设备主动推的日志。用 extraBufferCapacity 而不是无缓冲：诊断页没打开时
+    // 也不能把设备那边等回包的主循环堵住（tryEmit 满了就丢，日志丢得起）。
+    private val _logs = MutableSharedFlow<LogEvent>(extraBufferCapacity = 256)
+    val logs: SharedFlow<LogEvent> = _logs.asSharedFlow()
+
+    // 帧监视器：收发各记一条（含"没人认领的回包"——那种以前是静默丢掉的）
+    private val _frames = MutableSharedFlow<FrameRecord>(extraBufferCapacity = 256)
+    val frames: SharedFlow<FrameRecord> = _frames.asSharedFlow()
 
     private val collector: Job = scope.launch {
         transport.inbound.collect { onFrame(it) }
@@ -46,7 +61,20 @@ class DeviceClient(
     }
 
     private fun onFrame(f: Frame) {
-        val d = pending[f.seq] ?: return
+        // 0x80 以上是设备主动推：它们不带 seq，永远等不到 pending，别当"没人要的回包"扔了
+        if (Proto.isDevicePush(f.cmd)) {
+            _frames.tryEmit(FrameRecord(Dir.RX, clock(), f.cmd, f.seq, f.payload, "设备推送"))
+            if (f.cmd == Proto.CMD_LOG_EVT) LogCodec.parseEvent(f.payload)?.let { _logs.tryEmit(it) }
+            return
+        }
+
+        val d = pending[f.seq]
+        if (d == null) {
+            // 迟到/重放的回包：以前是直接吞掉，现在至少留痕，不然排查时"少了那一帧"无处可查
+            _frames.tryEmit(FrameRecord(Dir.RX, clock(), f.cmd, f.seq, f.payload, "无请求匹配"))
+            return
+        }
+        _frames.tryEmit(FrameRecord(Dir.RX, clock(), f.cmd, f.seq, f.payload))
         if (f.cmd == Proto.CMD_ERR) {
             val code = if (f.payload.isNotEmpty()) f.payload[0].toInt() and 0xFF else -1
             val text = if (f.payload.size > 1) String(f.payload, 1, f.payload.size - 1) else ""
@@ -62,6 +90,7 @@ class DeviceClient(
         val d = CompletableDeferred<Frame>()
         pending[seq] = d
         try {
+            _frames.tryEmit(FrameRecord(Dir.TX, clock(), cmd, seq, payload))
             transport.send(Proto.build(cmd, seq, payload))
             withTimeout(timeoutMs) { d.await() }
         } finally {
@@ -71,13 +100,24 @@ class DeviceClient(
 
     suspend fun ping(): Boolean = request(Proto.CMD_PING).cmd == Proto.CMD_PING
 
+    /**
+     * 订阅设备日志（CMD_LOG_SUB）。mode 见 [LogCodec]：0 关 / 1 开 / 2 开且回放最近几行。
+     * 设备侧断开连接会自动退订，不用 App 操心。
+     */
+    suspend fun logSubscribe(mode: Int, replay: Int = LogCodec.DEFAULT_REPLAY): Boolean {
+        val f = request(Proto.CMD_LOG_SUB, LogCodec.subPayload(mode, replay))
+        return f.payload.isNotEmpty() && f.payload[0].toInt() == 1
+    }
+
     suspend fun auth(code: String): Boolean {
         val f = request(Proto.CMD_AUTH, code.toByteArray(Charsets.US_ASCII))
         return f.payload.isNotEmpty() && f.payload[0].toInt() == 1
     }
 
-    suspend fun info(): DeviceInfo =
-        InfoCodec.parseInfo(String(request(Proto.CMD_INFO).payload, Charsets.US_ASCII))
+    /** INFO 回包的原始载荷 —— 体检要报"这一帧多少字节、要分几片"，所以不能只留解析结果。 */
+    suspend fun infoRaw(): ByteArray = request(Proto.CMD_INFO).payload
+
+    suspend fun info(): DeviceInfo = InfoCodec.parseInfo(String(infoRaw(), Charsets.US_ASCII))
 
     suspend fun pairInfo(): PairInfo =
         InfoCodec.parsePairInfo(String(request(Proto.CMD_PAIR_INFO).payload, Charsets.US_ASCII))

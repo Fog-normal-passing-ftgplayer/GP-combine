@@ -10,6 +10,7 @@
 
 #include "../../esp32_170x320/src/nes_path.h"
 #include "../../esp32_170x320/src/net/ble_link.h"
+#include "../../esp32_170x320/src/net/log_queue.h"
 
 static int failures = 0;
 
@@ -165,12 +166,126 @@ static void test_proto_from_text() {
   CHECK(protoFromText(bin, bn, buf, sizeof buf, 0) == 0, "二进制帧被文本分支吃了");
 }
 
+// ---- BLE 日志环形队列 ----
+// 这块坏了的症状很隐蔽：队列写坏 → App 看到的日志错行/重复 → 排错方向全歪。
+// 所以顺序、绕圈、丢最旧、seq 索引这几条都要钉住。
+static void test_log_queue() {
+  static char storage[4 * LogQueue::LOG_LINE_MAX];   // 4 行，方便压满
+  LogQueue q;
+  q.attach(storage, 4);
+  CHECK(q.ready(), "attach 后应该 ready");
+  CHECK(q.size() == 0 && q.total() == 0, "空队列 size/total 应为 0");
+
+  char out[LogQueue::LOG_LINE_MAX];
+
+  // 基本先进先出
+  q.push("a");
+  q.push("b");
+  CHECK(q.size() == 2, "size 应为 2，得到 %d", q.size());
+  CHECK(q.peek(out) && !std::strcmp(out, "a"), "peek 应看队首 a，得到 %s", out);
+  CHECK(q.peek(out) && !std::strcmp(out, "a"), "peek 不该删元素");
+  CHECK(q.pop(out) && !std::strcmp(out, "a"), "第一次 pop 应是 a");
+  CHECK(q.pop(out) && !std::strcmp(out, "b"), "第二次 pop 应是 b");
+  CHECK(!q.pop(out), "空队列 pop 应返回 false");
+
+  // 绕圈：push 满 → 全读出来，顺序不能乱
+  for (int i = 0; i < 4; i++) q.push(std::to_string(i).c_str());
+  for (int i = 0; i < 4; i++) {
+    CHECK(q.pop(out) && out[0] == (char)('0' + i), "绕圈后第 %d 行应是 %d，得到 %s", i, i, out);
+  }
+  CHECK(q.size() == 0, "读空后 size 应为 0");
+
+  // 满了丢最旧，并且计数（用干净的队列，seq 才好对账）
+  static char storage3[4 * LogQueue::LOG_LINE_MAX];
+  LogQueue full;
+  full.attach(storage3, 4);
+  full.push("1");
+  full.push("2");
+  full.push("3");
+  full.push("4");
+  CHECK(full.dropped() == 0 && full.headSeq() == 0, "没满之前不该丢行，headSeq 应为 0");
+  full.push("5");                    // 挤掉 "1"
+  CHECK(full.size() == 4, "满队列 size 应保持容量 4，得到 %d", full.size());
+  CHECK(full.dropped() == 1, "应该记录丢了 1 行，得到 %u", full.dropped());
+  CHECK(full.pop(out) && !std::strcmp(out, "2"), "丢最旧之后队首应是 2，得到 %s", out);
+  CHECK(full.headSeq() == 2, "队首 seq 应是 2（第 0、1 行已出队/被挤），得到 %llu",
+        (unsigned long long)full.headSeq());
+  CHECK(full.total() == 5, "total 应累计 5 行，得到 %llu", (unsigned long long)full.total());
+
+  // 超长行截断到 LOG_LINE_MAX-1 并保证以 '\0' 结尾
+  static char storage4[2 * LogQueue::LOG_LINE_MAX];
+  LogQueue trunc;
+  trunc.attach(storage4, 2);
+  std::string longline(LogQueue::LOG_LINE_MAX + 40, 'x');
+  trunc.push(longline.c_str());
+  CHECK(trunc.pop(out) && std::strlen(out) == (size_t)LogQueue::LOG_LINE_MAX - 1,
+        "超长行应截断到 %d 字符，得到 %zu", LogQueue::LOG_LINE_MAX - 1, std::strlen(out));
+
+  // 回放：peekSeq 能按 seq 取到，被挤掉的和未来的都取不到
+  static char storage2[2 * LogQueue::LOG_LINE_MAX];
+  LogQueue r;
+  r.attach(storage2, 2);
+  r.push("old0");
+  r.push("new1");
+  r.push("new2");                    // 挤掉 old0
+  CHECK(!r.peekSeq(0, out), "已被挤掉的 seq 不该取到");
+  CHECK(r.peekSeq(1, out) && !std::strcmp(out, "new1"), "seq=1 应是 new1，得到 %s", out);
+  CHECK(r.peekSeq(2, out) && !std::strcmp(out, "new2"), "seq=2 应是 new2，得到 %s", out);
+  CHECK(!r.peekSeq(3, out), "还没写到的 seq 不该取到");
+  CHECK(r.peekSeq(1, out) && r.size() == 2, "peekSeq 不该删元素");
+
+  // 回放窗口之外的陈货要能一次性丢掉（只挪下标，不搬数据）
+  static char storage5[6 * LogQueue::LOG_LINE_MAX];
+  LogQueue w;
+  w.attach(storage5, 6);
+  for (int i = 0; i < 6; i++) w.push(("L" + std::to_string(i)).c_str());
+  int d1 = w.dropBefore(4);
+  CHECK(d1 == 4, "应丢掉前 4 行，得到 %d", d1);
+  CHECK(w.size() == 2, "丢完应剩 2 行，得到 %d", w.size());
+  CHECK(w.headSeq() == 4, "丢完队首 seq 应为 4，得到 %llu", (unsigned long long)w.headSeq());
+  CHECK(w.dropBefore(4) == 0, "重复丢同一位置应返回 0");
+  CHECK(w.dropBefore(99) == 2, "丢到未来等于清空，应返回 2");
+  CHECK(w.size() == 0 && w.total() == 6, "清空后 size=0、total 不变");
+
+  // 没绑内存时一律安静失去功能，不能崩（malloc 失败的退化路径）
+  LogQueue dead;
+  dead.attach(nullptr, 0);
+  dead.push("x");
+  CHECK(!dead.ready() && dead.size() == 0 && !dead.pop(out), "没绑存储时应完全空转");
+}
+
+// ---- CMD_LOG_SUB 载荷解析 ----
+static void test_log_sub_parse() {
+  ProtoLogSub sub;
+  uint8_t p[3];
+
+  CHECK(!protoParseLogSub(nullptr, 0, sub), "空载荷应拒绝");
+  CHECK(!protoParseLogSub(p, 0, sub), "len=0 应拒绝");
+
+  p[0] = 0;
+  CHECK(protoParseLogSub(p, 1, sub) && sub.mode == 0, "mode=0 应通过");
+  p[0] = 1;
+  CHECK(protoParseLogSub(p, 1, sub) && sub.mode == 1 && sub.replay == 14,
+        "mode=1 不带行数时回放数应取默认 14，得到 %u", sub.replay);
+  p[0] = 2; p[1] = 32;
+  CHECK(protoParseLogSub(p, 2, sub) && sub.mode == 2 && sub.replay == 32,
+        "mode=2 应带回放行数，得到 %u", sub.replay);
+  p[0] = 2; p[1] = 0;
+  CHECK(protoParseLogSub(p, 2, sub) && sub.replay == 14, "回放 0 行按默认处理");
+  p[0] = 3;
+  CHECK(!protoParseLogSub(p, 1, sub), "未知 mode 应拒绝");
+  p[0] = 0xFF;
+  CHECK(!protoParseLogSub(p, 1, sub), "mode=0xFF 应拒绝");
+}
+
 int main() {
   test_nes_path();
   test_ble_chunk();
   test_proto_version_guard();
   test_drain_whole_frame();
   test_proto_from_text();
+  test_log_queue();
+  test_log_sub_parse();
   if (failures) {
     std::printf("\n%d 处失败\n", failures);
     return 1;

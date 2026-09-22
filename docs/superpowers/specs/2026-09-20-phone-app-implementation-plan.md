@@ -238,7 +238,65 @@ spec §8.7 原来写的是"手机转出的 `.gfr` 与 PC 助手输出一致"。*
 
 ---
 
-## 8. 需要你拍板
+## 8. 已拍板（2026-09-22）
+
+1. **`.gfr` 一致性**：同一套压缩 + 格式合法 + 体积不膨胀即可，不要求字节一致
+2. **首页结构**：底栏式
+3. **日志落盘**：要
+4. **浅色主题 / 英文**：不做
+5. **NES 只读列表**：不做
+
+---
+
+## 8b. M2-A 任务清单（2026-09-22 开工，当天完工）
+
+状态：**代码全部写完并通过能跑到的检查**；只剩"板子在手上"才能做的那两步（刷机 +
+手机上比对日志行）没做——当时板子没插。
+
+已跑过的证据（2026-09-22）：
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 固件编译 | `arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom` | 828902 B（4%），RAM 78352 B（23%） |
+| 固件纯逻辑主机测试 | `sh tools/host_tests/run.sh` | 全部通过（新增日志队列 29 条断言 + 订阅载荷 8 条） |
+| App 单测 | `gradle testDebugUnitTest` | **40/40 通过** |
+| App 打包 | `gradle assembleDebug` | `app-debug.apk`，用户自拷安装 |
+| 刷机 + 串口/App 逐行比对 | —— | **未做：板子没插** |
+
+固件（`esp32_170x320/`）：
+
+- **A1 ✅** `src/net/log_queue.h`：纯头文件环形队列，行宽 96、容量 256，满则丢最旧并计数；
+  带 `total()/headSeq()/peekSeq()` 支持"回放最近 N 行"。主机侧可测。
+- **A2 ✅** `src/net/proto.h`：加 `CMD_LOG_SUB (0x06)` / `CMD_LOG_EVT (0x86)` + 载荷解析函数。
+- **A3 ✅** 固件接线：`dbgPrintf` 同时入队；`CMD_LOG_SUB` 处理订阅（0 关 / 1 开 / 2 开+回放）；
+  `netTick` 每圈最多推 1 行；没有手机连着就自动退订。
+- **A4 ✅** 队列内存：优先 PSRAM（24 KB），失败退内部堆，再失败就禁用——绝不因为日志把固件搞崩。
+- **A5 ⏳** 主机测试覆盖队列与订阅载荷（✅ 已做）；编译 ✅；**刷机 + 串口/App 逐行一致待做**。
+
+App（`android_app/`）：
+
+- **A6 ✅** `Proto.kt`：同样两个命令码 + 日志事件解析（`LogCodec`）。
+- **A7 ✅** `DeviceClient`：非请求帧（seq 无 pending）分流成 `logs` / `frames` 两条流，别扔。
+- **A8 ✅** 帧监视器页：方向 / 时间 / cmd / seq / HEX / 展开看说明与文本。
+- **A9 ✅** 一键体检页：PING×20 的 min/avg/max、协商 MTU、INFO 分片数（估算）、
+  内部堆与 PSRAM 每 2 秒轮询 + 折线（进页面才开，离开即停）。
+- **A10 ✅** UI：底栏（首页 / 配置 / 诊断 / 关于）+ 关于页连点版本号 5 次才出现诊断；
+  解锁状态存进 Prefs，重启不用再点。配置页如实写"M2-B 未开工 + 将来搬什么"。
+- **A11 ✅** 日志落盘（`filesDir/logs/log-<时间>.log`，一次运行一个文件，只留最近 5 个会话）
+  + 导出走系统分享（FileProvider，不需要存储权限）。
+
+### 8b.1 实现期踩到的坑（留给以后）
+
+- `kotlinx-coroutines-test` 的 `advanceUntilIdle()` **不跑 `backgroundScope` 的任务**：
+  客户端那侧 collector 一直没订阅上，帧就被 `MutableSharedFlow`（无 replay）直接丢了。
+  测试里要先用 `runCurrent()`。真机上没这问题——collector 在连上之前早就订阅好了。
+- `LogQueue` 的行宽常量最初叫 `LINE_MAX`，**撞了系统宏**，改了名才编过（现名 `LOG_LINE_MAX`）。
+- Material3 的 `NavigationBar` 必须给图标，而这版不想为四个图标拉 `material-icons` 依赖，
+  底栏是自绘的（`AppShell.kt` 里的 `BottomBar`）。
+
+---
+
+## 9. 历史：当初需要拍板
 
 1. **`.gfr` 一致性**（§4.3）：我建议从"字节一致"降级成"格式合法 + 观感一致"
 2. **首页结构**：底栏 tab 还是列表式（我倾向底栏）

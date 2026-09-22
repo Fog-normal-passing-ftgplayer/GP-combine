@@ -25,12 +25,27 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
     private val _log = MutableSharedFlow<String>(extraBufferCapacity = 32)
     override val log: Flow<String> = _log.asSharedFlow()
 
+    private val _mtu = MutableStateFlow(0)
+    override val mtu: StateFlow<Int> = _mtu.asStateFlow()
+
     private var authed = false
+    private var logSub = false
+    private var fakeSeq = 0
 
     fun connect() {
         authed = false
+        logSub = false
+        _mtu.value = 247
         _state.value = BleState.CONNECTED
         _log.tryEmit("fake: connected")
+    }
+
+    /** 订阅之后假设备也要像真设备那样主动推日志，否则诊断页在假模式下是空的。 */
+    private fun fakeLog(line: String) {
+        if (!logSub) return
+        rx.trySend(
+            Frame(Proto.CMD_LOG_EVT, 0, byteArrayOf(0) + line.toByteArray(Charsets.UTF_8))
+        )
     }
 
     override suspend fun send(frame: ByteArray) {
@@ -50,15 +65,29 @@ class FakeTransport(private val pairCode: String = "280148") : BleTransport {
         Frame(Proto.CMD_ERR, seq, byteArrayOf(code.toByte()) + text.toByteArray())
 
     private fun reply(req: Frame): Frame = when {
-        req.cmd == Proto.CMD_PING -> Frame(Proto.CMD_PING, req.seq, req.payload)
-
         req.cmd == Proto.CMD_AUTH -> {
             val ok = String(req.payload, Charsets.US_ASCII) == pairCode
             if (ok) authed = true
             Frame(Proto.CMD_AUTH, req.seq, byteArrayOf(if (ok) 1 else 0))
         }
 
+        req.cmd == Proto.CMD_PING -> {          // 探活免认证，和固件一致
+            fakeSeq++
+            if (fakeSeq % 5 == 0) fakeLog("[fake] fps=42.0 heap_int=67056")
+            Frame(Proto.CMD_PING, req.seq, req.payload)
+        }
+
         !authed -> err(req.seq, Proto.ERR_NOT_AUTHED, "auth first")
+
+        req.cmd == Proto.CMD_LOG_SUB -> {
+            logSub = req.payload.isNotEmpty() && req.payload[0].toInt() != 0
+            if (logSub) {
+                // 回放：真设备会推最近 N 行，这里给两条固定样本
+                fakeLog("[fake] 这是回放的第 1 行")
+                fakeLog("[fake] 这是回放的第 2 行")
+            }
+            Frame(Proto.CMD_LOG_SUB, req.seq, byteArrayOf(1))
+        }
 
         req.cmd == Proto.CMD_INFO -> Frame(
             Proto.CMD_INFO, req.seq,

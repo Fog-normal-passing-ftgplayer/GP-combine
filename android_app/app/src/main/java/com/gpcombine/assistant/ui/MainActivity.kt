@@ -64,7 +64,9 @@ class MainActivity : ComponentActivity() {
                         factory = DeviceViewModel.factory(application, fakeMode),
                     )
                     val ui by vm.ui.collectAsStateWithLifecycle()
-                    ConnectScreen(
+                    // 底栏四格（首页 / 配置 / 诊断 / 关于）；诊断入口藏在关于页
+                    AppShell(
+                        vm = vm,
                         ui = ui,
                         onScan = vm::startScan,
                         onConnect = vm::connect,

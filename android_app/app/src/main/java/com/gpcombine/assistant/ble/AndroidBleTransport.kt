@@ -55,12 +55,16 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
     private val _log = MutableSharedFlow<String>(replay = 64, extraBufferCapacity = 64)
     override val log: Flow<String> = _log.asSharedFlow()
 
+    // 协商后的 MTU 存档一份给界面看（send 里的分片还是用下面那个快变量，走热路径不查 Flow）
+    private val _mtu = MutableStateFlow(0)
+    override val mtu: StateFlow<Int> = _mtu.asStateFlow()
+
     private val main = Handler(Looper.getMainLooper())
     private val discoveryStarted = AtomicBoolean(false)
 
     private var gatt: BluetoothGatt? = null
     private var rxChar: BluetoothGattCharacteristic? = null
-    private var mtu = 23
+    private var mtuValue = 23
     private var parser = FrameParser()
 
     private fun note(s: String) {
@@ -207,7 +211,8 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
         }
 
         override fun onMtuChanged(g: BluetoothGatt, newMtu: Int, status: Int) {
-            mtu = newMtu
+            mtuValue = newMtu
+            _mtu.value = newMtu
             note("mtu=$newMtu status=$status")
         }
 
@@ -248,8 +253,8 @@ class AndroidBleTransport(private val context: Context) : BleTransport {
     override suspend fun send(frame: ByteArray) {
         val g = gatt ?: error("还没连上设备")
         val ch = rxChar ?: error("还没发现 RX 特征")
-        val max = mtu - ATT_HEADER
-        require(frame.size <= max) { "一帧 ${frame.size} 字节超过 MTU $mtu 能带的 $max 字节" }
+        val max = mtuValue - ATT_HEADER
+        require(frame.size <= max) { "一帧 ${frame.size} 字节超过 MTU $mtuValue 能带的 $max 字节" }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(

@@ -86,7 +86,10 @@ class DeviceViewModel(app: Application, private val useFake: Boolean) : AndroidV
         viewModelScope.launch {
             transport.log.collect { line ->
                 _ui.update { it.copy(trace = (it.trace + line).takeLast(14)) }
-                logStore.append(LogFormat.line(LogLine(System.currentTimeMillis(), 0, "[stack] $line")))
+                val l = LogLine(System.currentTimeMillis(), 0, "[stack] $line")
+                // 也进日志页：屏幕上、文件里、时间顺序三边一致，出问题只翻一处
+                appendLog(l)
+                logStore.append(l)
             }
         }
 

@@ -82,11 +82,28 @@ fun ConnectScreen(
             }
         }
 
+        TraceBlock(ui.trace)
+
         // 没有板子时也能把整条状态机走通（假设备照抄固件的回包行为）
         if (ui.phase == Phase.IDLE) {
             Button(onClick = onFake, modifier = Modifier.padding(top = 8.dp)) {
                 Text("假设备模式")
             }
+        }
+    }
+}
+
+/**
+ * 蓝牙栈流水账。卡在"扫描中/通信中"时这是唯一能说明卡在哪一步的东西——
+ * 以前它只存在 ViewModel 里，界面上看不见（功能清单上写了其实没做）。
+ */
+@Composable
+private fun TraceBlock(trace: List<String>) {
+    if (trace.isEmpty()) return
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Text("蓝牙栈过程", style = MaterialTheme.typography.labelLarge)
+        trace.takeLast(8).forEach { line ->
+            Text("· $line", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

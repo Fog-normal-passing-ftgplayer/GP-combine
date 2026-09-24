@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 只暴露日志目录：导出走系统分享，不需要任何存储权限 -->
-<paths>
-    <files-path name="logs" path="logs/" />
-</paths>

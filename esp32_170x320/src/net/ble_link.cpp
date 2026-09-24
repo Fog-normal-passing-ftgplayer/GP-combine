@@ -159,20 +159,6 @@ void bleLinkDisconnectAll(void) {
   clients = (int)srv->getConnectedCount();
 }
 
-void bleLinkSetName(const char *deviceName) {
-  if (!inited || deviceName == nullptr) return;
-  NimBLEDevice::setDeviceName(deviceName);
-  NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
-  if (!adv) return;
-  // GAP 广播名是建广播时定下的，改完得重来一遍广播才生效。
-  // 只重启广播不碰连接：改名不该把正在配设置的手机踢掉。
-  bool wasAdv = adv->isAdvertising();
-  if (wasAdv) NimBLEDevice::stopAdvertising();
-  adv->setName(deviceName);
-  adv->enableScanResponse(true);
-  if (wasAdv) NimBLEDevice::startAdvertising();
-}
-
 void bleLinkClearSession(void) {
   bleLinkDisconnectAll();
   authed = false;

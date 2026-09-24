@@ -15,8 +15,6 @@ data class PairInfo(
     val btEnabled: Boolean,
     val clients: Int,
     val apEnabled: Boolean,
-    /** 协议栈此刻的状态：0 未启动 / 1 广播中 / 2 已连接。老固件没有这个字段就当 0。 */
-    val link: Int = 0,
 )
 
 /**
@@ -60,7 +58,6 @@ object InfoCodec {
             btEnabled = f.num("bt") != 0L,
             clients = f.num("clients").toInt(),
             apEnabled = f.num("ap") != 0L,
-            link = f["link"]?.toIntOrNull() ?: 0,
         )
     }
 }

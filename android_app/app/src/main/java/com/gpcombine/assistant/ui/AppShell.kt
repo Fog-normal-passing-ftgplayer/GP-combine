@@ -74,7 +74,6 @@ fun AppShell(
             BottomBar(tabs, tab) { next ->
                 // 离开配置页时把 debounce 里的最后一次改动送出去
                 if (tab == Tab.CONFIG && next != Tab.CONFIG) vm.configFlush()
-                if (tab == Tab.CONFIG && next != Tab.CONFIG) vm.ledFlush()
                 tab = next
             }
         },
@@ -84,7 +83,6 @@ fun AppShell(
                 Tab.HOME -> ConnectScreen(ui, onScan, onConnect, onCode, onFake)
                 Tab.CONFIG -> ConfigScreen(
                     state = cfgState,
-                    vm = vm,
                     onEdit = vm::configEdit,
                     onSave = vm::configSave,
                     onReset = vm::configReset,

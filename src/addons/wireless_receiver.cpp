@@ -40,19 +40,33 @@ void WirelessReceiverAddon::setup() {
     rxlt = 0; rxrt = 0;
     lastPacketTime = 0;
     lastRadioReinit = 0;
-    if (!paired) {
-        tud_disconnect(); // no gamepad identity until paired
-    }
+    // 注意：这里**不能**调 tud_disconnect()。addon setup 跑在 tud_init() 之前，
+    // 而 RP2040 的 dcd_disconnect() 会读写还处于复位状态的 usb_hw（硬件置位/清零别名
+    // 是读-改-写），总线会直接锁死 → 整机黑屏、USB 完全不出现。改到 preprocess() 里做。
+    usbHidden = false;
     radio.startListening();
 
 #if WIRELESS_RX_RGB_LED_PIN >= 0
     // RP2040-Zero 板载 WS2812 状态灯（pio1 空闲）
     rxNeo.Setup(WIRELESS_RX_RGB_LED_PIN, 1, LED_FORMAT_GRB, pio1, 0);
     rxNeo.Off();
+    // 开机三闪：证明"固件是 Zero 版 + 状态灯可用"，闪完才进入状态显示
+    for (int i = 0; i < 3; i++) {
+        rxNeoSetColor(80, 80, 80);
+        sleep_ms(80);
+        rxNeo.Off();
+        sleep_ms(120);
+    }
 #else
     gpio_init(WIRELESS_RX_LED_PIN);
     gpio_set_dir(WIRELESS_RX_LED_PIN, GPIO_OUT);
     gpio_put(WIRELESS_RX_LED_PIN, 0);
+    for (int i = 0; i < 3; i++) {
+        gpio_put(WIRELESS_RX_LED_PIN, 1);
+        sleep_ms(80);
+        gpio_put(WIRELESS_RX_LED_PIN, 0);
+        sleep_ms(120);
+    }
 #endif
     lastLedToggle = 0;
     ledOn = false;
@@ -114,6 +128,24 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
 }
 
 void WirelessReceiverAddon::preprocess() {
+    // 关键：addon 的 preprocess()/process() 在 GP2040::setup() 里
+    // （getButtonMappedBootAction）就会被调用一次，而那一次早于
+    // main.cpp 的 multicore_launch_core1() 和 run() 里的 tud_init()：
+    //   * 碰 usb_hw（tud_disconnect）会锁死 APB 总线
+    //   * 走配对 → save(true) → 50ms 后定时刷 flash → multicore_lockout 等 core1
+    //     → core1 还没启动，永久卡死（整机黑屏 + USB 消失）
+    // tud_inited() 为真 = 主循环已经跑起来，这一整套才是安全的。
+    if (!tud_inited()) {
+        return;
+    }
+    // 未配对时藏掉 USB 身份。注意 preprocess() 在 GP2040::setup() 的
+    // getButtonMappedBootAction() 里也会被调用一次，那次早于 tud_init()——
+    // 此时碰 usb_hw（dcd_disconnect 读写的是处于复位的 USB 控制器）会锁死总线，
+    // 表现为整机黑屏 + USB 完全不出现。必须等 tud_inited() 之后再调。
+    if (!paired && !usbHidden && tud_inited()) {
+        usbHidden = true;
+        tud_disconnect();
+    }
     uint8_t pkt[NRF24_PAYLOAD];
     bool got = false;
     while (radio.readPacket(pkt)) {
@@ -144,6 +176,7 @@ void WirelessReceiverAddon::preprocess() {
 
 void WirelessReceiverAddon::process() {
     uint32_t now = to_ms_since_boot(get_absolute_time());
+    bool packetsRecent = (now - lastPacketTime) < 1000;
 #if WIRELESS_RX_RGB_LED_PIN >= 0
     if (now - lastLedToggle >= (paired ? 5000 : 300)) {
         lastLedToggle = now;
@@ -152,7 +185,9 @@ void WirelessReceiverAddon::process() {
         } else {
             ledOn = !ledOn;
             if (ledOn) {
-                rxNeoSetColor(200, 0, 0);  // 未配对：红色闪烁
+                // 蓝色闪 = 收得到包但发送端一直在发 0xFF（没拿到 Pico 输入模式）
+                // 红色闪 = 一个包都收不到（射频/供电/接线）
+                rxNeoSetColor(packetsRecent ? 0 : 200, 0, packetsRecent ? 200 : 0);
             } else {
                 rxNeo.Off();
             }

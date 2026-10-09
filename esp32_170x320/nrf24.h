@@ -5,7 +5,7 @@
 // 固定信道/地址、2Mbps、auto-ACK、3 次快重试、静态 15 字节载荷、CRC 开启。
 
 #define NRF24_PAYLOAD 15
-#define NRF24_CHANNEL 100   // 2.500 GHz
+#define NRF24_CHANNEL 100   // 2.500 GHz（实测 110 丢包明显更多，退回 100）
 
 class NRF24 {
 public:
@@ -18,7 +18,9 @@ public:
     writeReg(0x01, 0x01);            // EN_AA: 仅 pipe0（auto-ack）
     writeReg(0x02, 0x01);            // EN_RXADDR: 仅 pipe0
     writeReg(0x03, 0x03);            // SETUP_AW: 5-byte addresses
-    writeReg(0x04, 0x13);            // SETUP_RETR: 250us, 3 retries
+    // SETUP_RETR: ARD=250us, ARC=1。发送端 1ms 心跳会立刻补发最新状态，
+    // 所以不需要 3 次重传 -> 丢包时白等的时间从 2ms 降到 ~0.5ms。
+    writeReg(0x04, 0x01);
     writeReg(0x05, NRF24_CHANNEL);   // RF_CH
     writeReg(0x06, 0x0E);            // RF_SETUP: 2Mbps, 0dBm
     static const uint8_t addr[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
@@ -30,7 +32,7 @@ public:
     delay(2);
   }
 
-  // TX with auto-ACK; blocks up to ~2ms; true = ACK received
+  // TX with auto-ACK; 失败最多阻塞 ~0.8ms；true = ACK received
   bool writePacket(const uint8_t *data) {
     writeReg(0x07, 0x70); // clear STATUS
     _spi->beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
@@ -39,11 +41,14 @@ public:
     csHigh(); _spi->endTransaction();
     digitalWrite(_ce, HIGH); delayMicroseconds(20); digitalWrite(_ce, LOW);
     unsigned long t = micros();
-    while (micros() - t < 2000) {
+    while (micros() - t < 800) {
       uint8_t st = readReg(0x07);
       if (st & 0x20) { writeReg(0x07, 0x20); return true; }  // TX_DS
       if (st & 0x10) { writeReg(0x07, 0x10); flushTx(); return false; } // MAX_RT
     }
+    // 超时也必须清干净：否则旧包留在 TX FIFO 里排队，下一包新状态要排在它后面。
+    writeReg(0x07, 0x10); // 清 MAX_RT
+    flushTx();
     return false;
   }
 

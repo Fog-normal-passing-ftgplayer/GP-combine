@@ -51,6 +51,7 @@ private:
     uint32_t lastLedToggle;
     uint32_t lastRadioReinit;
     bool ledOn;
+    bool usbHidden;
 };
 
 #endif

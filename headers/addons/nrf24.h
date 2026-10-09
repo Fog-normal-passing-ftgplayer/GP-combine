@@ -11,7 +11,7 @@
 #include <string.h>
 
 #define NRF24_PAYLOAD 15
-#define NRF24_CHANNEL 100 // 2.500 GHz, above the WiFi band
+#define NRF24_CHANNEL 100 // 2.500 GHz, above the WiFi band（实测 110 丢包更多）
 
 class NRF24 {
 public:

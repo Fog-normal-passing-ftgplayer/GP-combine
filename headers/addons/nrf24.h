@@ -10,8 +10,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#define NRF24_PAYLOAD 15
-#define NRF24_CHANNEL 100 // 2.500 GHz, above the WiFi band（实测 110 丢包更多）
+// 信道/地址/速率/CRC/载荷 全部来自共享文件，发送端（nrf24_common/nrf24_esp32.h）
+// 和诊断工具包含的是同一份 —— 以前两侧各写一份，诊断工具的参数跟生产完全不同
+// （FUSIO 地址 + 关 CRC + 信道 120），所谓「链路测试通过」从来没验证过真正的链路。
+#include "../../nrf24_common/nrf24_link_params.h"
 
 class NRF24 {
 public:
@@ -22,19 +24,21 @@ public:
     spi_init(_spi, 4000000);
     spi_set_format(_spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     sleep_ms(10);
-    writeReg(0x00, 0x00);            // power down
-    writeReg(0x01, 0x01);            // EN_AA: 仅 pipe0（auto-ack）
-    writeReg(0x02, 0x01);            // EN_RXADDR: 仅 pipe0
-    writeReg(0x03, 0x03);            // SETUP_AW: 5-byte addresses
-    writeReg(0x04, 0x13);            // SETUP_RETR: 250us, 3 retries
-    writeReg(0x05, NRF24_CHANNEL);   // RF_CH
-    writeReg(0x06, 0x0E);            // RF_SETUP: 2Mbps, 0dBm（已验证）
-    static const uint8_t addr[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
-    writeReg(0x10, addr, 5);         // TX_ADDR
-    writeReg(0x0A, addr, 5);         // RX_ADDR_P0 (auto-ack pipe)
-    writeReg(0x11, NRF24_PAYLOAD);   // RX_PW_P0
-    writeReg(0x07, 0x70);            // clear STATUS
-    writeReg(0x00, 0x0F);            // PWR_UP | PRIM_RX | 2字节CRC
+    writeReg(0x00, 0x00);                   // power down
+    writeReg(0x01, NRF24_REG_EN_AA);        // EN_AA: 仅 pipe0（auto-ack）
+    writeReg(0x02, NRF24_REG_EN_RXADDR);    // EN_RXADDR: 仅 pipe0
+    writeReg(0x03, NRF24_REG_SETUP_AW);     // SETUP_AW: 5-byte addresses
+    writeReg(0x04, NRF24_REG_SETUP_RETR);   // SETUP_RETR: ARD=250us(0000), ARC=3
+    writeReg(0x05, NRF24_CHANNEL);          // RF_CH
+    writeReg(0x06, NRF24_REG_RF_SETUP);     // RF_SETUP: 2Mbps, 0dBm
+    static const uint8_t addr[5] = NRF24_ADDR_INIT;
+    writeReg(0x10, addr, 5);                // TX_ADDR
+    writeReg(0x0A, addr, 5);                // RX_ADDR_P0 (auto-ack pipe)
+    writeReg(0x11, NRF24_PAYLOAD);          // RX_PW_P0
+    writeReg(0x07, NRF24_REG_STATUS_CLR);   // clear STATUS
+    writeReg(0x00, NRF24_REG_CONFIG_RX);    // PWR_UP | PRIM_RX | 2字节CRC
+    flushTx();                       // 上电/重 init 后 FIFO 里可能还留着残包
+    flushRx();
     gpio_put(_ce, 1);
     sleep_us(150);
   }
@@ -59,7 +63,8 @@ public:
 
   bool readPacket(uint8_t *data) {
     uint8_t st = readReg(0x07);
-    if (!(st & 0x40)) return false;
+    // RX_P_NO (bit3:1) = 0b111 表示 RX FIFO 空；只认 RX_DR 有可能读到空包
+    if (!(st & 0x40) || (st & 0x0E) == 0x0E) return false;
     writeReg(0x07, 0x40);
     gpio_put(_csn, 0);
     uint8_t cmd = 0x61; // R_RX_PAYLOAD
@@ -70,18 +75,18 @@ public:
   }
 
   void startListening() {
-    writeReg(0x00, 0x0F); // PWR_UP | PRIM_RX | 2字节CRC
+    writeReg(0x00, NRF24_REG_CONFIG_RX); // PWR_UP | PRIM_RX | 2字节CRC
     gpio_put(_ce, 1);
     busy_wait_us(130);
   }
 
   void powerUpTx() {
-    writeReg(0x00, 0x0E); // PWR_UP, PRIM_RX=0, 2字节CRC
+    writeReg(0x00, NRF24_REG_CONFIG_TX); // PWR_UP, PRIM_RX=0, 2字节CRC
     gpio_put(_ce, 0);
     busy_wait_us(130);
   }
 
-  void powerUp() { writeReg(0x00, 0x0E); }
+  void powerUp() { writeReg(0x00, NRF24_REG_CONFIG_TX); }
   void powerDown() { writeReg(0x00, 0x00); }
   void setChannel(uint8_t ch) { writeReg(0x05, ch); }
   void setRfConfig(bool rate2M, uint8_t pwrCode) {
@@ -113,12 +118,13 @@ private:
     gpio_put(_csn, 1);
     return out[1];
   }
-  void flushTx() {
-    uint8_t cmd = 0xE1;
+  void flushCmd(uint8_t cmd) {
     gpio_put(_csn, 0);
     spi_write_blocking(_spi, &cmd, 1);
     gpio_put(_csn, 1);
   }
+  void flushTx() { flushCmd(0xE1); }   // FLUSH_TX
+  void flushRx() { flushCmd(0xE2); }   // FLUSH_RX
 };
 
 #endif

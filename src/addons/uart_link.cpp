@@ -76,6 +76,7 @@ void UARTLinkAddon::setup() {
         rxCrcLo = 0;
         rxLedState = false;
         lastAckTime = 0;
+        configLedOff = get_absolute_time();   // 已过期 = 不占用指示灯
         espCfgValid = espCfgRead();
         initialized = true;
     }
@@ -236,11 +237,12 @@ void UARTLinkAddon::onLedConfigFrame(uint8_t *payload, uint8_t len) {
 
 void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
     if (len < 5) return;
-    // solid LED ~0.8s: visible proof the config frame was received
+    // 收到配置帧亮灯 0.8s 做提示。原来是 busy_wait_us(800000)：主循环整整停
+    // 0.8 秒，既不发输入帧也不跑 tud_task()，接收端这 0.8 秒收到的是冻结的旧
+    // 输入——看起来就是无线断了。改成记截止时刻，由 postprocess() 关灯。
     if (UART_LINK_LED_PIN >= 0) {
         gpio_put(UART_LINK_LED_PIN, 1);
-        busy_wait_us(800000);
-        gpio_put(UART_LINK_LED_PIN, 0);
+        configLedOff = make_timeout_time_ms(800);
     }
     GamepadOptions &options = Storage::getInstance().getGamepadOptions();
     uint8_t inputMode = payload[0];
@@ -379,8 +381,9 @@ void UARTLinkAddon::postprocess(bool sent) {
         if (battMv > UART_LINK_USB_MV) battFlags |= 0x02;
     }
     // keep the link LED solid while ACKs keep arriving, off after 500ms silence
+    // 配置帧提示灯的常亮优先（见 onConfigFrame）
     if (UART_LINK_LED_PIN >= 0) {
-        bool on = (now - lastAckTime < 500);
+        bool on = !time_reached(configLedOff) || (now - lastAckTime < 500);
         if (on != rxLedState) {
             rxLedState = on;
             gpio_put(UART_LINK_LED_PIN, on);

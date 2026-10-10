@@ -347,6 +347,12 @@ SPIClass nrfSpi(HSPI);
 #define NRF_CSN 14
 #define NRF_CE  15
 volatile bool radioUp = false;
+// nRF24 的 SPI 访问锁：核0 的发送任务每毫秒就在收发，核1 的 loop() 里改无线
+// 设置（applyWirelessSettings / 重新配对）也会写寄存器。不加锁会把一次寄存器
+// 写撕成两半，可能把模块写进 power-down 或写坏 RF_CH，链路就断到 500 次失败
+// 看门狗才救回来——表现就是“时连时断”。原来只在发送函数内部加锁，菜单那条
+// 路径是裸的。
+SemaphoreHandle_t radioMx = nullptr;
 uint8_t radioSeq = 0;
 // link quality: ACK results over the last 100 packets
 volatile uint8_t radioHist[100];
@@ -1603,12 +1609,16 @@ void applyHistSettings() {
 // ---- wireless settings (nRF24 on the ESP32) ----
 void applyWirelessSettings() {
   radioUp = wlOpts[0].value != 0;
+  // 这条路径跑在核1 的 loop()（菜单 / 开机读配置），必须和核0 的发送任务共用
+  // radioMx，否则寄存器写会被发送中的 SPI 事务撕开。
+  if (radioMx) xSemaphoreTake(radioMx, portMAX_DELAY);
   if (radioUp) {
     radio.powerUp();
     radio.setChannel(NRF24_CHANNEL);   // 与接收端一致：固定信道
   } else {
     radio.powerDown();
   }
+  if (radioMx) xSemaphoreGive(radioMx);
   redrawNeeded = true;
 }
 
@@ -1960,6 +1970,24 @@ uint8_t rxPayload[24];
 uint16_t rxCrcCalc = 0;
 uint8_t rxCrcLo = 0;
 
+// ---- UART 链路：拆帧搬到独立任务，输入不再被屏幕渲染拖住 ----
+// 之前的坑：发包任务搬到了核0，可是 UART 的「收字节 + 解析」还留在 loop() 里，
+// 而 loop() 渲染一帧要十几毫秒（实测只有 15-30 次/秒），所以 lastButtons 最快
+// 也要 30-60ms 才更新一次 —— 发包再快发出去的也是旧输入。
+// 现在分两条路：
+//   linkTask（核0）   : 只收字节、拆帧。收到输入帧立刻写 tx*（radioTask 直读）
+//   loop()（渲染任务）: 从队列里取帧跑原来的 UI 逻辑（菜单/屏保/灯效），保持单线程
+struct LinkFrame { uint8_t type; uint8_t len; uint8_t payload[24]; };
+static QueueHandle_t linkQ = nullptr;
+static TaskHandle_t linkTaskH = nullptr;   // 收帧任务（UART 事件回调踹它）
+static TaskHandle_t radioTaskH = nullptr;  // 心跳发包任务
+
+// 无线发送专用：Pico 最新的输入状态（volatile，radioTask 读）
+volatile uint16_t txButtons = 0;
+volatile uint8_t  txDpad = 0;
+volatile uint16_t txLX = 0x8000, txLY = 0x8000, txRX = 0x8000, txRY = 0x8000;
+volatile uint8_t  txLT = 0, txRT = 0;
+
 void sendAck() {
   uint8_t frame[7];
   frame[0] = FRAME_MAGIC;
@@ -2270,7 +2298,9 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   redrawNeeded = true;
                 }
                 else if (subPage == 5 && subSel == 1) { // 无线 > 重新配对
+                  if (radioMx) xSemaphoreTake(radioMx, portMAX_DELAY);
                   radio.resetLink();
+                  if (radioMx) xSemaphoreGive(radioMx);
                   savedFlashUntil = millis() + 1200;
                 }
               }
@@ -2355,53 +2385,103 @@ void onStatusFrame(uint8_t *payload, uint8_t len) {
   }
 }
 
-// 无线发送任务：跑在另一个核，每 2ms 发一包，与屏幕渲染解耦，保证低延迟
-void radioTask(void *) {
-  uint32_t failCount = 0;
-  for (;;) {
-    if (radioUp) {
-      // 菜单打开时无线也发空输入，接收端同样“停止输入”
-      bool menuMute = (view != VIEW_LAYOUT);
-      uint16_t wBtns = menuMute ? 0 : lastButtons;
-      uint8_t wDpad = menuMute ? 0 : lastDpad;
-      uint16_t wLX = menuMute ? 0x8000 : lastLX;
-      uint16_t wLY = menuMute ? 0x8000 : lastLY;
-      uint16_t wRX = menuMute ? 0x8000 : lastRX;
-      uint16_t wRY = menuMute ? 0x8000 : lastRY;
-      uint8_t wLT = menuMute ? 0 : lastLT;
-      uint8_t wRT = menuMute ? 0 : lastRT;
-      uint8_t pkt[15];
-      pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
-      pkt[1] = radioSeq++;
-      pkt[2] = wBtns & 0xFF;
-      pkt[3] = wBtns >> 8;
-      pkt[4] = wDpad;
-      pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
-      pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
-      pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
-      pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
-      pkt[13] = wLT;
-      pkt[14] = wRT;
-      bool acked = radio.writePacket(pkt);
-      if (radioHist[radioHistIdx]) radioHistOk--;
-      radioHist[radioHistIdx] = acked ? 1 : 0;
-      if (acked) radioHistOk++;
-      radioHistIdx = (radioHistIdx + 1) % 100;
-      radioLinked = (radioHistOk >= 10);
-      if (acked) {
-        failCount = 0;
-      } else {
-        failCount++;
-        if (failCount > 500) { // 连续失败看门狗：重新初始化模块
-          radio.begin(nrfSpi, NRF_CSN, NRF_CE);
-          radioUp = true;
-          failCount = 0;
-          for (int i = 0; i < 100; i++) radioHist[i] = 0;
-          radioHistOk = 0;
-        }
-      }
+// 无线发送：组包 + 发一包。心跳（radioTask）和「收到输入帧直发」（linkTask）共走这里，
+// 用一把互斥锁保证没有两个任务同时碰 SPI/CE（radioMx 在文件上方声明，核1 的
+// 菜单路径 applyWirelessSettings / 重新配对 也要用它）。
+static uint32_t radioFailCount = 0;
+
+// tryLock=true（linkTask 直发时用）：抢不到锁直接放弃，别阻塞收帧任务——
+// radioTask 本来就在转，下一包（≤1ms）自然会把最新 tx* 带出去。
+static void radioSendNow(bool tryLock = false) {
+  if (!radioUp) return;
+  if (radioMx) {
+    if (tryLock) {
+      if (xSemaphoreTake(radioMx, 0) != pdTRUE) return;
+    } else {
+      xSemaphoreTake(radioMx, portMAX_DELAY);
     }
-    vTaskDelay(2 / portTICK_PERIOD_MS);
+  }
+  // 菜单打开时无线也发空输入，接收端同样“停止输入”
+  bool menuMute = (view != VIEW_LAYOUT);
+  // 读 tx*（linkTask 收到 UART 输入帧就写），不是 lastButtons —— 后者只在
+  // 渲染循环里更新，一帧十几毫秒，发出去就慢了。
+  uint16_t wBtns = menuMute ? 0 : txButtons;
+  uint8_t wDpad = menuMute ? 0 : txDpad;
+  uint16_t wLX = menuMute ? 0x8000 : txLX;
+  uint16_t wLY = menuMute ? 0x8000 : txLY;
+  uint16_t wRX = menuMute ? 0x8000 : txRX;
+  uint16_t wRY = menuMute ? 0x8000 : txRY;
+  uint8_t wLT = menuMute ? 0 : txLT;
+  uint8_t wRT = menuMute ? 0 : txRT;
+  uint8_t pkt[15];
+  pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
+  pkt[1] = radioSeq++;
+  pkt[2] = wBtns & 0xFF;
+  pkt[3] = wBtns >> 8;
+  pkt[4] = wDpad;
+  pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
+  pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
+  pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
+  pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
+  pkt[13] = wLT;
+  pkt[14] = wRT;
+  bool sent = radio.writePacket(pkt);
+  if (radioHist[radioHistIdx]) radioHistOk--;
+  radioHist[radioHistIdx] = sent ? 1 : 0;
+  if (sent) radioHistOk++;
+  radioHistIdx = (radioHistIdx + 1) % 100;
+  radioLinked = (radioHistOk >= 10);
+  if (sent) {
+    radioFailCount = 0;
+  } else {
+    radioFailCount++;
+    if (radioFailCount > 500) { // 连续失败看门狗：重新初始化模块
+      radio.begin(nrfSpi, NRF_CSN, NRF_CE);
+      radioUp = true;
+      radioFailCount = 0;
+      for (int i = 0; i < 100; i++) radioHist[i] = 0;
+      radioHistOk = 0;
+    }
+  }
+  if (radioMx) xSemaphoreGive(radioMx);
+}
+
+// 心跳任务：输入没变时也维持链路，1ms 一发，带的都是最新 tx*。
+// 收到输入帧那一下由 linkTask 直接调 radioSendNow()，不再绕一次任务唤醒+调度。
+void radioTask(void *) {
+  for (;;) {
+    radioSendNow(true);
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+  }
+}
+
+// linkTask 里调用：一帧 CRC 校验通过
+static void linkPublishFrame(uint8_t type, const uint8_t *payload, uint8_t len) {
+  if (type == FRAME_TYPE_INPUT && len >= 3) {
+    // 直通给无线：这里更新，紧接着就在本函数末尾发出去
+    txButtons = (uint16_t)(payload[0] | ((uint16_t)payload[1] << 8));
+    txDpad = payload[2];
+    if (len >= 13) {
+      txLX = (uint16_t)(payload[3] | ((uint16_t)payload[4] << 8));
+      txLY = (uint16_t)(payload[5] | ((uint16_t)payload[6] << 8));
+      txRX = (uint16_t)(payload[7] | ((uint16_t)payload[8] << 8));
+      txRY = (uint16_t)(payload[9] | ((uint16_t)payload[10] << 8));
+      txLT = payload[11];
+      txRT = payload[12];
+    }
+    // 收到输入帧直接在这一刻把包发出去：不再 xTaskNotifyGive 绕一次
+    // 任务唤醒+调度（省掉 ~0.3~0.5ms）。radioTask 只负责 1ms 心跳补发。
+    radioSendNow();
+  }
+  if (!linkQ) return;
+  LinkFrame f;
+  f.type = type;
+  f.len = (len > sizeof(f.payload)) ? (uint8_t)sizeof(f.payload) : len;
+  memcpy(f.payload, payload, f.len);
+  if (xQueueSend(linkQ, &f, 0) != pdTRUE) { // UI 落后就丢最旧的一帧，输入本身已直通
+    LinkFrame drop;
+    xQueueReceive(linkQ, &drop, 0);
+    xQueueSend(linkQ, &f, 0);
   }
 }
 
@@ -2439,16 +2519,39 @@ void handleRxByte(uint8_t b) {
     case 6:
       if (b == (uint8_t)(rxCrcCalc >> 8) &&
           rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF)) {
-        if (rxType == FRAME_TYPE_INPUT) onInputFrame(rxPayload, rxLen);
-        else if (rxType == FRAME_TYPE_STATUS) onStatusFrame(rxPayload, rxLen);
-        else if (rxType == FRAME_TYPE_CONFIG_ACK) {
-          configAcked = true;
-          savedFlashUntil = millis() + 1200;
-        }
-        else if (rxType == FRAME_TYPE_ESP_LOAD) applyEspCfg(rxPayload, rxLen);
+        linkPublishFrame(rxType, rxPayload, rxLen);
       }
       rxState = 0;
       break;
+  }
+}
+
+// loop()（渲染任务）里消费：原来 handleRxByte 里的那套派发，保持单线程不并发
+static void dispatchLinkFrame(uint8_t type, const uint8_t *payload, uint8_t len) {
+  if (type == FRAME_TYPE_INPUT) onInputFrame((uint8_t *)payload, len);
+  else if (type == FRAME_TYPE_STATUS) onStatusFrame((uint8_t *)payload, len);
+  else if (type == FRAME_TYPE_CONFIG_ACK) {
+    configAcked = true;
+    savedFlashUntil = millis() + 1200;
+  }
+  else if (type == FRAME_TYPE_ESP_LOAD) applyEspCfg((uint8_t *)payload, len);
+}
+
+// UART 事件回调（跑在 Arduino 的 uart_event_task 里，不是中断上下文）：
+// 收到数据就踹一下收帧任务。串口驱动的 RX 超时是 1 个符号（@921600 约 12us），
+// 所以一帧的最后一字节进来后十几微秒就会回调，比原来 1ms 轮询快一个数量级。
+static void linkRxNotify() {
+  if (linkTaskH) xTaskNotifyGive(linkTaskH);
+}
+
+// 收帧任务：只做收字节 + 拆帧，正常情况下被事件唤醒，1ms 兜底
+void linkTask(void *) {
+  for (;;) {
+    while (Serial.available()) {
+      int c = Serial.read();
+      if (c >= 0) handleRxByte((uint8_t)c);
+    }
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1)); // 事件唤醒；没人叫就 1ms 兜底
   }
 }
 
@@ -2472,15 +2575,22 @@ void setup(){
   nrfSpi.begin(16, 18, 17, -1); // SCK, MISO, MOSI (CSN/CE managed by driver)
   radio.begin(nrfSpi, NRF_CSN, NRF_CE);
   radioUp = true;  // 初版行为：无线默认开启
-  xTaskCreatePinnedToCore(radioTask, "radio", 4096, NULL, 1, NULL, 0); // 发送跑在核0
+  radioMx = xSemaphoreCreateMutex();   // 必须在建任务之前：applyWirelessSettings 要用
+  linkQ = xQueueCreate(16, sizeof(LinkFrame));
+  // 收帧任务优先于发包任务：到了就先拆出来，等 loop 有空再跑 UI 逻辑
+  xTaskCreatePinnedToCore(linkTask, "link", 4096, NULL, 3, &linkTaskH, 0);
+  xTaskCreatePinnedToCore(radioTask, "radio", 4096, NULL, 1, &radioTaskH, 0); // 发送跑在核0
+  // 让收帧任务被 UART 事件叫醒（而不是死等 1ms 轮询）
+  Serial.onReceive(linkRxNotify);
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
   gifInit();              // GIF 源：卡内 /wp/1.gfr 优先，否则内置 gif_user.h
 }
 
 void loop(){
-  while (Serial.available()) {
-    handleRxByte((uint8_t)Serial.read());
+  // 收字节/拆帧在 linkTask 里做（不能在这里：渲染一帧十几毫秒会把无线输入拖旧）
+  for (LinkFrame f; linkQ && xQueueReceive(linkQ, &f, 0) == pdTRUE; ) {
+    dispatchLinkFrame(f.type, f.payload, f.len);
   }
   // 开机从 Pico 回读 ESP32 侧设置（Pico flash 断电保持；与 web config 并存互不影响）
   if (!espCfgLoaded && millis() - espLoadReqLast >= 500) {

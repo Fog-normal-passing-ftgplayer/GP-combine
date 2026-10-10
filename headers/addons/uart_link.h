@@ -95,6 +95,7 @@ private:
     uint8_t rxCrcLo;
     bool rxLedState;
     uint32_t lastAckTime;
+    absolute_time_t configLedOff;   // 收到配置帧后的常亮截止时刻（非阻塞）
     uint8_t espCfg[16] = {0};
     bool espCfgValid = false;
     volatile bool espCfgWritePending = false;

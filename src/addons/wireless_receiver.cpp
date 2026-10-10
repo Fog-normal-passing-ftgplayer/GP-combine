@@ -40,6 +40,8 @@ void WirelessReceiverAddon::setup() {
     rxlt = 0; rxrt = 0;
     lastPacketTime = 0;
     lastRadioReinit = 0;
+    pendingMode = 0;
+    pendingModeCount = 0;
     // 注意：这里**不能**调 tud_disconnect()。addon setup 跑在 tud_init() 之前，
     // 而 RP2040 的 dcd_disconnect() 会读写还处于复位状态的 usb_hw（硬件置位/清零别名
     // 是读-改-写），总线会直接锁死 → 整机黑屏、USB 完全不出现。改到 preprocess() 里做。
@@ -95,25 +97,31 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
         return;
     }
 
-    if (!paired) {
-        // first valid packet: pair, remember the mode, reboot into it
-        opts.wirelessPaired = true;
-        paired = true;
-        opts.inputMode = (InputMode)mode;
-        Storage::getInstance().save(true);
-        sleep_ms(400); // let the deferred flash write finish
-        System::reboot(System::BootMode::DEFAULT);
+    // 配对 / 切模式都要写 flash + 重启。链路抖一下就可能收到一个模式字节不对的包，
+    // 收到就立刻重启会让手柄在 PC 上反复消失/出现（时连时断），所以两种动作都要求
+    // 连续 WIRELESS_MODE_CONFIRM_PACKETS 个包报同一个模式才真的执行。
+    if (!paired || mode != (uint8_t)opts.inputMode) {
+        if (mode == pendingMode) {
+            if (pendingModeCount < WIRELESS_MODE_CONFIRM_PACKETS) pendingModeCount++;
+        } else {
+            pendingMode = mode;
+            pendingModeCount = 1;
+        }
+        if (pendingModeCount >= WIRELESS_MODE_CONFIRM_PACKETS) {
+            if (!paired) {
+                // first valid packet: pair, remember the mode, reboot into it
+                opts.wirelessPaired = true;
+                paired = true;
+            }
+            // sender switched input mode: reboot into the new mode
+            opts.inputMode = (InputMode)mode;
+            Storage::getInstance().save(true);
+            sleep_ms(400); // let the deferred flash write finish
+            System::reboot(System::BootMode::DEFAULT);
+        }
         return;
     }
-
-    if (mode != (uint8_t)opts.inputMode) {
-        // sender switched input mode: reboot into the new mode
-        opts.inputMode = (InputMode)mode;
-        Storage::getInstance().save(true);
-        sleep_ms(400);
-        System::reboot(System::BootMode::DEFAULT);
-        return;
-    }
+    pendingModeCount = 0; // 模式一致：清掉待确认计数
 
     // cache the received state
     rxButtons = pkt[2] | ((uint16_t)pkt[3] << 8);

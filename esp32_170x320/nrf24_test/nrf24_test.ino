@@ -3,6 +3,10 @@
 #include <string.h>
 #include "driver/usb_serial_jtag.h"
 
+// 寄存器 dump / 发射测试都用生产参数，避免"测试通过但正式链路是坏的"
+// （原来这里写死 0x3F/0x03/0x15/信道120，与正式驱动完全不同）。
+#include "../../nrf24_common/nrf24_link_params.h"
+
 #define NRF_CSN 14
 #define NRF_CE  15
 #define NRF_SCK 16
@@ -47,6 +51,15 @@ static void writeReg(uint8_t reg, uint8_t val) {
   nrfSpi.endTransaction();
 }
 
+static void writeRegs(uint8_t reg, const uint8_t *d, uint8_t n) {
+  nrfSpi.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
+  csLow();
+  nrfSpi.transfer(0x20 | reg);
+  for (uint8_t i = 0; i < n; i++) nrfSpi.transfer(d[i]);
+  csHigh();
+  nrfSpi.endTransaction();
+}
+
 static void runTest() {
   // 1) STATUS：真模块空闲通常是 0x0E；悬空/坏模块会读到 0x00 或 0xFF
   jtagHex("STATUS  ", readReg(0x07));
@@ -59,13 +72,19 @@ static void runTest() {
   delay(1);
   jtagHex("CONFIG wr00", readReg(0x00));
 
-  // 3) 像驱动一样初始化并读回关键寄存器
-  writeReg(0x01, 0x3F);
-  writeReg(0x02, 0x03);
-  writeReg(0x03, 0x03);
-  writeReg(0x04, 0x15);
-  writeReg(0x05, 120);
-  writeReg(0x06, 0x0E);
+  // 3) 像驱动一样初始化并读回关键寄存器。
+  //    参数来自 nrf24_common/nrf24_link_params.h（= 生产配置）：
+  //    以前这里写的是 0x3F / 0x03 / 0x15 / 信道 120，跟正式驱动完全不同。
+  writeReg(0x01, NRF24_REG_EN_AA);
+  writeReg(0x02, NRF24_REG_EN_RXADDR);
+  writeReg(0x03, NRF24_REG_SETUP_AW);
+  writeReg(0x04, NRF24_REG_SETUP_RETR);
+  writeReg(0x05, NRF24_CHANNEL);
+  writeReg(0x06, NRF24_REG_RF_SETUP);
+  static const uint8_t addr[5] = NRF24_ADDR_INIT;
+  writeRegs(0x10, addr, 5);   // TX_ADDR
+  writeRegs(0x0A, addr, 5);   // RX_ADDR_P0（ACK 收在这条管道上）
+  writeReg(0x11, NRF24_PAYLOAD);
   jtagHex("EN_AA   ", readReg(0x01));
   jtagHex("EN_RXADDR", readReg(0x02));
   jtagHex("SETUP_AW", readReg(0x03));
@@ -73,14 +92,14 @@ static void runTest() {
   jtagHex("RF_CH   ", readReg(0x05));
   jtagHex("RF_SETUP", readReg(0x06));
 
-  // 4) 发射 15 字节（信道 120），看 TX_DS / MAX_RT
-  writeReg(0x00, 0x02);   // PWR_UP
+  // 4) 发射一个生产格式的包（生产信道/地址/2 字节 CRC），看 TX_DS / MAX_RT
+  writeReg(0x00, NRF24_REG_CONFIG_TX);   // PWR_UP + EN_CRC + 2字节 CRC
   delay(2);
-  writeReg(0x07, 0x70);   // 清 STATUS
+  writeReg(0x07, NRF24_REG_STATUS_CLR);  // 清 STATUS
   nrfSpi.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
   csLow();
   nrfSpi.transfer(0xA0);  // W_TX_PAYLOAD
-  for (int i = 0; i < 15; i++) nrfSpi.transfer(0xAA);
+  for (int i = 0; i < NRF24_PAYLOAD; i++) nrfSpi.transfer(0xAA);
   csHigh();
   nrfSpi.endTransaction();
   digitalWrite(NRF_CE, HIGH);

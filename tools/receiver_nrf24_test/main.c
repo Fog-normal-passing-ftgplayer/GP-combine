@@ -5,6 +5,9 @@
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
 
+// 参数来自唯一来源，与两端驱动一致
+#include "../../nrf24_common/nrf24_link_params.h"
+
 #define CSN   5
 #define CE    6
 #define SCK   2
@@ -31,6 +34,20 @@ static void write_reg(uint8_t reg, uint8_t val) {
     cs_high();
 }
 
+static void write_regs(uint8_t reg, const uint8_t *d, uint8_t n) {
+    uint8_t cmd = 0x20 | reg;
+    cs_low();
+    spi_write_blocking(spi0, &cmd, 1);
+    spi_write_blocking(spi0, d, n);
+    cs_high();
+}
+
+static void flush_cmd(uint8_t cmd) {
+    cs_low();
+    spi_write_blocking(spi0, &cmd, 1);
+    cs_high();
+}
+
 static void run_test(void) {
     printf("STATUS   0x%02X\r\n", read_reg(0x07));
 
@@ -41,12 +58,17 @@ static void run_test(void) {
     sleep_ms(1);
     printf("CONFIG wr00 0x%02X\r\n", read_reg(0x00));
 
-    write_reg(0x01, 0x3F);
-    write_reg(0x02, 0x03);
-    write_reg(0x03, 0x03);
-    write_reg(0x04, 0x15);
-    write_reg(0x05, 120);
-    write_reg(0x06, 0x0E);
+    // 用生产配置（原值 0x3F/0x03/0x15/信道120 与正式驱动完全不同）
+    write_reg(0x01, NRF24_REG_EN_AA);
+    write_reg(0x02, NRF24_REG_EN_RXADDR);
+    write_reg(0x03, NRF24_REG_SETUP_AW);
+    write_reg(0x04, NRF24_REG_SETUP_RETR);
+    write_reg(0x05, NRF24_CHANNEL);
+    write_reg(0x06, NRF24_REG_RF_SETUP);
+    static const uint8_t addr[5] = NRF24_ADDR_INIT;
+    write_regs(0x10, addr, 5);   // TX_ADDR
+    write_regs(0x0A, addr, 5);   // RX_ADDR_P0（ACK 收在这条管道上）
+    write_reg(0x11, NRF24_PAYLOAD);
     printf("EN_AA    0x%02X\r\n", read_reg(0x01));
     printf("EN_RXADDR 0x%02X\r\n", read_reg(0x02));
     printf("SETUP_AW 0x%02X\r\n", read_reg(0x03));
@@ -54,12 +76,14 @@ static void run_test(void) {
     printf("RF_CH    0x%02X\r\n", read_reg(0x05));
     printf("RF_SETUP 0x%02X\r\n", read_reg(0x06));
 
-    // 发射 15 字节（信道 120），看 TX_DS / MAX_RT
-    write_reg(0x00, 0x02);
+    // 发射一个生产格式的包（生产信道/地址/2 字节 CRC），看 TX_DS / MAX_RT
+    write_reg(0x00, NRF24_REG_CONFIG_TX);
     sleep_ms(2);
-    write_reg(0x07, 0x70);
+    write_reg(0x07, NRF24_REG_STATUS_CLR);
+    flush_cmd(0xE1);
+    flush_cmd(0xE2);
     uint8_t cmd = 0xA0;
-    uint8_t payload[15];
+    uint8_t payload[NRF24_PAYLOAD];
     memset(payload, 0xAA, sizeof(payload));
     cs_low();
     spi_write_blocking(spi0, &cmd, 1);

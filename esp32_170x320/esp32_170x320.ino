@@ -465,6 +465,12 @@ SPIClass nrfSpi(HSPI);
 #define NRF_CSN 14
 #define NRF_CE  15
 volatile bool radioUp = false;
+// nRF24 的 SPI 访问锁：核0 的发送任务每毫秒就在收发，核1 的 loop() 里改无线
+// 设置（applyWirelessSettings / 重新配对）也会写寄存器。不加锁会把一次寄存器
+// 写撕成两半，可能把模块写进 power-down 或写坏 RF_CH，链路就断到 500 次失败
+// 看门狗才救回来——表现就是“时连时断”。原来只在发送函数内部加锁，菜单那条
+// 路径是裸的。
+SemaphoreHandle_t radioMx = nullptr;
 uint8_t radioSeq = 0;
 // link quality: ACK results over the last 100 packets
 volatile uint8_t radioHist[100];
@@ -1904,12 +1910,16 @@ void applyHistSettings() {
 // ---- wireless settings (nRF24 on the ESP32) ----
 void applyWirelessSettings() {
   radioUp = wlOpts[0].value != 0;
+  // 这条路径跑在核1 的 loop()（菜单 / 开机读配置），必须和核0 的发送任务共用
+  // radioMx，否则寄存器写会被发送中的 SPI 事务撕开。
+  if (radioMx) xSemaphoreTake(radioMx, portMAX_DELAY);
   if (radioUp) {
     radio.powerUp();
     radio.setChannel(NRF24_CHANNEL);   // 与接收端一致：固定信道
   } else {
     radio.powerDown();
   }
+  if (radioMx) xSemaphoreGive(radioMx);
   redrawNeeded = true;
 }
 
@@ -2650,7 +2660,9 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   redrawNeeded = true;
                 }
                 else if (subPage == 5 && subSel == 1) { // 无线 > 重新配对
+                  if (radioMx) xSemaphoreTake(radioMx, portMAX_DELAY);
                   radio.resetLink();
+                  if (radioMx) xSemaphoreGive(radioMx);
                   savedFlashUntil = millis() + 1200;
                 }
               }
@@ -2736,8 +2748,8 @@ void onStatusFrame(uint8_t *payload, uint8_t len) {
 }
 
 // 无线发送：组包 + 发一包。心跳（radioTask）和「收到输入帧直发」（linkTask）共走这里，
-// 用一把互斥锁保证没有两个任务同时碰 SPI/CE。
-static SemaphoreHandle_t radioMx = nullptr;
+// 用一把互斥锁保证没有两个任务同时碰 SPI/CE（radioMx 在文件上方声明，核1 的
+// 菜单路径 applyWirelessSettings / 重新配对 也要用它）。
 static uint32_t radioFailCount = 0;
 
 // tryLock=true（linkTask 直发时用）：抢不到锁直接放弃，别阻塞收帧任务——

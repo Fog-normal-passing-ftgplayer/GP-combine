@@ -25,9 +25,11 @@ class LayoutCanvas(QWidget):
         self,
         parent: QWidget | None = None,
         logical_size: tuple[int, int] = (240, 135),
+        status_h: int = 0,
     ) -> None:
         super().__init__(parent)
         self._lw, self._lh = logical_size
+        self._status_h = max(0, int(status_h))
         self.setMinimumSize(self._lw * 2, self._lh * 2)
         self.layout_data: Layout = Layout.preset()
         self.sel_group: str = GROUP_MOVE
@@ -113,7 +115,8 @@ class LayoutCanvas(QWidget):
             lv = self.layout_data.lever
             margin = 2
             x = max(lv.ring + margin, min(self._lw - 1 - lv.ring - margin, x))
-            y = max(lv.ring + margin, min(self._lh - 1 - lv.ring - margin, y))
+            low = max(lv.ring + margin, self._status_h + lv.ring)
+            y = max(low, min(self._lh - 1 - lv.ring - margin, y))
             lv.x, lv.y = x, y
             self.lever_moved.emit(x, y)
             self.update()
@@ -123,7 +126,8 @@ class LayoutCanvas(QWidget):
             return
         b = items[idx]
         x = max(b.r + 1, min(self._lw - 1 - b.r, x))
-        y = max(b.r + 1, min(self._lh - 1 - b.r, y))
+        low = max(b.r + 1, self._status_h + b.r)
+        y = max(low, min(self._lh - 1 - b.r, y))
         b.x, b.y = x, y
         self.item_moved.emit(group, idx, x, y)
         self.update()
@@ -151,6 +155,10 @@ class LayoutCanvas(QWidget):
         painter.save()
         painter.translate(ox, oy)
         painter.scale(s, s)
+
+        if self._status_h > 0:
+            painter.setPen(QPen(QColor(90, 70, 40), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(0, self._status_h, self._lw, self._status_h)
 
         if self._show_lever():
             self._draw_lever(painter)

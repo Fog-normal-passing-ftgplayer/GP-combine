@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import statistics
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -27,15 +28,21 @@ from ..app_config import (
     screen_dims,
 )
 from ..defaults_header import write_defaults_header
-from ..lite_layout_header import write_lite_layout_header
+from ..lite_layout_header import (
+    generate_lite_layout_header,
+    write_lite_layout_header,
+)
 from ..layout_header import write_layout_header
 from ..layout_model import (
     GROUP_CLUSTER,
     GROUP_LEVER,
     GROUP_MOVE,
+    LITE_SCREEN,
+    LITE_STATUS_H,
     Btn,
     Layout,
     find_free_spot,
+    sanitize_layout,
 )
 from ..wizard_state import WizardState
 from .add_button_dialog import AddButtonDialog
@@ -86,18 +93,33 @@ class LayoutPage(QWidget):
         default_row.addWidget(hint2)
         left.addLayout(default_row)
 
+        lw, lh, status_h = self._dims()
+
         toolbar = QHBoxLayout()
         self.lever_check = QCheckBox("显示街机摇杆")
         self.lever_check.toggled.connect(self._on_lever_toggled)
         toolbar.addWidget(self.lever_check)
+        toolbar.addSpacing(12)
+        toolbar.addWidget(QLabel("全局大小"))
+        self.global_size = QSlider(Qt.Orientation.Horizontal)
+        self.global_size.setMinimumWidth(110)
+        self.global_size.setRange(3, max(3, self._global_r_max()))
+        self.global_size.valueChanged.connect(self._on_global_size_preview)
+        self.global_size.sliderReleased.connect(self._on_global_size_committed)
+        toolbar.addWidget(self.global_size, 1)
+        self.global_size_value = QLabel("--")
+        self.global_size_value.setMinimumWidth(28)
+        toolbar.addWidget(self.global_size_value)
+        self.lever_scale_check = QCheckBox("同时缩放摇杆")
+        self.lever_scale_check.setChecked(True)
+        toolbar.addWidget(self.lever_scale_check)
         toolbar.addStretch(1)
         self.reset_btn = QPushButton("恢复默认")
         self.reset_btn.clicked.connect(self.reset_defaults)
         toolbar.addWidget(self.reset_btn)
         left.addLayout(toolbar)
 
-        lw, lh = (128, 64) if self.lite else screen_dims(self.state.screen_res)
-        self.canvas = LayoutCanvas(logical_size=(lw, lh))
+        self.canvas = LayoutCanvas(logical_size=(lw, lh), status_h=status_h)
         self.canvas.item_moved.connect(self._on_item_moved)
         self.canvas.lever_moved.connect(self._on_lever_moved)
         self.canvas.item_selected.connect(self._on_item_selected)
@@ -140,7 +162,7 @@ class LayoutPage(QWidget):
         xy_row.addWidget(self.x_spin)
         xy_row.addWidget(QLabel("Y"))
         self.y_spin = QSpinBox()
-        self.y_spin.setRange(1, lh - 1)
+        self.y_spin.setRange((LITE_STATUS_H + 1) if self.lite else 1, lh - 1)
         self.y_spin.valueChanged.connect(self._on_y_changed)
         xy_row.addWidget(self.y_spin)
         right_l.addLayout(xy_row)
@@ -205,25 +227,69 @@ class LayoutPage(QWidget):
     # ---------- 状态 ----------
 
     def _sync_from_state(self) -> None:
-        if not self.lite and self.state.screen_res == "170x320":
-            lay = self.state.layout
-            pts = ([b.x for b in lay.move + lay.cluster]
-                   + [lay.lever.x if lay.show_lever else 0])
-            if any(x > 319 for x in pts):
-                self.state.layout = Layout.preset_170x320()
+        # 载入时统一夹取：越界按键直接拉回屏内（旧状态文件/换屏都会踩到）
+        w, h, sh = self._dims()
+        fixed = sanitize_layout(self._layout(), w, h, status_h=sh)
         self.canvas.set_layout(self._layout())
         self._set_combo_by_data(self.default_combo, self.state.default_layout)
         self.lever_check.blockSignals(True)
         self.lever_check.setChecked(self._layout().show_lever)
         self.lever_check.blockSignals(False)
         self.canvas.set_selection(GROUP_MOVE, 0)
+        self._sync_global_slider()
         self._refresh_panel()
+        if fixed:
+            # 内存修好了但固件头文件还是旧的：立刻按修好的布局重写一份
+            self._write_and_save()
+        elif self.lite:
+            # Lite 的头文件完全由助手生成：若磁盘上和当前布局对不上（例如旧版本
+            # 写进去的 240x135 越界坐标），打开页面就顺手补写一份正确的。
+            out = self._lite_header_path()
+            cur = ""
+            if out is not None and out.exists():
+                try:
+                    cur = out.read_text(encoding="utf-8")
+                except Exception:
+                    cur = ""
+            if out is not None and cur != generate_lite_layout_header(self._layout()):
+                self._write_and_save()
+
+    def _lite_header_path(self) -> Path | None:
+        if not self.state.lite_source_dir:
+            return None
+        return Path(self.state.lite_source_dir) / "configs" / "GPFusionLite" / "layout_user.h"
 
     def reload_state(self) -> None:
         self._sync_from_state()
 
     def _layout(self) -> Layout:
         return self.state.lite_layout if self.lite else self.state.layout
+
+    def _dims(self) -> tuple[int, int, int]:
+        """返回 (宽, 高, 状态栏高度)，用于夹取/画布/滑条上限。"""
+        if self.lite:
+            return LITE_SCREEN[0], LITE_SCREEN[1], LITE_STATUS_H
+        w, h = screen_dims(self.state.screen_res)
+        return w, h, 0
+
+    def _all_btns(self) -> list[Btn]:
+        lay = self._layout()
+        return list(lay.move) + list(lay.cluster)
+
+    def _global_r_max(self) -> int:
+        w, h, sh = self._dims()
+        hard = max(3, min((w - 2) // 2, (h - 2) // 2, (h - 1 - sh) // 2))
+        return max(3, min(40, hard))   # 40 与右侧「环半径」上限对齐，别把按键吹成巨无霸
+
+    def _sync_global_slider(self) -> None:
+        rs = [b.r for b in self._all_btns()]
+        val = int(statistics.median(rs)) if rs else (6 if self.lite else 13)
+        val = max(self.global_size.minimum(), min(self.global_size.maximum(), val))
+        self.global_size.blockSignals(True)
+        self.global_size.setValue(val)
+        self.global_size.blockSignals(False)
+        self._global_size_cur = val
+        self.global_size_value.setText(str(val))
 
     @staticmethod
     def _set_combo_by_data(combo: QComboBox, value: int) -> None:
@@ -418,6 +484,26 @@ class LayoutPage(QWidget):
         self.canvas.update()
         self._write_and_save()
 
+    def _on_global_size_preview(self, value: int) -> None:
+        delta = value - getattr(self, "_global_size_cur", value)
+        self._global_size_cur = value
+        self.global_size_value.setText(str(value))
+        if delta:
+            r_max = self._global_r_max()
+            for b in self._all_btns():
+                b.r = max(3, min(r_max, b.r + delta))
+            if self.lever_scale_check.isChecked() and self._layout().show_lever:
+                lv = self._layout().lever
+                lv.ring = max(3, min(r_max, lv.ring + delta))
+                lv.knob = max(1, min(lv.ring - 1, lv.knob + delta))
+        w, h, sh = self._dims()
+        sanitize_layout(self._layout(), w, h, status_h=sh)
+        self.canvas.update()
+        self._refresh_panel()
+
+    def _on_global_size_committed(self) -> None:
+        self._write_and_save()
+
     # ---------- 增删按键 ----------
 
     def _add_button(self) -> None:
@@ -436,6 +522,7 @@ class LayoutPage(QWidget):
             GROUP_CLUSTER, len(self._layout().cluster) - 1
         )
         self.canvas.update()
+        self._sync_global_slider()
         self._refresh_panel()
         self._write_and_save()
 
@@ -463,6 +550,7 @@ class LayoutPage(QWidget):
         else:
             self.canvas.sel_index = 0
         self.canvas.update()
+        self._sync_global_slider()
         self._refresh_panel()
         self._write_and_save()
         self.status_label.setText("已删除 %s" % removed.label)
@@ -472,7 +560,7 @@ class LayoutPage(QWidget):
 
     def reset_defaults(self) -> None:
         if self.lite:
-            self.state.lite_layout = Layout.preset()
+            self.state.lite_layout = Layout.lite_preset()
         elif self.state.screen_res == "170x320":
             self.state.layout = Layout.preset_170x320()
         else:
@@ -482,11 +570,15 @@ class LayoutPage(QWidget):
         self.lever_check.setChecked(False)
         self.lever_check.blockSignals(False)
         self.canvas.set_selection(GROUP_MOVE, 0)
+        self._sync_global_slider()
         self._refresh_panel()
         self.canvas.update()
         self._write_and_save()
 
     def _write_and_save(self) -> None:
+        # 写头文件前再夹一次：拖到边缘/放大后越界的按键会被拉回屏内
+        w, h, sh = self._dims()
+        fixed = sanitize_layout(self._layout(), w, h, status_h=sh)
         self.state.save()
         src = self.state.lite_source_dir if self.lite else self.state.source_dir
         if not src:
@@ -495,12 +587,13 @@ class LayoutPage(QWidget):
             return
         try:
             if self.lite:
-                out = Path(src) / "configs" / "GPFusionLite" / "layout_user.h"
+                out = self._lite_header_path()
                 write_lite_layout_header(self._layout(), out)
             else:
                 out = local_layout_header(Path(src), self.state.screen_res)
                 write_layout_header(self._layout(), out)
-            self.status_label.setText("✔ 已实时写入 %s" % out)
+            note = "（已修正 %d 个越界按键）" % fixed if fixed else ""
+            self.status_label.setText("✔ 已实时写入 %s%s" % (out, note))
             self.status_label.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
         except Exception as exc:  # noqa: BLE001

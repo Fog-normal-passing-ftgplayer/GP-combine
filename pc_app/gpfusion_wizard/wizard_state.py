@@ -6,8 +6,14 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from .app_config import state_file
-from .layout_model import Layout, fit_layout_to_screen
+from .app_config import screen_dims, state_file
+from .layout_model import (
+    LITE_SCREEN,
+    LITE_STATUS_H,
+    Layout,
+    fit_layout_to_screen,
+    sanitize_layout,
+)
 
 
 @dataclass
@@ -90,6 +96,11 @@ class WizardState:
         else:
             # 旧配置没有 lite_layout：用正式版布局适配一份到 128x64
             s.lite_layout = fit_layout_to_screen(s.layout)
+        # 最后统一夹一遍屏幕范围：越界坐标在固件上是直接画不出来的
+        sw, sh = screen_dims(s.screen_res)
+        fixed = sanitize_layout(s.lite_layout, *LITE_SCREEN, status_h=LITE_STATUS_H)
+        fixed += sanitize_layout(s.layout, sw, sh)
+        s._repaired = fixed   # load() 用它决定要不要把修好的状态回写文件
         return s
 
     def save(self) -> None:
@@ -106,7 +117,11 @@ class WizardState:
     def load(cls) -> "WizardState":
         try:
             if state_file().exists():
-                return cls.from_dict(json.loads(state_file().read_text(encoding="utf-8")))
+                st = cls.from_dict(json.loads(state_file().read_text(encoding="utf-8")))
+                if getattr(st, "_repaired", 0):
+                    # 内存里已经夹好了，文件里还是旧坐标：立刻回写，避免两边不一致
+                    st.save()
+                return st
         except Exception:
             pass
         return cls()

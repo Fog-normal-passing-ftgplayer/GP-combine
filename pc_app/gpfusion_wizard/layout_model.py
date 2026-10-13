@@ -87,6 +87,33 @@ class Layout:
         return cls(move=move, cluster=cluster,
                    lever=Lever(x=51, y=101, ring=22, knob=7))
 
+    @classmethod
+    def lite_preset(cls) -> "Layout":
+        """Lite（128x64 屏，顶部 8px 状态栏）默认布局。
+
+        坐标就是屏幕像素、1:1 写进固件头文件，不能再拿 240x135 的预设直接塞进来
+        （以前「恢复默认」就是这么干的，128x64 屏上一半按键画不出来）。
+        左侧十字方向键（开摇杆时会被摇杆顶掉）+ 右侧 2x4 功能键。
+        """
+        move = [
+            Btn(0x01, 20, 21, 7, False, "U", True),
+            Btn(0x04, 9, 36, 7, False, "L", True),
+            Btn(0x08, 31, 36, 7, False, "R", True),
+            Btn(0x02, 20, 51, 7, False, "D", True),
+        ]
+        cluster = [
+            Btn(0x0004, 57, 21, 6, False, "B3", False),
+            Btn(0x0008, 73, 21, 6, False, "B4", False),
+            Btn(0x0020, 89, 21, 6, False, "R1", False),
+            Btn(0x0010, 105, 21, 6, False, "L1", False),
+            Btn(0x0001, 57, 41, 6, False, "B1", False),
+            Btn(0x0002, 73, 41, 6, False, "B2", False),
+            Btn(0x0080, 89, 41, 6, False, "R2", False),
+            Btn(0x0040, 105, 41, 6, False, "L2", False),
+        ]
+        return cls(move=move, cluster=cluster,
+                   lever=Lever(x=20, y=36, ring=11, knob=4))
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "move": [asdict(b) for b in self.move],
@@ -245,3 +272,53 @@ def find_free_spot(layout: Layout, width: int = 240, height: int = 135) -> tuple
             if all((x - ox) ** 2 + (y - oy) ** 2 > 24 ** 2 for ox, oy in occupied):
                 return x, y
     return xs[0] if xs else 8, ys[0] if ys else 16
+
+
+# Lite 固件屏幕（configs/GPFusionLite/lite_display.h -> 0.96" 128x64），
+# 顶部 8px 让给状态栏文字（模式/D-Pad/SOCD），按键只能画在它下面。
+LITE_SCREEN: tuple[int, int] = (128, 64)
+LITE_STATUS_H: int = 8
+
+
+def sanitize_layout(
+    layout: Layout,
+    width: int,
+    height: int,
+    status_h: int = 0,
+    min_r: int = 3,
+) -> int:
+    """把所有元素夹进目标屏幕，返回被修正的元素个数（原地修改）。
+
+    固件是 1:1 按坐标画的：越界的按键在屏上直接消失、在画布上也抓不到，
+    所以写头文件之前必须过一遍这里。
+    """
+    fixed = 0
+    # 半径上限要保证 [r+1, 屏边-r] 区间非空，同时不压到顶部状态栏，
+    # 否则大半径会把圆心顶出屏（夹取区间反了）。
+    r_max = max(
+        min_r,
+        min((width - 2) // 2, (height - 2) // 2, (height - 1 - status_h) // 2),
+    )
+
+    def clamp_btn(b: Btn) -> None:
+        nonlocal fixed
+        r = max(min_r, min(r_max, int(b.r)))
+        x = max(r + 1, min(width - 1 - r, int(b.x)))
+        y = max(max(r + 1, status_h + r), min(height - 1 - r, int(b.y)))
+        if (r, x, y) != (int(b.r), int(b.x), int(b.y)):
+            b.r, b.x, b.y = r, x, y
+            fixed += 1
+
+    for b in list(layout.move) + list(layout.cluster):
+        clamp_btn(b)
+
+    if layout.show_lever:
+        lv = layout.lever
+        knob = max(1, min(max(1, r_max - 1), int(lv.knob)))
+        ring = max(knob + 1, min(max(knob + 1, r_max), int(lv.ring)))
+        x = max(ring + 1, min(width - 1 - ring, int(lv.x)))
+        y = max(max(ring + 1, status_h + ring), min(height - 1 - ring, int(lv.y)))
+        if (knob, ring, x, y) != (int(lv.knob), int(lv.ring), int(lv.x), int(lv.y)):
+            lv.knob, lv.ring, lv.x, lv.y = knob, ring, x, y
+            fixed += 1
+    return fixed

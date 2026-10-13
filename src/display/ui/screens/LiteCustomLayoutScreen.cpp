@@ -145,9 +145,12 @@ void LiteCustomLayoutScreen::drawScreen() {
         R->drawText(0, 0, status, 0);
     }
 
+    // 开摇杆时移动键让位给摇杆（和配置助手画布一致），否则两套一起画会重影
+#if !LITE_USER_SHOW_LEVER
     for (const LiteLayoutBtn& b : LITE_USER_MOVE) {
         drawLiteBtn(R, b, (b.dpad ? (d & b.mask) : (btns & b.mask)) != 0);
     }
+#endif
     for (const LiteLayoutBtn& b : LITE_USER_CLUSTER) {
         drawLiteBtn(R, b, (b.dpad ? (d & b.mask) : (btns & b.mask)) != 0);
     }

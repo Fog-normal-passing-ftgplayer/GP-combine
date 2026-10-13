@@ -610,12 +610,19 @@ std::string getProfileOptions()
 
     ProfileOptions& profileOptions = Storage::getInstance().getProfileOptions();
 
+    // 防御：count 来自持久化配置，越界会让循环读到数组外的内存并把 JSON 撑爆
+    const size_t maxSets = sizeof(profileOptions.gpioMappingsSets) / sizeof(profileOptions.gpioMappingsSets[0]);
+    size_t setCount = profileOptions.gpioMappingsSets_count;
+    if (setCount > maxSets) {
+        setCount = maxSets;
+    }
+
     // return an empty list if no profiles are currently set, since we no longer populate by default
-    if (profileOptions.gpioMappingsSets_count == 0) {
+    if (setCount == 0) {
         doc.createNestedArray("alternativePinMappings");
     }
 
-    for (int i = 0; i < profileOptions.gpioMappingsSets_count; i++) {
+    for (size_t i = 0; i < setCount; i++) {
         // this looks duplicative, but something in arduinojson treats the doc
         // field string by reference so you can't be "clever" and do an snprintf
         // thing or else you only send the last field in the JSON
@@ -653,7 +660,13 @@ std::string getProfileOptions()
         doc["alternativePinMappings"][i]["enabled"] = profileOptions.gpioMappingsSets[i].enabled;
     }
 
-    return serialize_json(doc);
+    // JSON 池分配失败时 ArduinoJson 会输出 null，前端拿到 undefined 会一直卡在加载
+    // （见 www/src/Store/useProfilesStore.ts 的 fetchProfiles），这里兜底成空数组。
+    std::string out = serialize_json(doc);
+    if (out.empty() || out == "null") {
+        return "{\"alternativePinMappings\":[]}";
+    }
+    return out;
 }
 
 std::string setGamepadOptions()

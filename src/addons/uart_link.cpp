@@ -9,6 +9,7 @@
 #include "hardware/flash.h"
 #include "pico/multicore.h"
 #include "pico/time.h"
+#include "hardware/sync.h"
 #include "CRC32.h"
 
 bool UARTLinkAddon::inputMuted = false;
@@ -90,31 +91,39 @@ bool UARTLinkAddon::espCfgRead() {
     return true;
 }
 
-static int64_t espCfgWriteAlarm(alarm_id_t id, void *user_data) {
-    (void)id;
-    UARTLinkAddon *addon = static_cast<UARTLinkAddon *>(user_data);
-    addon->espCfgCommitNow();
-    return 0;
-}
-
+// 真正落盘。必须在“另一核已 lockout + 本核中断已关”的窗口里擦写：
+// flash 操作期间 XIP 关闭，此时任何 flash 里的中断处理函数都会 hard fault。
+// 以前这里是 alarm 回调，只 lockout 没关中断 —— 靠“所有 IRQ 同优先级”侥幸没炸，
+// 一旦有驱动调高优先级（或换 RP2350）就会在保存设置时挂死。
 void UARTLinkAddon::espCfgCommitNow() {
+    // core1 还没 launch 时 lockout 会永久等待（FlashPROM 里踩过），先确认再动手。
+    if (!multicore_lockout_victim_is_initialized(1)) {
+        espCfgWriteDue = make_timeout_time_ms(50);
+        return;
+    }
+
     EspCfgBlock blk;
     blk.magic = ESP_CFG_MAGIC;
     blk.crc = CRC32::calculate(espCfg, 16);
     memcpy(blk.data, espCfg, 16);
 
     multicore_lockout_start_blocking();
+    uint32_t interrupts = save_and_disable_interrupts();
     flash_range_erase(ESP_CFG_FLASH_OFF, FLASH_SECTOR_SIZE);
-    flash_range_program(ESP_CFG_FLASH_OFF, reinterpret_cast<uint8_t *>(&blk), FLASH_PAGE_SIZE);
+    flash_range_program(ESP_CFG_FLASH_OFF, reinterpret_cast<const uint8_t *>(&blk), FLASH_PAGE_SIZE);
+    // 顺序和 FlashPROM 一致：先解除 lockout，再恢复中断。
+    // 反过来会在“中断已开、lockout 还在”的窗口里被 FlashPROM 的 alarm 抢占，
+    // 造成嵌套 lockout。
     multicore_lockout_end_blocking();
+    restore_interrupts(interrupts);
 
     espCfgWritePending = false;
 }
 
 void UARTLinkAddon::espCfgScheduleWrite() {
-    if (espCfgWritePending) return;
+    if (espCfgWritePending) return;   // 60ms 内的连续保存合并成一次
     espCfgWritePending = true;
-    add_alarm_in_ms(60, espCfgWriteAlarm, this, true);
+    espCfgWriteDue = make_timeout_time_ms(60);
 }
 
 void UARTLinkAddon::sendEspConfigFrame(bool ok, const uint8_t *data) {
@@ -285,6 +294,9 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
                     (uint16_t)a2.rainbowCycleTime, (uint16_t)a2.flowCycleTime,
                     l2.turnOffWhenSuspended ? 0x01 : 0, battMv, battFlags);
     if (inputChanged) {
+        // 重启前把还没落盘的 ESP 镜像写完，否则 Pico flash 里留下旧镜像，
+        // 下次开机会被 ESP32 当成“权威配置”覆盖掉刚存的设置在 LittleFS 里的值。
+        if (espCfgWritePending) espCfgCommitNow();
         // FlashPROM::commit() defers the real flash write to a 50ms alarm;
         // give it time to finish before rebooting, otherwise the config is lost
         sleep_ms(400);
@@ -362,10 +374,42 @@ void UARTLinkAddon::process() {
     while (uart_is_readable(uart0)) {
         handleRxByte((uint8_t)uart_getc(uart0));
     }
+
+    // 输入帧放在 process()（gamepad->process() 之后、驱动发 USB 报告之前）发：
+    // 原来在 postprocess()，要等 tud_task()/USB 处理完才发，白等一个周期。
+    // 这里 GetGamepad() 的 state 已经过 MPGS，且 UARTLink 排在 Turbo/Macro 之后，
+    // 与原来 GetProcessedGamepad() 看到的是同一份数据。
+    Gamepad* g = Storage::getInstance().GetGamepad();
+    if (g == nullptr) return;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint16_t buttons = (uint16_t)(g->state.buttons & 0xFFFF);
+    uint8_t dpad = (uint8_t)g->state.dpad;
+    uint16_t lx = (uint16_t)g->state.lx, ly = (uint16_t)g->state.ly;
+    uint16_t rx = (uint16_t)g->state.rx, ry = (uint16_t)g->state.ry;
+    uint8_t lt = (uint8_t)g->state.lt, rt = (uint8_t)g->state.rt;
+    // 摇杆 ADC 的 1LSB 抖动会让“任意变化”每圈都成立，把 921600 的 UART 打满；
+    // UART 一满，ESP32 的 linkTask 就没有空闲、发包任务被饿死（实测 +2ms）。
+    // 数字量（按键/十字键）仍然立即发；只有模拟量限到 1ms 一帧。
+    bool digitalChanged = (buttons != lastButtons || dpad != lastDpad);
+    bool analogChanged = (lx != lastLx || ly != lastLy || rx != lastRx || ry != lastRy ||
+                          lt != lastLt || rt != lastRt);
+    if (digitalChanged || (analogChanged && now - lastSent >= 1) || now - lastSent >= 50) {
+        sendInputFrame(buttons, dpad, lx, ly, rx, ry, lt, rt);
+        lastButtons = buttons;
+        lastDpad = dpad;
+        lastLx = lx; lastLy = ly; lastRx = rx; lastRy = ry;
+        lastLt = lt; lastRt = rt;
+        lastSent = now;
+    }
 }
 
 void UARTLinkAddon::postprocess(bool sent) {
     if (!initialized) return;
+    // 放在 postprocess（tud_task 之后）落盘：擦写期间主循环会停 ~50ms，
+    // 此时本帧 USB 报告已经发出去，对有线输入的影响最小。
+    if (espCfgWritePending && time_reached(espCfgWriteDue)) {
+        espCfgCommitNow();
+    }
     uint32_t now = to_ms_since_boot(get_absolute_time());
     // sample battery (VSYS/3 on GPIO29) and USB VBUS (GPIO24) every 500ms
     if (now - lastBattSample >= 500) {
@@ -388,25 +432,6 @@ void UARTLinkAddon::postprocess(bool sent) {
             rxLedState = on;
             gpio_put(UART_LINK_LED_PIN, on);
         }
-    }
-
-    Gamepad* g = Storage::getInstance().GetProcessedGamepad();
-    if (g == nullptr) return;
-
-    uint16_t buttons = (uint16_t)(g->state.buttons & 0xFFFF);
-    uint8_t dpad = (uint8_t)g->state.dpad;
-    uint16_t lx = (uint16_t)g->state.lx, ly = (uint16_t)g->state.ly;
-    uint16_t rx = (uint16_t)g->state.rx, ry = (uint16_t)g->state.ry;
-    uint8_t lt = (uint8_t)g->state.lt, rt = (uint8_t)g->state.rt;
-    if (buttons != lastButtons || dpad != lastDpad ||
-        lx != lastLx || ly != lastLy || rx != lastRx || ry != lastRy ||
-        lt != lastLt || rt != lastRt || now - lastSent >= 50) {
-        sendInputFrame(buttons, dpad, lx, ly, rx, ry, lt, rt);
-        lastButtons = buttons;
-        lastDpad = dpad;
-        lastLx = lx; lastLy = ly; lastRx = rx; lastRy = ry;
-        lastLt = lt; lastRt = rt;
-        lastSent = now;
     }
 
     // report current mode status on change + 1s heartbeat so the ESP32 UI

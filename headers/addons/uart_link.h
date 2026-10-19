@@ -51,9 +51,9 @@ public:
     virtual void postprocess(bool sent);
     virtual std::string name() { return "UARTLinkAddon"; }
     virtual void reinit() {}
-    void espCfgCommitNow();   // 供 flash 写入定时回调调用
     static bool isInputMuted() { return inputMuted; }
 private:
+    void espCfgCommitNow();   // 主循环里真正写 flash（不再借 alarm 中断）
     void sendInputFrame(uint16_t buttons, uint8_t dpad,
                         uint16_t lx, uint16_t ly, uint16_t rx, uint16_t ry,
                         uint8_t lt, uint8_t rt);
@@ -99,6 +99,7 @@ private:
     uint8_t espCfg[16] = {0};
     bool espCfgValid = false;
     volatile bool espCfgWritePending = false;
+    absolute_time_t espCfgWriteDue;   // 合并 60ms 内的多次保存，到点由主循环落盘
     static bool inputMuted;
 };
 

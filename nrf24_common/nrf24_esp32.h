@@ -65,9 +65,18 @@ public:
     unsigned long t = micros();
     while (micros() - t < NRF24_TX_WINDOW_US) {
       uint8_t st = readReg(0x07);
-      if (st & 0x20) { writeReg(0x07, 0x20); return true; }  // TX_DS
-      if (st & 0x10) { resetLink(); return false; }          // MAX_RT
+      if (st & 0x20) {                                       // TX_DS
+        _lastArc = readReg(0x08) & 0x0F;                     // OBSERVE_TX.ARC_CNT
+        writeReg(0x07, 0x20);
+        return true;
+      }
+      if (st & 0x10) {                                       // MAX_RT
+        _lastArc = readReg(0x08) & 0x0F;
+        resetLink();
+        return false;
+      }
     }
+    _lastArc = readReg(0x08) & 0x0F;
     resetLink();   // 超时：射频可能还在重传，STATUS 与 TX FIFO 都要清干净
     return false;
   }
@@ -95,6 +104,9 @@ public:
   void powerUp() { writeReg(0x00, NRF24_REG_CONFIG_TX); }
   void powerDown() { writeReg(0x00, 0x00); }
 
+  // 上一包的重传次数（OBSERVE_TX.ARC_CNT），用于链路质量统计。
+  uint8_t lastArc() const { return _lastArc; }
+
   // 清 STATUS（RX_DR/TX_DS/MAX_RT）+ 清 TX FIFO。菜单里的「重新配对」也用它。
   void resetLink() {
     writeReg(0x07, NRF24_REG_STATUS_CLR);
@@ -104,6 +116,7 @@ public:
 private:
   SPIClass *_spi;
   int _csn, _ce;
+  uint8_t _lastArc = 0;
   void csLow() { digitalWrite(_csn, LOW); }
   void csHigh() { digitalWrite(_csn, HIGH); }
   void writeReg(uint8_t reg, uint8_t val) {

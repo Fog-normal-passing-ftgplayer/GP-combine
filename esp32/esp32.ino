@@ -346,6 +346,9 @@ NRF24 radio;
 SPIClass nrfSpi(HSPI);
 #define NRF_CSN 14
 #define NRF_CE  15
+// 诊断模式：USB 串口打印重传/发送耗时；同时关闭 Pico 链路接收，
+// 避免插电脑时 CH343 的 TX 和 Pico 的 TX 对推产生乱帧。测完改回 0。
+#define RADIO_DEBUG_SERIAL 0
 volatile bool radioUp = false;
 // nRF24 的 SPI 访问锁：核0 的发送任务每毫秒就在收发，核1 的 loop() 里改无线
 // 设置（applyWirelessSettings / 重新配对）也会写寄存器。不加锁会把一次寄存器
@@ -359,6 +362,10 @@ volatile uint8_t radioHist[100];
 uint8_t radioHistIdx = 0;
 volatile uint8_t radioHistOk = 0;
 volatile bool radioLinked = false;
+volatile uint32_t radioLastWriteUs = 0;   // 最近一次 writePacket 耗时(us)
+volatile uint32_t radioLastInputUs = 0;   // linkTask 收到输入帧到发包完成(us)
+// 最近 200 包的平均重传次数 ×10（OBSERVE_TX.ARC_CNT），菜单里显示 R 值
+volatile uint8_t radioAvgArc10 = 0;
 // full gamepad state received from the Pico over UART
 volatile uint16_t lastLX = 0x8000, lastLY = 0x8000, lastRX = 0x8000, lastRY = 0x8000;
 volatile uint8_t lastLT = 0, lastRT = 0;
@@ -1328,9 +1335,11 @@ void renderSub() {
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
       if (radioUp && radioLinked) {
-        snprintf(lb, sizeof(lb), "已连接 %d%%", radioHistOk);
+        snprintf(lb, sizeof(lb), "已连接%d%% R%d.%d", radioHistOk,
+                 radioAvgArc10 / 10, radioAvgArc10 % 10);
       } else {
-        snprintf(lb, sizeof(lb), "断链");
+        snprintf(lb, sizeof(lb), "断链 R%d.%d",
+                 radioAvgArc10 / 10, radioAvgArc10 % 10);
       }
       drawCJKText(226 - cjkTextWidth(lb, 1), 5, lb,
                   radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
@@ -2425,7 +2434,17 @@ static void radioSendNow(bool tryLock = false) {
   pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
   pkt[13] = wLT;
   pkt[14] = wRT;
+  uint32_t wrT0 = micros();
   bool sent = radio.writePacket(pkt);
+  radioLastWriteUs = micros() - wrT0;
+  static uint16_t arcSum = 0;
+  static uint16_t arcN = 0;
+  arcSum += radio.lastArc();
+  if (++arcN >= 200) {
+    radioAvgArc10 = (uint8_t)((arcSum * 10u + arcN / 2) / arcN);
+    arcSum = 0;
+    arcN = 0;
+  }
   if (radioHist[radioHistIdx]) radioHistOk--;
   radioHist[radioHistIdx] = sent ? 1 : 0;
   if (sent) radioHistOk++;
@@ -2471,7 +2490,9 @@ static void linkPublishFrame(uint8_t type, const uint8_t *payload, uint8_t len) 
     }
     // 收到输入帧直接在这一刻把包发出去：不再 xTaskNotifyGive 绕一次
     // 任务唤醒+调度（省掉 ~0.3~0.5ms）。radioTask 只负责 1ms 心跳补发。
+    uint32_t inT0 = micros();
     radioSendNow();
+    radioLastInputUs = micros() - inT0;
   }
   if (!linkQ) return;
   LinkFrame f;
@@ -2541,16 +2562,20 @@ static void dispatchLinkFrame(uint8_t type, const uint8_t *payload, uint8_t len)
 // 收到数据就踹一下收帧任务。串口驱动的 RX 超时是 1 个符号（@921600 约 12us），
 // 所以一帧的最后一字节进来后十几微秒就会回调，比原来 1ms 轮询快一个数量级。
 static void linkRxNotify() {
+#if !RADIO_DEBUG_SERIAL
   if (linkTaskH) xTaskNotifyGive(linkTaskH);
+#endif
 }
 
 // 收帧任务：只做收字节 + 拆帧，正常情况下被事件唤醒，1ms 兜底
 void linkTask(void *) {
   for (;;) {
+#if !RADIO_DEBUG_SERIAL
     while (Serial.available()) {
       int c = Serial.read();
       if (c >= 0) handleRxByte((uint8_t)c);
     }
+#endif
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1)); // 事件唤醒；没人叫就 1ms 兜底
   }
 }
@@ -2588,6 +2613,17 @@ void setup(){
 }
 
 void loop(){
+#if RADIO_DEBUG_SERIAL
+  // 每秒打印一次链路遥测，PC 上用串口终端直接看
+  static uint32_t dbgLast = 0;
+  if (millis() - dbgLast >= 1000) {
+    dbgLast = millis();
+    Serial.printf("DBG R=%u.%u link=%u%% wr=%luus in=%luus seq=%u\n",
+                  radioAvgArc10 / 10, radioAvgArc10 % 10, radioHistOk,
+                  (unsigned long)radioLastWriteUs, (unsigned long)radioLastInputUs,
+                  (unsigned int)radioSeq);
+  }
+#endif
   // 收字节/拆帧在 linkTask 里做（不能在这里：渲染一帧十几毫秒会把无线输入拖旧）
   for (LinkFrame f; linkQ && xQueueReceive(linkQ, &f, 0) == pdTRUE; ) {
     dispatchLinkFrame(f.type, f.payload, f.len);

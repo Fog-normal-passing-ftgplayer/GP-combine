@@ -355,15 +355,18 @@ def main():
             last_pair = ta
         if deltas:
             s = stats(deltas)
-            print("\n跨设备配对 %d 对（正=1号更早）" % s["n"])
+            print("\n跨设备配对 %d 对" % s["n"])
             print("   1号 usb%s  vs  2号 usb%s" % (a["port"], b["port"]))
             print("   差值: 平均 %+.2fms 中位 %+.2f p95 %+.2f 最大 %+.2f 最小 %+.2f"
                   % (s["mean"], s["p50"], s["p95"], s["max"], s["min"]))
-            print("   每次: " + " ".join("%+.1f" % (d * 1e3) for d in deltas[:60]))
-            print("   正=usb%s 先到（它就是有线直连的本体），负=usb%s 先到。" % (
-                a["port"] if s["mean"] > 0 else b["port"],
-                b["port"] if s["mean"] > 0 else a["port"]))
-            print("   两条链路的净差值就是这个数；两端各自还有 1ms 的 USB 轮询相位抖动。")
+            print("   每次(绝对值): " + " ".join("%.1f" % (abs(d) * 1e3) for d in deltas[:60]))
+            # 物理上有线一定先到，所以“先到”的那个就是有线本体。
+            # 不打印“正/负”，避免 1号/2号顺序一变（重新插拔就会变）读数自相矛盾。
+            early, late = (a, b) if s["mean"] > 0 else (b, a)
+            print("   先到 usb%s（物理上它就是有线直连的本体），后到 usb%s（无线接收器）"
+                  % (early["port"], late["port"]))
+            print("   无线附加延迟 = |中位| %.2fms（均值 %.2fms）；两端各有 ≤1ms 的 USB 轮询相位。"
+                  % (abs(s["p50"]), abs(s["mean"])))
         else:
             print("\n没有配对到边沿：确认两个设备都在动（比如本体是有线手柄模式），再跑一次。")
     return 0

@@ -32,7 +32,7 @@
 
 // 配对 / 切输入模式都要写 flash + 重启；收到一个模式字节不对的包就立刻重启，
 // 手柄会在 PC 上反复消失/出现（时连时断）。要求连续这么多包报同一个模式才动作。
-// 发送端 1ms 一包 -> 约 20ms 确认，真实切模式感觉不到，抖动包会被挡住。
+// 发送端 1~2ms 一包 -> 约 20~40ms 确认，真实切模式感觉不到，抖动包会被挡住。
 #ifndef WIRELESS_MODE_CONFIRM_PACKETS
 #define WIRELESS_MODE_CONFIRM_PACKETS 20
 #endif
@@ -61,6 +61,13 @@ private:
     bool usbHidden;
     uint8_t pendingMode;        // 去抖：正在确认的新输入模式
     uint8_t pendingModeCount;   // 连续报同一模式的包数
+
+    // 包序号去重 / 丢包统计（seq 是发送端 pkt[1]，每发一包 +1）
+    uint8_t lastSeq;
+    bool haveSeq;
+    uint32_t rxPackets;         // 收到的有效包（去重后）
+    uint32_t lostPackets;       // 按 seq 跳变推算出的丢包数
+    uint16_t dupPackets;        // 完全重复（auto-ACK 重传）的包数
 };
 
 #endif

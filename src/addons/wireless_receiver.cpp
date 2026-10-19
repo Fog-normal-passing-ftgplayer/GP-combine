@@ -42,6 +42,11 @@ void WirelessReceiverAddon::setup() {
     lastRadioReinit = 0;
     pendingMode = 0;
     pendingModeCount = 0;
+    lastSeq = 0;
+    haveSeq = false;
+    rxPackets = 0;
+    lostPackets = 0;
+    dupPackets = 0;
     // 注意：这里**不能**调 tud_disconnect()。addon setup 跑在 tud_init() 之前，
     // 而 RP2040 的 dcd_disconnect() 会读写还处于复位状态的 usb_hw（硬件置位/清零别名
     // 是读-改-写），总线会直接锁死 → 整机黑屏、USB 完全不出现。改到 preprocess() 里做。
@@ -76,12 +81,32 @@ void WirelessReceiverAddon::setup() {
 
 void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
     uint8_t mode = pkt[0];
+    uint8_t seq = pkt[1];
     GamepadOptions &opts = Storage::getInstance().getGamepadOptions();
 
     // 模式合法性校验：非法值（空中干扰/异常包）绝不能存进配置，否则重启后卡死
     if (mode != 0xFF && mode > 16) {
         return;
     }
+
+    // 包序号去重（发送端每发一包 seq++）：
+    // nRF24 的 auto-ACK 重传可能把同一包投递两次，状态完全一样，丢掉即可；
+    // 不丢的话它会重复推进下面的模式确认计数。
+    // d > 0 的跳变 = 中间有包没送到（MAX_RT），累计到 lostPackets；
+    // d < 0 只可能是发送端重启/序号回绕，直接接受，不算丢包。
+    if (haveSeq) {
+        int8_t d = (int8_t)(seq - lastSeq);
+        if (d == 0) {
+            dupPackets++;
+            lastPacketTime = to_ms_since_boot(get_absolute_time());
+            return;
+        }
+        if (d > 0) lostPackets += (uint8_t)(d - 1);
+    }
+    lastSeq = seq;
+    haveSeq = true;
+    rxPackets++;
+    lastPacketTime = to_ms_since_boot(get_absolute_time());
 
     // 0xFF = 发送端还没拿到 Pico 的真实输入模式：不配对、不切模式，只缓存输入
     if (mode == 0xFF) {
@@ -93,7 +118,6 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
         rxry = pkt[11] | ((uint16_t)pkt[12] << 8);
         rxlt = pkt[13];
         rxrt = pkt[14];
-        lastPacketTime = to_ms_since_boot(get_absolute_time());
         return;
     }
 
@@ -132,7 +156,6 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
     rxry = pkt[11] | ((uint16_t)pkt[12] << 8);
     rxlt = pkt[13];
     rxrt = pkt[14];
-    lastPacketTime = to_ms_since_boot(get_absolute_time());
 }
 
 void WirelessReceiverAddon::preprocess() {
@@ -166,6 +189,7 @@ void WirelessReceiverAddon::preprocess() {
         lastRadioReinit = now;
         radio.begin(spi0, WIRELESS_RX_CSN_PIN, WIRELESS_RX_CE_PIN);
         radio.startListening();
+        haveSeq = false;   // 重 init 后不要拿旧序号算丢包
     }
     // gamepad->read() clears the state every frame, so re-inject the cached
     // state each preprocess; release everything after 1000ms without a packet
@@ -184,8 +208,8 @@ void WirelessReceiverAddon::preprocess() {
 
 void WirelessReceiverAddon::process() {
     uint32_t now = to_ms_since_boot(get_absolute_time());
-    bool packetsRecent = (now - lastPacketTime) < 1000;
 #if WIRELESS_RX_RGB_LED_PIN >= 0
+    bool packetsRecent = (now - lastPacketTime) < 1000;
     if (now - lastLedToggle >= (paired ? 5000 : 300)) {
         lastLedToggle = now;
         if (paired) {

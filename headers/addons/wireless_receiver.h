@@ -68,6 +68,7 @@ private:
     uint32_t rxPackets;         // 收到的有效包（去重后）
     uint32_t lostPackets;       // 按 seq 跳变推算出的丢包数
     uint16_t dupPackets;        // 完全重复（auto-ACK 重传）的包数
+    uint8_t bootselCount;      // 连续收到的 BOOTSEL 命令包数
 };
 
 #endif

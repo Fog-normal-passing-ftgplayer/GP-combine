@@ -47,6 +47,7 @@ void WirelessReceiverAddon::setup() {
     rxPackets = 0;
     lostPackets = 0;
     dupPackets = 0;
+    bootselCount = 0;
     // 注意：这里**不能**调 tud_disconnect()。addon setup 跑在 tud_init() 之前，
     // 而 RP2040 的 dcd_disconnect() 会读写还处于复位状态的 usb_hw（硬件置位/清零别名
     // 是读-改-写），总线会直接锁死 → 整机黑屏、USB 完全不出现。改到 preprocess() 里做。
@@ -83,6 +84,24 @@ void WirelessReceiverAddon::handlePacket(const uint8_t *pkt) {
     uint8_t mode = pkt[0];
     uint8_t seq = pkt[1];
     GamepadOptions &opts = Storage::getInstance().getGamepadOptions();
+
+    // 0xFE = 控制命令（当前只有「重启进 USB BOOTSEL」）。
+    // magic "BOOT" + 连续 3 包才执行，避免空中的杂包误触发；
+    // System::reboot(BootMode::USB) 会在下次启动时走 reset_usb_boot()，
+    // PC 上出现 RPI-RP2 盘，直接拖 UF2 即可。
+    if (mode == 0xFE) {
+        if (pkt[2] == 'B' && pkt[3] == 'O' && pkt[4] == 'O' && pkt[5] == 'T') {
+            // 命令包也占一个 seq，记下来，免得重启/继续时把这段算成丢包
+            lastSeq = seq;
+            haveSeq = true;
+            if (bootselCount < 3) bootselCount++;
+            if (bootselCount >= 3) {
+                System::reboot(System::BootMode::USB);
+            }
+        }
+        return;
+    }
+    bootselCount = 0;
 
     // 模式合法性校验：非法值（空中干扰/异常包）绝不能存进配置，否则重启后卡死
     if (mode != 0xFF && mode > 16) {

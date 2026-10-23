@@ -405,9 +405,10 @@ static MenuSection bgSections[] = {
 static MenuOpt wlOpts[] = {
   {"无线开关", OPT_BOOL, 1, 0, 1, 1, NULL, 0, ""},
   {"重新配对", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
+  {"接收器进BOOTSEL", OPT_ACTION, 0, 0, 0, 0, NULL, 0, ""},
 };
 static MenuSection wlSections[] = {
-  {"无线", wlOpts, 2},
+  {"无线", wlOpts, 3},
 };
 
 static SubPageDef subDefs[NUM_PAGES] = {
@@ -475,6 +476,7 @@ volatile bool radioUp = false;
 // 路径是裸的。
 SemaphoreHandle_t radioMx = nullptr;
 uint8_t radioSeq = 0;
+volatile uint8_t radioCmdRemaining = 0;   // >0 时发 BOOTSEL 控制包
 // link quality: ACK results over the last 100 packets
 volatile uint8_t radioHist[100];
 uint8_t radioHistIdx = 0;
@@ -2674,6 +2676,10 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
                   if (radioMx) xSemaphoreGive(radioMx);
                   savedFlashUntil = millis() + 1200;
                 }
+                else if (subPage == 5 && subSel == 2) { // 无线 > 接收器进 BOOTSEL
+                  radioCmdRemaining = 50;   // 50 包 ≈ 50ms，接收器连续 3 包即动作
+                  redrawNeeded = true;
+                }
               }
             }
             if (bEdge & 0x02) { // B = back one level, confirm save if dirty
@@ -2785,17 +2791,27 @@ static void radioSendNow(bool tryLock = false) {
   uint8_t wLT = menuMute ? 0 : txLT;
   uint8_t wRT = menuMute ? 0 : txRT;
   uint8_t pkt[15];
-  pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
-  pkt[1] = radioSeq++;
-  pkt[2] = wBtns & 0xFF;
-  pkt[3] = wBtns >> 8;
-  pkt[4] = wDpad;
-  pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
-  pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
-  pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
-  pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
-  pkt[13] = wLT;
-  pkt[14] = wRT;
+  if (radioCmdRemaining > 0) {
+    // 控制命令：让接收器重启进 USB BOOTSEL。magic "BOOT" + 连发多包，
+    // 接收器连续收到 3 包才动作；菜单打开时也照发（不受 menuMute 影响）。
+    pkt[0] = 0xFE;
+    pkt[1] = radioSeq++;
+    pkt[2] = 'B'; pkt[3] = 'O'; pkt[4] = 'O'; pkt[5] = 'T';
+    for (int i = 6; i < 15; i++) pkt[i] = 0;
+    radioCmdRemaining--;
+  } else {
+    pkt[0] = stInputModeValid ? stInputMode : 0xFF; // 0xFF=模式未知
+    pkt[1] = radioSeq++;
+    pkt[2] = wBtns & 0xFF;
+    pkt[3] = wBtns >> 8;
+    pkt[4] = wDpad;
+    pkt[5] = wLX & 0xFF;  pkt[6] = wLX >> 8;
+    pkt[7] = wLY & 0xFF;  pkt[8] = wLY >> 8;
+    pkt[9] = wRX & 0xFF;  pkt[10] = wRX >> 8;
+    pkt[11] = wRY & 0xFF; pkt[12] = wRY >> 8;
+    pkt[13] = wLT;
+    pkt[14] = wRT;
+  }
   uint32_t wrT0 = micros();
   bool sent = radio.writePacket(pkt);
   radioLastWriteUs = micros() - wrT0;

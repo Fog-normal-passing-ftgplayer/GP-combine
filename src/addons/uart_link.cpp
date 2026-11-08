@@ -321,8 +321,11 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
     // 的不同步（开机时按住键走了 boot override、或上一次重启/写盘没成功），旧写法
     // 永远判成“没变化”-> 永不重启 -> ESP 菜单里怎么改都改不动。
     InputMode activeMode = DriverManager::getInstance().getInputMode();
-    bool modeMismatch = (inputMode != (uint8_t)activeMode);
     bool inputChanged = (inputMode != (uint8_t)options.inputMode);
+    // 额外排除一种情况：设备正跑在 CONFIG（网页配置）模式时，ESP 菜单只改了 SOCD/
+    // 去抖等别的项，也会带着“当前存储的模式”过来——这时不应该把设备踢出网页配置。
+    bool modeMismatch = (inputMode != (uint8_t)activeMode) &&
+                        !(activeMode == INPUT_MODE_CONFIG && !inputChanged);
     options.inputMode = (InputMode)inputMode;
     options.socdMode = (SOCDMode)socdMode;
     options.dpadMode = (DpadMode)dpadMode;

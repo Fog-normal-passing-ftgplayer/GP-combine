@@ -75,6 +75,9 @@ execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --abbrev=7
 	OUTPUT_STRIP_TRAILING_WHITESPACE)
 string(REGEX REPLACE "v([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" CMAKE_GIT_REPO_VERSION ${GIT_REPO_VERSION})
 string(REGEX REPLACE "^(.......-.*)|(.......)$" "0.0.0" CMAKE_GIT_REPO_VERSION ${CMAKE_GIT_REPO_VERSION}) # fix if all we have is the git SHA
+# GP-Combine：合并上游 CE v0.7.12 后的里程碑版本，不再跟随 git describe
+set(GIT_REPO_VERSION "0.2.0-combine")
+set(CMAKE_GIT_REPO_VERSION "0.2.0")
 configure_file("headers/version.h.in" "headers/version.h")
 message("GIT_REPO_VERSION is ${GIT_REPO_VERSION}")
 message("CMAKE_GIT_REPO_VERSION is ${CMAKE_GIT_REPO_VERSION}")
@@ -302,6 +305,8 @@ src/addons/spi_analog_ads1256.cpp
 src/addons/gamepad_usb_host.cpp
 src/addons/gamepad_usb_host_listener.cpp
 src/addons/tg16_input.cpp
+src/addons/uart_link.cpp
+src/addons/wireless_receiver.cpp
 src/animationstation/animation.cpp
 src/animationstation/animationstation.cpp
 src/animationstation/effects/burstcolor.cpp

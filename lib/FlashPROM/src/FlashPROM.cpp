@@ -13,6 +13,15 @@ int64_t writeToFlash(alarm_id_t id, void *flashCache)
 {
 	while (is_spin_locked(flashLock));
 
+	// 开机早期（GP2040::setup() 里的 Storage::init()→ConfigUtils::load()→save()）就会
+	// 安排一次刷写，而 core1 要到 main() 后半段才 multicore_launch_core1()。
+	// 此时做 multicore_lockout 会**永久等待**（core1 没有 victim handler 应答，
+	// 实测：调用后不再返回），表现为整机黑屏 + USB 不出现。
+	// flash 擦写又必须锁住 core1，所以这里推迟重试，等 core1 就位再写。
+	if (!multicore_lockout_victim_is_initialized(1)) {
+		return (int64_t)EEPROM_WRITE_WAIT * 1000; // µs：过 50ms 再试
+	}
+
 	multicore_lockout_start_blocking();
 	uint32_t interrupts = spin_lock_blocking(flashLock);
 

@@ -5,10 +5,19 @@ node_modules/
 configs/MyBoard
 .DS_Store
 build/
+build_fusion/
+build_receiver/
+build_receiver_zero/
+esp32/build/
+esp32_170x320/build/
+# 配置助手生成的卡内壁纸与文件系统镜像（13.5MB 构建产物）
+data/wp/*.gfr
+data/wp/littlefs.bin
+pico/build/
+tools/*/build/
 
 .*.sw*
 compile_commands.json
-lib/httpd/fsdata.c
 modules/Custom.cmake
 .idea
 cmake-*
@@ -24,3 +33,23 @@ www/src_gen/enums.ts
 
 # Language Server config
 .clangd
+
+# GP-Combine Lite（独立仓库，lite 分支）
+GP-Fusion Lite/
+
+# NES ROM（版权物，不入库；由配置助手导入设备）
+data/nes/*.nes
+build-reverse/
+
+# 懒人包产物（体积大，不入库）
+dist/
+
+
+# 合并/验证过程产生的本地缓存与生成物
+.build_esp32/
+.build_esp32_170/
+.arduino-cache/
+.npm-cache/
+.npm-logs/
+lib/httpd/fsdata.c
+build_reverse/

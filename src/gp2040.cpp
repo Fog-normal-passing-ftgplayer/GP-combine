@@ -34,6 +34,8 @@
 #include "addons/gamepad_usb_host.h"
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
+#include "addons/uart_link.h"
+#include "addons/wireless_receiver.h"
 #include "addons/slider_profile.h"
 
 // Pico includes
@@ -128,6 +130,8 @@ void GP2040::setup() {
 	addons.LoadAddon(new ReverseInput());
 	addons.LoadAddon(new TurboInput()); // Turbo overrides button states and should be close to the end
 	addons.LoadAddon(new InputMacro());
+	addons.LoadAddon(new UARTLinkAddon());
+	addons.LoadAddon(new WirelessReceiverAddon());
 
 	// Use the old method of selecting input mode via mapped button, i.e. AFTER initializing GPIO
 	// pins with the currently active profile. Calling this even if the GPIO-mapped selection is
@@ -307,6 +311,18 @@ void __not_in_flash_func(GP2040::run)() {
 
 		// Copy Processed Gamepad for Core1 (race condition otherwise)
 		memcpy(&processedGamepad->state, &gamepad->state, sizeof(GamepadState));
+		// GP-Combine: 菜单打开时静音 USB 输出；processedGamepad 保持真实状态，
+		// 这样 ESP32 菜单仍能在 UART 输入帧里看到按键。
+		if (UARTLinkAddon::isInputMuted()) {
+			gamepad->state.buttons = 0;
+			gamepad->state.dpad = 0;
+			gamepad->state.lx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ly = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.rx = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.ry = GAMEPAD_JOYSTICK_MID;
+			gamepad->state.lt = 0;
+			gamepad->state.rt = 0;
+		}
 
 		// Process Input Driver
 		bool processed = inputDriver->process(gamepad);

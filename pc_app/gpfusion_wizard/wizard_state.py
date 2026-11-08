@@ -1,0 +1,140 @@
+"""向导的共享状态与本地持久化。"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any
+
+from .app_config import screen_dims, state_file
+from .layout_model import (
+    LITE_SCREEN,
+    LITE_STATUS_H,
+    Layout,
+    fit_layout_to_screen,
+    sanitize_layout,
+)
+
+
+@dataclass
+class WizardState:
+    port: str = ""
+    cli_path: str = ""
+    source_dir: str = ""
+    screen_res: str = "240x135"      # 240x135 默认 / 170x320 竖屏
+    lite_source_dir: str = ""
+    pico_sdk_dir: str = ""
+    lite_screen_size: str = "0.96"
+    background_src: str = ""
+    background_mode: str = "cover"
+    bg_kind: str = "static"      # static=静态背景 dynamic=GIF 动态壁纸
+    default_layout: int = 1          # 0=街机 1=HITBOX 2=WASD 3=自定义
+    # Pico 配置（正式版）
+    led_pin: int = 28
+    leds_per_button: int = 1
+    # GIF 动画（正式版 ESP32）
+    gif_src: str = ""
+    gif_mode: str = "cover"
+    gif_palette: int = 16
+    layout: Layout = field(default_factory=Layout.preset)
+    lite_layout: Layout = field(
+        default_factory=lambda: fit_layout_to_screen(Layout.preset())
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["version"] = 1
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "WizardState":
+        s = cls()
+        s.port = str(d.get("port", ""))
+        s.cli_path = str(d.get("cli_path", ""))
+        s.source_dir = str(d.get("source_dir", ""))
+        res = str(d.get("screen_res", ""))
+        s.screen_res = res if res in ("240x135", "170x320") else "240x135"
+        s.lite_source_dir = str(d.get("lite_source_dir", ""))
+        s.pico_sdk_dir = str(d.get("pico_sdk_dir", ""))
+        s.lite_screen_size = str(d.get("lite_screen_size", "0.96"))
+        s.background_src = str(d.get("background_src", ""))
+        s.background_mode = str(d.get("background_mode", "cover"))
+        bk = str(d.get("bg_kind", "static"))
+        s.bg_kind = bk if bk in ("static", "dynamic") else "static"
+        try:
+            s.default_layout = int(d.get("default_layout", 1))
+        except Exception:
+            s.default_layout = 1
+        try:
+            s.led_pin = int(d.get("led_pin", 28))
+            s.leds_per_button = int(d.get("leds_per_button", 1))
+        except Exception:
+            pass
+        s.gif_src = str(d.get("gif_src", ""))
+        s.gif_mode = str(d.get("gif_mode", "cover"))
+        try:
+            s.gif_palette = int(d.get("gif_palette", 16))
+        except Exception:
+            s.gif_palette = 16
+        if isinstance(d.get("layout"), dict):
+            try:
+                s.layout = Layout.from_dict(d["layout"])
+            except Exception:
+                s.layout = Layout.preset()
+        if isinstance(d.get("lite_layout"), dict):
+            try:
+                s.lite_layout = Layout.from_dict(d["lite_layout"])
+                # 旧数据可能存的是 240x135 原始坐标：越界则重新适配
+                pts = (
+                    [(b.x, b.y) for b in s.lite_layout.move]
+                    + [(b.x, b.y) for b in s.lite_layout.cluster]
+                )
+                if any(x > 127 or y > 63 for x, y in pts):
+                    s.lite_layout = fit_layout_to_screen(s.lite_layout)
+            except Exception:
+                s.lite_layout = fit_layout_to_screen(s.layout)
+        else:
+            # 旧配置没有 lite_layout：用正式版布局适配一份到 128x64
+            s.lite_layout = fit_layout_to_screen(s.layout)
+        # 最后统一夹一遍屏幕范围：越界坐标在固件上是直接画不出来的
+        sw, sh = screen_dims(s.screen_res)
+        fixed = sanitize_layout(s.lite_layout, *LITE_SCREEN, status_h=LITE_STATUS_H)
+        fixed += sanitize_layout(s.layout, sw, sh)
+        s._repaired = fixed   # load() 用它决定要不要把修好的状态回写文件
+        return s
+
+    def save(self) -> None:
+        try:
+            state_file().parent.mkdir(parents=True, exist_ok=True)
+            state_file().write_text(
+                json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    @classmethod
+    def load(cls) -> "WizardState":
+        try:
+            if state_file().exists():
+                st = cls.from_dict(json.loads(state_file().read_text(encoding="utf-8")))
+                if getattr(st, "_repaired", 0):
+                    # 内存里已经夹好了，文件里还是旧坐标：立刻回写，避免两边不一致
+                    st.save()
+                return st
+        except Exception:
+            pass
+        return cls()
+
+    def copy_from(self, other: "WizardState") -> None:
+        """把另一份状态原地拷入（页面都持有同一个 state 引用，导入备份时用它）。"""
+        self.__dict__.update(other.__dict__)
+
+
+def source_ready(source_dir: str, screen_res: str = "240x135") -> bool:
+    if not source_dir:
+        return False
+    p = Path(source_dir)
+    ino = ("esp32_170x320" if screen_res == "170x320" else "esp32")
+    name = ("esp32_170x320.ino" if screen_res == "170x320" else "esp32.ino")
+    return (p / ino / name).is_file()

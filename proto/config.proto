@@ -84,6 +84,8 @@ message GamepadOptions
     optional uint32 switch2ProStickColor = 63;
     optional uint32 switch2ProLeftRingColor = 64;
     optional uint32 switch2ProRightRingColor = 65;
+    // GP-Combine: 无线接收端是否已完成配对（原 combine 分叉时用 34，CE 已占用 34~65）
+    optional bool wirelessPaired = 66;
 }
 
 message KeyboardMapping

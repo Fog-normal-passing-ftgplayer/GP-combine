@@ -257,7 +257,7 @@ int set_file_data(fs_file* file, const DataAndStatusCode& dataAndStatusCode)
     returnData->append(statusCodeStr);
     returnData->append("\r\n");
     returnData->append(
-        "Server: GP2040-CE " GP2040VERSION "\r\n"
+        "Server: GP-Combine " GP2040VERSION "\r\n"
         "Content-Type: application/json\r\n"
         "Access-Control-Allow-Origin: *\r\n"
         "Content-Length: "
@@ -671,9 +671,15 @@ std::string setProfileOptions()
 std::string getProfileOptions()
 {
     ProfileOptions& profileOptions = Storage::getInstance().getProfileOptions();
+    // GP-Combine: count 来自持久化配置，越界会让下面的循环读到数组外内存并把 JSON 撑爆
+    const size_t maxSets = sizeof(profileOptions.gpioMappingsSets) / sizeof(profileOptions.gpioMappingsSets[0]);
+    size_t setCount = profileOptions.gpioMappingsSets_count;
+    if (setCount > maxSets) {
+        setCount = maxSets;
+    }
     // Make capacity slots dynamic, max for 5 profiles * 48 pins is 976 slots
-    const size_t capacity = JSON_OBJECT_SIZE(1) + JSON_ARRAY_SIZE(profileOptions.gpioMappingsSets_count)
-        + (profileOptions.gpioMappingsSets_count * (JSON_OBJECT_SIZE(4 * NUM_BANK0_GPIOS + 4) + JSON_ARRAY_SIZE(NUM_BANK0_GPIOS)));
+    const size_t capacity = JSON_OBJECT_SIZE(1) + JSON_ARRAY_SIZE(setCount)
+        + (setCount * (JSON_OBJECT_SIZE(4 * NUM_BANK0_GPIOS + 4) + JSON_ARRAY_SIZE(NUM_BANK0_GPIOS)));
     DynamicJsonDocument doc(capacity);
 
     const auto writePinDoc = [&](const int item, const char* key, const GpioMappingInfo& value) -> void
@@ -684,11 +690,11 @@ std::string getProfileOptions()
     };
 
     // return an empty list if no profiles are currently set, since we no longer populate by default
-    if (profileOptions.gpioMappingsSets_count == 0) {
+    if (setCount == 0) {
         doc.createNestedArray("alternativePinMappings");
     }
 
-    for (int i = 0; i < profileOptions.gpioMappingsSets_count; i++) {
+    for (size_t i = 0; i < setCount; i++) {
         // this looks duplicative, but something in arduinojson treats the doc
         // field string by reference so you can't be "clever" and do an snprintf
         // thing or else you only send the last field in the JSON
@@ -747,7 +753,12 @@ std::string getProfileOptions()
         writeInvertedPins(doc["alternativePinMappings"][i], profileOptions.gpioMappingsSets[i]);
     }
 
-    return serialize_json(doc);
+    // GP-Combine: JSON 池分配失败时 ArduinoJson 输出 null，前端会一直卡在加载，这里兜底成空数组
+    std::string out = serialize_json(doc);
+    if (out.empty() || out == "null") {
+        return "{\"alternativePinMappings\":[]}";
+    }
+    return out;
 }
 
 std::string setGamepadOptions()

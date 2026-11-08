@@ -53,3 +53,6 @@ dist/
 .npm-logs/
 lib/httpd/fsdata.c
 build_reverse/
+
+# 合并版构建产物（体积大，不入库）
+build-all/

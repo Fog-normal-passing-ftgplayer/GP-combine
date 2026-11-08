@@ -4,6 +4,7 @@
  */
 
 #include "FlashPROM.h"
+#include "pico/time.h"
 
 uint8_t FlashPROM::writeCache[EEPROM_SIZE_BYTES];
 volatile static alarm_id_t flashWriteAlarm = 0;
@@ -53,6 +54,19 @@ void FlashPROM::commit()
 	if (flashWriteAlarm != 0)
 		cancel_alarm(flashWriteAlarm);
 	flashWriteAlarm = add_alarm_in_ms(EEPROM_WRITE_WAIT, writeToFlash, writeCache, true);
+}
+
+bool FlashPROM::waitCommit(uint32_t timeout_ms)
+{
+	// writeToFlash() 在 flash_range_program() 之后把 flashWriteAlarm 清零，
+	// 所以它归零就代表数据已经写进 flash（而不是“还在排队的 50ms 等待”）。
+	// 注意：这里在链路 addon 的主循环上下文里轮询，不能用 multicore_lockout，
+	// 刷写本身由 alarm 中断完成。
+	absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
+	while (flashWriteAlarm != 0 && !time_reached(deadline)) {
+		sleep_ms(1);
+	}
+	return flashWriteAlarm == 0;
 }
 
 void FlashPROM::reset()

@@ -2026,7 +2026,7 @@ void sendEspSave() {
   for (int i = 1; i <= 19; i++) crc = crc16_update(crc, f[i]);
   f[20] = (uint8_t)(crc & 0xFF);
   f[21] = (uint8_t)(crc >> 8);
-  Serial.write(f, sizeof(f));
+  uartWrite(f, sizeof(f));
 }
 
 void sendEspLoadReq() {
@@ -2039,7 +2039,7 @@ void sendEspLoadReq() {
   for (int i = 1; i <= 3; i++) crc = crc16_update(crc, f[i]);
   f[4] = (uint8_t)(crc & 0xFF);
   f[5] = (uint8_t)(crc >> 8);
-  Serial.write(f, sizeof(f));
+  uartWrite(f, sizeof(f));
 }
 
 // 开机回读：Pico flash 的镜像优先于 LittleFS（Pico flash 断电保持可靠）
@@ -2283,6 +2283,16 @@ static uint16_t crc16_update(uint16_t crc, uint8_t b) {
   return crc;
 }
 
+// UART 写入互斥：linkTask（核0，回 ACK）与 loop()（核1，发菜单配置帧）共用 UART0，
+// 两条线同时写会把字节交织在一起，接收端 CRC 一错就整帧丢掉——表现为“菜单点了保存
+// 但设备没反应”。所有 Serial.write 都走这里。
+SemaphoreHandle_t uartMx = nullptr;
+void uartWrite(const uint8_t *p, size_t n) {
+  if (uartMx) xSemaphoreTake(uartMx, portMAX_DELAY);
+  Serial.write(p, n);
+  if (uartMx) xSemaphoreGive(uartMx);
+}
+
 // RX state machine
 uint8_t rxState = 0; // 0 idle, 1 ver, 2 type, 3 len, 4 payload, 5 crcLo, 6 crcHi
 uint8_t rxType = 0;
@@ -2321,7 +2331,7 @@ void sendAck() {
   for (int i = 1; i <= 4; i++) crc = crc16_update(crc, frame[i]);
   frame[5] = (uint8_t)(crc & 0xFF);
   frame[6] = (uint8_t)(crc >> 8);
-  Serial.write(frame, sizeof(frame));
+  uartWrite(frame, sizeof(frame));
 }
 
 // 菜单静音：进入菜单时告诉 Pico 停止 USB 手柄输出，退出时恢复
@@ -2336,11 +2346,16 @@ void sendMuteFrame(bool mute) {
   for (int i = 1; i <= 4; i++) crc = crc16_update(crc, frame[i]);
   frame[5] = (uint8_t)(crc & 0xFF);
   frame[6] = (uint8_t)(crc >> 8);
-  Serial.write(frame, sizeof(frame));
+  uartWrite(frame, sizeof(frame));
 }
 
 // push the 手柄 (gamepad) section values to the Pico
-void sendGamepadConfig() {
+// CONFIG 帧没收到 ACK 就重发（最多 3 次）。UART 上 ACK 与菜单帧共线，
+// 单帧被冲掉时用户看到的就是“改了没反应”，重发能把这种情况救回来。
+bool cfgPending = false;
+uint8_t cfgRetries = 0;
+
+void sendGamepadConfig(bool isRetry = false) {
   uint8_t frame[11];
   frame[0] = FRAME_MAGIC;
   frame[1] = FRAME_VERSION;
@@ -2357,9 +2372,13 @@ void sendGamepadConfig() {
   for (int i = 1; i <= 8; i++) crc = crc16_update(crc, frame[i]);
   frame[9] = (uint8_t)(crc & 0xFF);
   frame[10] = (uint8_t)(crc >> 8);
-  Serial.write(frame, sizeof(frame));
+  uartWrite(frame, sizeof(frame));
   lastConfigSent = millis();
   configAcked = false;
+  if (!isRetry) {
+    cfgPending = true;
+    cfgRetries = 0;
+  }
 }
 
 // push the 灯光 (LED) section values to the Pico
@@ -2386,7 +2405,7 @@ void sendLedConfig() {
   for (int i = 1; i <= 13; i++) crc = crc16_update(crc, frame[i]);
   frame[14] = (uint8_t)(crc & 0xFF);
   frame[15] = (uint8_t)(crc >> 8);
-  Serial.write(frame, sizeof(frame));
+  uartWrite(frame, sizeof(frame));
   lastConfigSent = millis();
   configAcked = false;
 }
@@ -2934,6 +2953,7 @@ static void dispatchLinkFrame(uint8_t type, const uint8_t *payload, uint8_t len)
   else if (type == FRAME_TYPE_STATUS) onStatusFrame((uint8_t *)payload, len);
   else if (type == FRAME_TYPE_CONFIG_ACK) {
     configAcked = true;
+    cfgPending = false;
     savedFlashUntil = millis() + 1200;
   }
   else if (type == FRAME_TYPE_ESP_LOAD) applyEspCfg((uint8_t *)payload, len);
@@ -2996,6 +3016,7 @@ void setup(){
   renderBootAnim(0.0f);
   pushFrame();
   Serial.begin(UART_BAUD, SERIAL_8N1, ESP_RX, ESP_TX);
+  uartMx = xSemaphoreCreateMutex(); // 必须在任何写 UART 之前
   sendMuteFrame(false); // 开机同步：确保 Pico 端不残留静音状态
   pinMode(48,OUTPUT);
   digitalWrite(48, LOW);
@@ -3015,6 +3036,11 @@ void setup(){
 }
 
 void loop(){
+  // CONFIG 帧重传：200ms 没收到 CONFIG_ACK 就再发，最多 3 次
+  if (cfgPending && !configAcked && cfgRetries < 3 && millis() - lastConfigSent > 200) {
+    cfgRetries++;
+    sendGamepadConfig(true);
+  }
 #if RADIO_DEBUG_SERIAL
   // 每秒打印一次链路遥测，PC 上用串口终端直接看
   static uint32_t dbgLast = 0;

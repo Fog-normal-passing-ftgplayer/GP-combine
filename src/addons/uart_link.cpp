@@ -12,6 +12,8 @@
 #include "hardware/sync.h"
 #include "CRC32.h"
 #include "animationstation/animationstation.h"
+#include "drivermanager.h"
+#include "FlashPROM.h"
 
 bool UARTLinkAddon::inputMuted = false;
 
@@ -314,6 +316,12 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
     uint8_t flags = payload[3];
     uint8_t debounce = payload[4];
 
+    // 以「正在运行的驱动」为准判断要不要重启，而不是存储里的 options.inputMode。
+    // options.inputMode 在下一行就会被覆盖：一旦出现「存储已是目标值、驱动还是旧模式」
+    // 的不同步（开机时按住键走了 boot override、或上一次重启/写盘没成功），旧写法
+    // 永远判成“没变化”-> 永不重启 -> ESP 菜单里怎么改都改不动。
+    InputMode activeMode = DriverManager::getInstance().getInputMode();
+    bool modeMismatch = (inputMode != (uint8_t)activeMode);
     bool inputChanged = (inputMode != (uint8_t)options.inputMode);
     options.inputMode = (InputMode)inputMode;
     options.socdMode = (SOCDMode)socdMode;
@@ -343,13 +351,18 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
                     (o2.fourWayMode ? 0x01 : 0) | (o2.invertXAxis ? 0x02 : 0) |
                     (o2.invertYAxis ? 0x04 : 0), (uint8_t)o2.debounceDelay,
                     l2.turnOffWhenSuspended ? 0x01 : 0, battMv, battFlags);
-    if (inputChanged) {
+    if (modeMismatch) {
         // 重启前把还没落盘的 ESP 镜像写完，否则 Pico flash 里留下旧镜像，
         // 下次开机会被 ESP32 当成“权威配置”覆盖掉刚存的设置在 LittleFS 里的值。
         if (espCfgWritePending) espCfgCommitNow();
-        // FlashPROM::commit() defers the real flash write to a 50ms alarm;
-        // give it time to finish before rebooting, otherwise the config is lost
-        sleep_ms(400);
+        // 不能再用固定 sleep 猜刷写时间：FlashPROM 是「+50ms 再擦写」的延迟提交，
+        // 擦 32KB 又要几十毫秒，机器一忙就会在写完之前重启，配置直接丢（表现为
+        // 菜单里改了输入模式，重启后还是老模式）。这里直接等写盘完成再重启。
+        if (!EEPROM.waitCommit(1500)) {
+            // 超时（极少见）：再补一次提交并多等一会儿，别刚点保存就丢配置
+            EEPROM.commit();
+            EEPROM.waitCommit(1500);
+        }
         // input mode is applied at boot by the driver, so reboot to switch
         System::reboot(System::BootMode::DEFAULT);
     }

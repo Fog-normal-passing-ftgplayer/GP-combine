@@ -26,6 +26,11 @@ class FlashPROM
 		void commit();
 		void reset();
 
+		// 等待挂起的刷写真正落盘（最多 timeout_ms）。
+		// 返回 true 表示已写完或本来就没有挂起；false 表示超时。
+		// 需要“改完立刻重启”的场景必须用它，不能用固定 sleep 猜时间。
+		bool waitCommit(uint32_t timeout_ms);
+
 		static uint8_t writeCache[EEPROM_SIZE_BYTES];
 };
 

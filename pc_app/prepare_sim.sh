@@ -27,23 +27,22 @@ echo "[sim] 仿真器目录: $SIM_DIR"
 
 need_build=0
 for v in 240 320; do
-  [ -x "$SIM_DIR/build/sim$v" ] || need_build=1
+  [ -f "$SIM_DIR/build/libsim$v.so" ] || need_build=1
 done
 if [ "$need_build" = "1" ] && [ "$CHECK_ONLY" = "0" ]; then
   for v in 240 320; do
-    echo "[sim] 构建 headless 版 $v…"
-    ( cd "$SIM_DIR" && HEADLESS=1 ./build.sh "$v" >/dev/null )
+    echo "[sim] 构建共享库 $v…"
+    ( cd "$SIM_DIR" && LIB=1 ./build.sh "$v" >/dev/null )
   done
 fi
 
 mkdir -p "$DEST"
 for v in 240 320; do
-  src="$SIM_DIR/build/sim$v"
-  if [ -x "$src" ]; then
-    cp -f "$src" "$DEST/sim$v"
-    chmod +x "$DEST/sim$v"
-    echo "[sim] ✔ $DEST/sim$v  ($(du -k "$DEST/sim$v" | cut -f1) KB)"
+  src="$SIM_DIR/build/libsim$v.so"
+  if [ -f "$src" ]; then
+    cp -f "$src" "$DEST/libsim$v.so"
+    echo "[sim] ✔ $DEST/libsim$v.so  ($(du -k "$DEST/libsim$v.so" | cut -f1) KB)"
   else
-    echo "[sim] ✘ 缺少 $src —— 预览会在该分辨率下退化为静态图"
+    echo "[sim] ✘ 缺少 $src —— 该分辨率下真机预览不可用"
   fi
 done

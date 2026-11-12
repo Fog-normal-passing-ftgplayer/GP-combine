@@ -67,7 +67,12 @@ fi
 # 4) 构建形态
 #    HEADLESS=1 -> 不编图形后端，输出短名 build/sim240 | build/sim320（配置助手直接调用）
 #    默认       -> 带 X11 窗口，输出 build/sim_<sketch>
-if [ "${HEADLESS:-0}" = "1" ]; then
+if [ "${LIB:-0}" = "1" ]; then
+  OUT="$SIM/build/libsim$([ "$SIM_W" = "320" ] && echo 320 || echo 240).so"
+  FLAGS=(-O2 -fPIC -shared -DSIM_LIB)
+  LIBS=(-lz)
+  echo "[build] 共享库构建（配置助手内嵌预览）"
+elif [ "${HEADLESS:-0}" = "1" ]; then
   OUT="$SIM/build/sim$([ "$SIM_W" = "320" ] && echo 320 || echo 240)"
   FLAGS=(-O2 -DSIM_HEADLESS)
   LIBS=(-lz)

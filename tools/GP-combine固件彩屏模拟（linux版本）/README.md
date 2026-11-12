@@ -164,47 +164,49 @@ ffmpeg -framerate 20 -i wp320/w%03d.png -loop 0 \
 
 ---
 
-## 与配置助手集成（真机画面预览）
+## 与配置助手集成（可交互的真机预览）
 
-配置助手的「GIF 动画」页右侧显示的是**固件本体渲染的真实画面**，不是把 GIF 缩放给你看——
-状态栏、按键布局、主题、壁纸叠加都是真机那份代码画出来的。
+配置助手「GIF 动画」页右侧是一个**能按按键的真机画面**：点一下画面拿到焦点，
+方向键 = 十字键，`1`/`2` = S2/S1（长按 1 三秒进菜单），`z`/`x` = A/B。
+背后是这个仿真器编成的**共享库**里的固件本体，所以长按、翻页、进子页、返回
+全走真机的状态机 —— 不是回放录好的帧。
 
-链路：助手转码 `.gfr` → 调仿真器的 headless 构建导出帧 → 按 `.gfr` 的帧延迟在控件里循环播放。
-
-### 构建 headless 版（不依赖 X11）
-
-```bash
-HEADLESS=1 ./build.sh 240    # -> build/sim240
-HEADLESS=1 ./build.sh 320    # -> build/sim320
-```
-
-headless 版没有图形后端（`-DSIM_HEADLESS`），`--mode=keys` 会明确拒绝；
-其余模式（`tour` / `wallpaper` / `idle`）照常工作。产物不链接 libX11。
-
-助手通过 `firmware_preview.find_sim()` 自动找，优先级：
-
-1. 环境变量 `GPFUSION_SIM_240` / `GPFUSION_SIM_320`
-2. 打包内 `gpfusion_wizard/bin/sim240|sim320`
-3. 仓库 `tools/*/build/sim240|sim320`（开发态）
-
-### 助手等价于这样调用
+### 编成共享库
 
 ```bash
-./build/sim320 --mode=wallpaper --out=/tmp/frames --count=60 --fs=/tmp/gpv_xxx
+LIB=1 ./build.sh 240     # -> build/libsim240.so
+LIB=1 ./build.sh 320     # -> build/libsim320.so
 ```
 
-`--fs` 目录下放：
+`-DSIM_LIB` 会：不编 `main()`、不编图形后端、导出下面这组 C API。
 
+```c
+void sim_boot(const char *fs_root);        // 指定 LittleFS 根目录并跑 setup()
+int  sim_width(void);  int sim_height(void);
+void sim_tick(int ms);                     // 推进假时钟 + 跑一次 loop()
+void sim_input(unsigned buttons, unsigned dpad);
+const void *sim_frame(void);               // 直接返回固件的 lfb（RGB565）
+int  sim_reload_wallpaper(void);           // 换了 .gfr 之后重读
+int  sim_wallpaper_active(void);
 ```
-wp/1.gfr         壁纸本体（助手从 GIF 转码而来）
-gpfusion.cfg     可选，纯文本 key=value，用来预设菜单项
-```
 
-`gpfusion.cfg` 支持的键（与固件 `loadConfigFile()` 一致）：
-`layout` `theme` `style` `bg_level` `bl` `hflip` `vflip` `inv`
-`hist` `saver` `saver_ms` `screenoff` `wl`。
+帧缓冲是**固件自己的 `lfb`**，布局与 Qt 的 `Format_RGB16`（即 RGB565）一致，
+助手侧用 `ctypes` 包一层缓冲区就能零拷贝上屏。
 
-有了它，预览就能反映用户在助手里选的配置，而不是永远显示固件默认值。
+### 助手侧注意点
+
+- **开机动画期间（3200ms）固件忽略输入**，所以 `SimEngine.warm_up()` 会先快进
+  5.2 秒再交给用户，否则刚打开预览时按键会被吞掉，看起来像"输入没反应"
+- 两个分辨率是**两个独立的库**（固件的全局变量在库里，必须分开）
+- 助手查找顺序：`GPFUSION_SIMLIB_320` 环境变量 → 打包内 `gpfusion_wizard/bin/`
+  → 仓库 `tools/*/build/`
+
+### 预设菜单项
+
+`fs_root` 下可以放 `gpfusion.cfg`（纯文本 `key=value`），助手用它把用户选的
+`layout` 之类传给固件，让预览反映实际配置而不是固件默认值。
+支持的键与固件 `loadConfigFile()` 一致：`layout` `theme` `style` `bg_level` `bl`
+`hflip` `vflip` `inv` `hist` `saver` `saver_ms` `screenoff` `wl`。
 
 ## 平台垫片（`shim/`）覆盖了什么
 

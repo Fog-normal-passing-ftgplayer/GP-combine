@@ -26,7 +26,7 @@ from ..gif_convert import generate_gif_header, generate_gif_gfr
 from ..jobs import JobRunner
 from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
-from .firmware_preview import FirmwarePreview, preview_enabled
+from .firmware_screen import FirmwareScreen
 
 
 class GifPage(QWidget):
@@ -96,13 +96,13 @@ class GifPage(QWidget):
         root.addLayout(left, 2)
 
         right = QVBoxLayout()
-        self.preview = FirmwarePreview()
+        self.preview = FirmwareScreen()
         w, h = screen_dims(self.state.screen_res)
-        self.preview.setMinimumSize(w * 3, h * 3)
-        self.preview.failed.connect(self._on_preview_failed)
-        self.preview.ready.connect(self._on_preview_ready)
+        self.preview.setMinimumSize(w * 2, h * 2)
+        self.preview.failed.connect(self._on_screen_failed)
+        self.preview.started.connect(self._on_screen_started)
         right.addWidget(self.preview, 1)
-        self.preview_note = QLabel("")
+        self.preview_note = QLabel("点一下画面，用方向键 / Z / X 直接操作真机菜单")
         self.preview_note.setObjectName("Muted")
         self.preview_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right.addWidget(self.preview_note)
@@ -130,7 +130,7 @@ class GifPage(QWidget):
             self.palette_combo.setCurrentIndex(pi)
         self._load_previous()
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
-            self.preview.show_static(None)
+            self.preview.stop()
         self.status.setText("")
 
     def pick_gif(self) -> None:
@@ -153,45 +153,34 @@ class GifPage(QWidget):
         self.generate_now()
 
     def _update_preview(self) -> None:
-        if not self.state.gif_src or not Path(self.state.gif_src).is_file():
-            self.preview.show_static(None)
-            self.preview_note.setText("")
-            return
-        try:
-            im = Image.open(self.state.gif_src)
-            im.seek(0)
-            w, h = screen_dims(self.state.screen_res)
-            im2 = im.convert("RGB").resize((w * 3, h * 3), Image.LANCZOS)
-            qim = QImage(im2.tobytes("raw", "RGB"), im2.width, im2.height,
-                         im2.width * 3, QImage.Format.Format_RGB888)
-            self.preview.show_static(QPixmap.fromImage(qim))
-            self.preview_note.setText("原始 GIF（真机预览生成中…）")
-        except Exception:
-            self.preview.show_static(None)
+        """GIF 变了：清掉旧画面，稍后重启引擎（等用户停下操作）。"""
+        self.preview_note.setText("真机画面准备中…")
         self._pv_timer.start()
 
     def _start_firmware_preview(self) -> None:
-        """调仿真器出真机画面。只在动态壁纸模式下有意义（静态背景时主界面看不到 GIF）。"""
-        if not preview_enabled():
-            self.preview_note.setText("原始 GIF（真机预览已关闭：GPFUSION_NO_PREVIEW）")
-            return
-        if self.state.bg_kind != "dynamic":
-            self.preview_note.setText("原始 GIF（静态背景模式，主界面不显示 GIF）")
-            return
+        """把当前壁纸塞进临时 LittleFS 根目录，启动可交互的固件引擎。"""
         if not self.state.source_dir:
+            self.preview_note.setText("源码目录未就绪")
             return
-        try:
-            gfr = local_wallpaper_gfr(Path(self.state.source_dir))
-        except Exception:
-            return
+        gfr = None
+        if self.state.bg_kind == "dynamic":
+            try:
+                cand = local_wallpaper_gfr(Path(self.state.source_dir))
+                if cand.is_file():
+                    gfr = cand
+            except Exception:
+                gfr = None
         cfg = {"layout": int(self.state.default_layout)}
-        if not self.preview.play(self.state.screen_res, gfr, cfg=cfg, scale=3):
-            self.preview_note.setText("原始 GIF（找不到仿真器，无法生成真机预览）")
+        ok = self.preview.start(self.state.screen_res, gfr, cfg=cfg)
+        if ok:
+            self.preview.setFocus()
 
-    def _on_preview_ready(self, frames: int) -> None:
-        self.preview_note.setText("固件真实画面 · %d 帧" % frames)
+    def _on_screen_started(self, w: int, h: int) -> None:
+        self.preview_note.setText(
+            "固件真实画面 %dx%d · 点一下画面后：方向键=十字键  1=S2  2=S1  z=A  x=B" % (w, h)
+        )
 
-    def _on_preview_failed(self, msg: str) -> None:
+    def _on_screen_failed(self, msg: str) -> None:
         self.preview_note.setText("真机预览不可用：%s" % msg)
 
     def generate_now(self) -> None:

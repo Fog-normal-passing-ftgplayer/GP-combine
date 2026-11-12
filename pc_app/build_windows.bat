@@ -47,8 +47,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist gpfusion_wizard\bin\sim240.exe (
-  echo [WARN] gpfusion_wizard\bin\sim240.exe / sim320.exe not found.
+if not exist gpfusion_wizard\bin\libsim240.dll (
+  echo [WARN] gpfusion_wizard\bin\libsim240.dll / libsim320.dll not found.
   echo [WARN] Firmware preview will fall back to static image.
   echo [WARN] Put the headless simulator binaries there to enable it.
 )

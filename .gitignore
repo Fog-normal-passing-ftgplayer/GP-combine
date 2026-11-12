@@ -56,3 +56,6 @@ build_reverse/
 
 # 合并版构建产物（体积大，不入库）
 build-all/
+
+# 仿真器的发行包（含 build/ 产物，走 GitHub Release，不入库）
+tools/GP-combine固件彩屏模拟（linux版本）.zip

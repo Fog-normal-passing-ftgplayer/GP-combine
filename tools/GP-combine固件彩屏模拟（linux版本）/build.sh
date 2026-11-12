@@ -27,8 +27,16 @@ SRC="$BUILD/sketch/$NAME.ino.cpp"
 
 [ -d "$SKETCH" ] || { echo "找不到 sketch 目录: $SKETCH" >&2; exit 1; }
 
-# 1) 生成带原型的 .ino.cpp
-if [ ! -f "$SRC" ]; then
+# 1) 生成带原型的 .ino.cpp（缺文件、或固件源码比它新时都要重生成，
+#    否则会静默用上一次的旧代码，改完 UI 看不到效果还以为是仿真器的问题）
+NEED_REBUILD=0
+[ -f "$SRC" ] || NEED_REBUILD=1
+if [ -f "$SRC" ] && [ -n "$(find "$SKETCH" -maxdepth 1 \( -name '*.ino' -o -name '*.h' \) -newer "$SRC" -print -quit)" ]; then
+  NEED_REBUILD=1
+  echo "[build] 固件源码有更新，重新生成 .ino.cpp"
+fi
+
+if [ "$NEED_REBUILD" = "1" ]; then
   if command -v arduino-cli >/dev/null 2>&1; then
     echo "[build] 首次：调用 arduino-cli 生成 .ino.cpp（几分钟，只做一次）"
     arduino-cli compile --fqbn "$FQBN" --build-path "$BUILD" "$SKETCH"
@@ -63,5 +71,5 @@ g++ -std=gnu++17 -O0 -w -fno-exceptions \
     "$SIM/sim_main.cpp" "${EXTRA[@]}" \
     -o "$SIM/build/sim_$NAME" -lz -lX11
 
-echo "[build] OK -> tools/ui_sim/build/sim_$NAME"
+echo "[build] OK -> $SIM/build/sim_$NAME"
 echo "[build] 试跑：./run.sh $NAME --mode=keys --scale=3"

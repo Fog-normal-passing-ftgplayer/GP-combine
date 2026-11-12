@@ -26,7 +26,7 @@ from ..gif_convert import generate_gif_header, generate_gif_gfr
 from ..jobs import JobRunner
 from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
-from .firmware_preview import FirmwarePreview
+from .firmware_preview import FirmwarePreview, preview_enabled
 
 
 class GifPage(QWidget):
@@ -172,6 +172,9 @@ class GifPage(QWidget):
 
     def _start_firmware_preview(self) -> None:
         """调仿真器出真机画面。只在动态壁纸模式下有意义（静态背景时主界面看不到 GIF）。"""
+        if not preview_enabled():
+            self.preview_note.setText("原始 GIF（真机预览已关闭：GPFUSION_NO_PREVIEW）")
+            return
         if self.state.bg_kind != "dynamic":
             self.preview_note.setText("原始 GIF（静态背景模式，主界面不显示 GIF）")
             return

@@ -47,6 +47,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist gpfusion_wizard\bin\sim240.exe (
+  echo [WARN] gpfusion_wizard\bin\sim240.exe / sim320.exe not found.
+  echo [WARN] Firmware preview will fall back to static image.
+  echo [WARN] Put the headless simulator binaries there to enable it.
+)
+
 echo [3/4] Building executable...
 python -m PyInstaller --clean --noconfirm gpfusion.spec > build_log.txt 2>&1
 if errorlevel 1 (

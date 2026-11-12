@@ -59,6 +59,36 @@ Windows：双击 `build_windows.bat`（自动建虚拟环境、装依赖、打�
 
 打包机建议在对应平台上执行；PyInstaller 不支持跨平台打包。
 
+## 真机画面预览（GIF 页)
+
+GIF 页右侧的预览不是把 GIF 缩放显示，而是**调用仿真器渲染固件本体**后循环播放 ——
+状态栏、按键布局、主题、壁纸叠加都是真机上那份代码画出来的。
+
+### 打包时必须把仿真器二进制放进包里
+
+```bash
+./prepare_sim.sh        # 构建 headless 版 240/320 并复制到 gpfusion_wizard/bin/
+```
+
+`prepare_sim.sh` 会自己找到 `tools/*/sim_main.cpp`（源码目录名改了也没关系）。
+`build_linux.sh` 已经内置这一步。
+
+缺失时的行为：**不会报错**，预览退化为静态 GIF 图（生成固件等其它功能完全不受影响）。
+
+### 开关
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `GPFUSION_NO_PREVIEW=1` | 完全关闭真机预览（打包环境跑不了仿真器时用） |
+| `GPFUSION_SIM_240` / `GPFUSION_SIM_320` | 指定仿真器路径，优先级最高 |
+
+查找顺序：环境变量 → 打包内 `gpfusion_wizard/bin/` → 仓库 `tools/*/build/`。
+
+### 预览能反映哪些设置
+
+通过固件已有的 `/gpfusion.cfg`（纯文本 `key=value`）传入，目前传了 `layout`；
+主题、背景透明度等键也支持（见 `tools/…/README.md`）。
+
 ## 使用流程
 
 1. 用 USB 插入 ESP32-S3（普通模式即可，不需要手动进下载模式）。

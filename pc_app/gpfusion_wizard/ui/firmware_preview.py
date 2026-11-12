@@ -22,6 +22,11 @@ from ..app_config import screen_dims
 from ..jobs import JobRunner
 
 
+def preview_enabled() -> bool:
+    """真机预览总开关：设 GPFUSION_NO_PREVIEW=1 可关闭（打包环境跑不了仿真器时用）。"""
+    return os.environ.get("GPFUSION_NO_PREVIEW", "").strip().lower() not in ("1", "true", "yes", "on")
+
+
 def find_sim(res: str) -> Path | None:
     """找仿真器可执行文件。优先级：环境变量 > 打包内 bin/ > 仓库 tools/ 下。"""
     key = "320" if "320" in str(res) else "240"
@@ -34,7 +39,15 @@ def find_sim(res: str) -> Path | None:
     repo = pkg.parent.parent                              # 仓库根
     cands.extend(sorted(repo.glob(f"tools/*/build/sim{key}")))   # 开发态
     for c in cands:
-        if c.is_file() and os.access(c, os.X_OK):
+        if not c.is_file():
+            continue
+        if not os.access(c, os.X_OK):
+            # 打包/解压后可能丢执行位，补一下再判断
+            try:
+                c.chmod(c.stat().st_mode | 0o111)
+            except OSError:
+                continue
+        if os.access(c, os.X_OK):
             return c
     return None
 
@@ -98,6 +111,8 @@ class FirmwarePreview(QLabel):
         count: int = 60,
     ) -> bool:
         """启动一次预览。返回 False 表示环境不满足（找不到仿真器等），调用方可忽略。"""
+        if not preview_enabled():
+            return False
         self._gen += 1
         gen = self._gen
         self.stop()

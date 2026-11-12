@@ -1,9 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
+# 真机预览用的 headless 仿真器（由 prepare_sim.sh 放进 gpfusion_wizard/bin/）。
+# 存在才打包：缺了也能正常出包，只是预览退化为静态图。
+_sim_binaries = [
+    (path, "gpfusion_wizard/bin")
+    for path in ("gpfusion_wizard/bin/sim240", "gpfusion_wizard/bin/sim320")
+    if os.path.isfile(path)
+]
+if not _sim_binaries:
+    print("[spec] 未找到 gpfusion_wizard/bin/sim240|sim320 —— 真机预览将不可用")
+
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=_sim_binaries,
     datas=[],
     hiddenimports=[
         "serial.tools.list_ports",

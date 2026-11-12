@@ -155,6 +155,7 @@ class GifPage(QWidget):
     def _update_preview(self) -> None:
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
             self.preview.show_static(None)
+            self.preview_note.setText("")
             return
         try:
             im = Image.open(self.state.gif_src)
@@ -163,9 +164,32 @@ class GifPage(QWidget):
             im2 = im.convert("RGB").resize((w * 3, h * 3), Image.LANCZOS)
             qim = QImage(im2.tobytes("raw", "RGB"), im2.width, im2.height,
                          im2.width * 3, QImage.Format.Format_RGB888)
-            self.preview.setPixmap(QPixmap.fromImage(qim))
+            self.preview.show_static(QPixmap.fromImage(qim))
+            self.preview_note.setText("原始 GIF（真机预览生成中…）")
         except Exception:
-            self.preview.clear()
+            self.preview.show_static(None)
+        self._pv_timer.start()
+
+    def _start_firmware_preview(self) -> None:
+        """调仿真器出真机画面。只在动态壁纸模式下有意义（静态背景时主界面看不到 GIF）。"""
+        if self.state.bg_kind != "dynamic":
+            self.preview_note.setText("原始 GIF（静态背景模式，主界面不显示 GIF）")
+            return
+        if not self.state.source_dir:
+            return
+        try:
+            gfr = local_wallpaper_gfr(Path(self.state.source_dir))
+        except Exception:
+            return
+        cfg = {"layout": int(self.state.default_layout)}
+        if not self.preview.play(self.state.screen_res, gfr, cfg=cfg, scale=3):
+            self.preview_note.setText("原始 GIF（找不到仿真器，无法生成真机预览）")
+
+    def _on_preview_ready(self, frames: int) -> None:
+        self.preview_note.setText("固件真实画面 · %d 帧" % frames)
+
+    def _on_preview_failed(self, msg: str) -> None:
+        self.preview_note.setText("真机预览不可用：%s" % msg)
 
     def generate_now(self) -> None:
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():

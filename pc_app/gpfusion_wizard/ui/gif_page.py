@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -26,6 +26,7 @@ from ..gif_convert import generate_gif_header, generate_gif_gfr
 from ..jobs import JobRunner
 from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
+from .firmware_preview import FirmwarePreview
 
 
 class GifPage(QWidget):
@@ -46,9 +47,10 @@ class GifPage(QWidget):
         title = QLabel("GIF 动画")
         title.setObjectName("StepTitle")
         left.addWidget(title)
-        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩，"
-                      "生成固件内的 gif_user.h。作为屏保选择「GIF」播放；"
-                      "若在「背景 / 壁纸」页选了「动态壁纸」，它将成为主界面动态背景（屏保禁用）。")
+        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩。"
+                      "选「动态壁纸」时写卡内 /wp/1.gfr，成为主界面动态背景（此时屏保禁用）；"
+                      "固件不再内嵌 GIF，换壁纸只需替换卡内文件。"
+                      "右侧预览是固件本体渲染的真实画面，不是把 GIF 缩放给你看。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -93,13 +95,24 @@ class GifPage(QWidget):
         left.addStretch(1)
         root.addLayout(left, 2)
 
-        self.preview = QLabel()
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(240 * 3, 135 * 3)
-        self.preview.setStyleSheet(
-            "background: #0D1117; border: 1px solid #232C3C; border-radius: 8px;"
-        )
-        root.addWidget(self.preview, 3)
+        right = QVBoxLayout()
+        self.preview = FirmwarePreview()
+        w, h = screen_dims(self.state.screen_res)
+        self.preview.setMinimumSize(w * 3, h * 3)
+        self.preview.failed.connect(self._on_preview_failed)
+        self.preview.ready.connect(self._on_preview_ready)
+        right.addWidget(self.preview, 1)
+        self.preview_note = QLabel("")
+        self.preview_note.setObjectName("Muted")
+        self.preview_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        right.addWidget(self.preview_note)
+        root.addLayout(right, 3)
+
+        # 合并连续操作：拖调色板下拉时不要每次都起一个进程
+        self._pv_timer = QTimer(self)
+        self._pv_timer.setSingleShot(True)
+        self._pv_timer.setInterval(600)
+        self._pv_timer.timeout.connect(self._start_firmware_preview)
 
     def _load_previous(self) -> None:
         if self.state.gif_src and Path(self.state.gif_src).is_file():
@@ -117,7 +130,7 @@ class GifPage(QWidget):
             self.palette_combo.setCurrentIndex(pi)
         self._load_previous()
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
-            self.preview.setPixmap(QPixmap())
+            self.preview.show_static(None)
         self.status.setText("")
 
     def pick_gif(self) -> None:
@@ -141,7 +154,7 @@ class GifPage(QWidget):
 
     def _update_preview(self) -> None:
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
-            self.preview.setPixmap(QPixmap())
+            self.preview.show_static(None)
             return
         try:
             im = Image.open(self.state.gif_src)
@@ -196,6 +209,7 @@ class GifPage(QWidget):
             self.status.setText(msg)
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
+            self._pv_timer.start()
         except Exception as exc:  # noqa: BLE001
             self.status.setText("生成失败：%s" % exc)
             self.status.setStyleSheet("color: #FF7B72;")

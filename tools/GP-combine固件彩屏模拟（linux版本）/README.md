@@ -164,6 +164,48 @@ ffmpeg -framerate 20 -i wp320/w%03d.png -loop 0 \
 
 ---
 
+## 与配置助手集成（真机画面预览）
+
+配置助手的「GIF 动画」页右侧显示的是**固件本体渲染的真实画面**，不是把 GIF 缩放给你看——
+状态栏、按键布局、主题、壁纸叠加都是真机那份代码画出来的。
+
+链路：助手转码 `.gfr` → 调仿真器的 headless 构建导出帧 → 按 `.gfr` 的帧延迟在控件里循环播放。
+
+### 构建 headless 版（不依赖 X11）
+
+```bash
+HEADLESS=1 ./build.sh 240    # -> build/sim240
+HEADLESS=1 ./build.sh 320    # -> build/sim320
+```
+
+headless 版没有图形后端（`-DSIM_HEADLESS`），`--mode=keys` 会明确拒绝；
+其余模式（`tour` / `wallpaper` / `idle`）照常工作。产物不链接 libX11。
+
+助手通过 `firmware_preview.find_sim()` 自动找，优先级：
+
+1. 环境变量 `GPFUSION_SIM_240` / `GPFUSION_SIM_320`
+2. 打包内 `gpfusion_wizard/bin/sim240|sim320`
+3. 仓库 `tools/*/build/sim240|sim320`（开发态）
+
+### 助手等价于这样调用
+
+```bash
+./build/sim320 --mode=wallpaper --out=/tmp/frames --count=60 --fs=/tmp/gpv_xxx
+```
+
+`--fs` 目录下放：
+
+```
+wp/1.gfr         壁纸本体（助手从 GIF 转码而来）
+gpfusion.cfg     可选，纯文本 key=value，用来预设菜单项
+```
+
+`gpfusion.cfg` 支持的键（与固件 `loadConfigFile()` 一致）：
+`layout` `theme` `style` `bg_level` `bl` `hflip` `vflip` `inv`
+`hist` `saver` `saver_ms` `screenoff` `wl`。
+
+有了它，预览就能反映用户在助手里选的配置，而不是永远显示固件默认值。
+
 ## 平台垫片（`shim/`）覆盖了什么
 
 | 文件 | 垫掉的东西 |

@@ -64,12 +64,26 @@ if [ -d "$SKETCH/src" ]; then
   echo "[build] 附带源码 ${#EXTRA[@]} 个（内嵌 NES）"
 fi
 
+# 4) 构建形态
+#    HEADLESS=1 -> 不编图形后端，输出短名 build/sim240 | build/sim320（配置助手直接调用）
+#    默认       -> 带 X11 窗口，输出 build/sim_<sketch>
+if [ "${HEADLESS:-0}" = "1" ]; then
+  OUT="$SIM/build/sim$([ "$SIM_W" = "320" ] && echo 320 || echo 240)"
+  FLAGS=(-O2 -DSIM_HEADLESS)
+  LIBS=(-lz)
+  echo "[build] headless 构建（无窗口）"
+else
+  OUT="$SIM/build/sim_$NAME"
+  FLAGS=(-O0)
+  LIBS=(-lz -lX11)
+fi
+
 echo "[build] $NAME  ${SIM_W}x${SIM_H}"
-g++ -std=gnu++17 -O0 -w -fno-exceptions \
+g++ -std=gnu++17 "${FLAGS[@]}" -w -fno-exceptions \
     -DSIM_IMG_W="$SIM_W" -DSIM_IMG_H="$SIM_H" \
     -I "$SIM/shim" -I "$SKETCH" -I "$GEN" \
     "$SIM/sim_main.cpp" "${EXTRA[@]}" \
-    -o "$SIM/build/sim_$NAME" -lz -lX11
+    -o "$OUT" "${LIBS[@]}"
 
-echo "[build] OK -> $SIM/build/sim_$NAME"
+echo "[build] OK -> $OUT"
 echo "[build] 试跑：./run.sh $NAME --mode=keys --scale=3"

@@ -29,8 +29,10 @@
 #include <time.h>
 #include <zlib.h>
 // Xlib 必须在固件之后再 include：它 #define None/Bool/Status，先引会污染固件
+#ifndef SIM_HEADLESS
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // 平台实现（唯一的时间来源是假时钟）
@@ -254,6 +256,7 @@ static const uint16_t BTN_S1 = 0x0100;
 static const uint16_t BTN_S2 = 0x0200;
 static const uint8_t  DP_UP = 0x01, DP_DOWN = 0x02, DP_LEFT = 0x04, DP_RIGHT = 0x08;
 
+#ifndef SIM_HEADLESS
 class X11Keys {
 public:
     bool init() {
@@ -487,6 +490,27 @@ private:
     bool needFocus_ = false;
     uint32_t lut_[65536];
 };
+
+#else  // SIM_HEADLESS —— 不编图形后端（配置助手内嵌预览用）
+typedef unsigned long Window;
+
+class X11Keys {
+public:
+    bool init() { return false; }
+    void focusWindow(Window) {}
+    bool quitRequested() { return false; }
+    bool poll(SimIn &) { return false; }
+};
+
+class X11Window {
+public:
+    bool open(int, const char *) { return false; }
+    bool alive() { return false; }
+    void present() {}
+    bool dirty() const { return false; }
+    Window id() const { return 0; }
+};
+#endif
 
 // ---------------------------------------------------------------------------
 // 脚本化确定性回放
@@ -787,6 +811,11 @@ int main(int argc, char **argv) {
     }
 
     if (mode == "keys") {
+#ifdef SIM_HEADLESS
+        std::fprintf(stderr, "[sim] 本构建没有图形后端（headless），keys 模式不可用。\n"
+                             "      出帧请用 --mode=tour / --mode=wallpaper / --mode=idle\n");
+        return 1;
+#endif
         X11Keys keys;
         bool haveKeys = keys.init();
 

@@ -26,7 +26,6 @@ from ..gif_convert import generate_gif_header, generate_gif_gfr
 from ..jobs import JobRunner
 from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
-from .firmware_screen import FirmwareScreen
 
 
 class GifPage(QWidget):
@@ -96,23 +95,23 @@ class GifPage(QWidget):
         root.addLayout(left, 2)
 
         right = QVBoxLayout()
-        self.preview = FirmwareScreen()
+        self.preview = QLabel()
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         w, h = screen_dims(self.state.screen_res)
         self.preview.setMinimumSize(w * 2, h * 2)
-        self.preview.failed.connect(self._on_screen_failed)
-        self.preview.started.connect(self._on_screen_started)
+        self.preview.setStyleSheet(
+            "background: #0D1117; border: 1px solid #232C3C; border-radius: 8px;"
+        )
         right.addWidget(self.preview, 1)
-        self.preview_note = QLabel("点一下画面，用方向键 / Z / X 直接操作真机菜单")
+        self.preview_note = QLabel(
+            "这里只显示 GIF 本身；想看它在真机界面上的实际效果，"
+            "去左侧「仿真器预览」页（可以按按键）"
+        )
         self.preview_note.setObjectName("Muted")
         self.preview_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_note.setWordWrap(True)
         right.addWidget(self.preview_note)
         root.addLayout(right, 3)
-
-        # 合并连续操作：拖调色板下拉时不要每次都起一个进程
-        self._pv_timer = QTimer(self)
-        self._pv_timer.setSingleShot(True)
-        self._pv_timer.setInterval(600)
-        self._pv_timer.timeout.connect(self._start_firmware_preview)
 
     def _load_previous(self) -> None:
         if self.state.gif_src and Path(self.state.gif_src).is_file():
@@ -130,7 +129,7 @@ class GifPage(QWidget):
             self.palette_combo.setCurrentIndex(pi)
         self._load_previous()
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
-            self.preview.stop()
+            self.preview.setPixmap(QPixmap())
         self.status.setText("")
 
     def pick_gif(self) -> None:
@@ -153,35 +152,19 @@ class GifPage(QWidget):
         self.generate_now()
 
     def _update_preview(self) -> None:
-        """GIF 变了：清掉旧画面，稍后重启引擎（等用户停下操作）。"""
-        self.preview_note.setText("真机画面准备中…")
-        self._pv_timer.start()
-
-    def _start_firmware_preview(self) -> None:
-        """把当前壁纸塞进临时 LittleFS 根目录，启动可交互的固件引擎。"""
-        if not self.state.source_dir:
-            self.preview_note.setText("源码目录未就绪")
+        if not self.state.gif_src or not Path(self.state.gif_src).is_file():
+            self.preview.setPixmap(QPixmap())
             return
-        gfr = None
-        if self.state.bg_kind == "dynamic":
-            try:
-                cand = local_wallpaper_gfr(Path(self.state.source_dir))
-                if cand.is_file():
-                    gfr = cand
-            except Exception:
-                gfr = None
-        cfg = {"layout": int(self.state.default_layout)}
-        ok = self.preview.start(self.state.screen_res, gfr, cfg=cfg)
-        if ok:
-            self.preview.setFocus()
-
-    def _on_screen_started(self, w: int, h: int) -> None:
-        self.preview_note.setText(
-            "固件真实画面 %dx%d · 点一下画面后：方向键=十字键  1=S2  2=S1  z=A  x=B" % (w, h)
-        )
-
-    def _on_screen_failed(self, msg: str) -> None:
-        self.preview_note.setText("真机预览不可用：%s" % msg)
+        try:
+            im = Image.open(self.state.gif_src)
+            im.seek(0)
+            w, h = screen_dims(self.state.screen_res)
+            im2 = im.convert("RGB").resize((w * 2, h * 2), Image.LANCZOS)
+            qim = QImage(im2.tobytes("raw", "RGB"), im2.width, im2.height,
+                         im2.width * 3, QImage.Format.Format_RGB888)
+            self.preview.setPixmap(QPixmap.fromImage(qim))
+        except Exception:
+            self.preview.clear()
 
     def generate_now(self) -> None:
         if not self.state.gif_src or not Path(self.state.gif_src).is_file():
@@ -225,7 +208,6 @@ class GifPage(QWidget):
             self.status.setText(msg)
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()
-            self._pv_timer.start()
         except Exception as exc:  # noqa: BLE001
             self.status.setText("生成失败：%s" % exc)
             self.status.setStyleSheet("color: #FF7B72;")

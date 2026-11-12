@@ -27,25 +27,36 @@ SRC="$BUILD/sketch/$NAME.ino.cpp"
 
 [ -d "$SKETCH" ] || { echo "找不到 sketch 目录: $SKETCH" >&2; exit 1; }
 
-# 1) 生成带原型的 .ino.cpp（缺文件、或固件源码比它新时都要重生成，
-#    否则会静默用上一次的旧代码，改完 UI 看不到效果还以为是仿真器的问题）
-NEED_REBUILD=0
-[ -f "$SRC" ] || NEED_REBUILD=1
-if [ -f "$SRC" ] && [ -n "$(find "$SKETCH" -maxdepth 1 \( -name '*.ino' -o -name '*.h' \) -newer "$SRC" -print -quit)" ]; then
-  NEED_REBUILD=1
-  echo "[build] 固件源码有更新，重新生成 .ino.cpp"
+# 1) 检查 .ino.cpp 是否就绪
+#    arduino-cli 那一步（几分钟）已经拆到 compile_ino.sh，这里只做检查：
+#    缺文件或比固件源码旧就明确报错，不擅自跑工具链。
+#    这样改仿真器本身时几秒就能编完；改固件时也知道慢的是哪一步。
+_auto_needed() {
+  [ ! -f "$SRC" ] && return 0
+  local st="$BUILD/.ino_src_hash"
+  [ -f "$st" ] || return 0
+  [ "$(cat "$st")" != "$( cd "$SKETCH" && cat *.ino *.h 2>/dev/null | sha256sum | cut -d' ' -f1 )" ]
+}
+if [ "${AUTO_INO:-0}" = "1" ] && _auto_needed; then
+  echo "[build] AUTO_INO=1：自动调用 compile_ino.sh"
+  "$SIM/compile_ino.sh" "$([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)"
 fi
 
-if [ "$NEED_REBUILD" = "1" ]; then
-  if command -v arduino-cli >/dev/null 2>&1; then
-    echo "[build] 首次：调用 arduino-cli 生成 .ino.cpp（几分钟，只做一次）"
-    arduino-cli compile --fqbn "$FQBN" --build-path "$BUILD" "$SKETCH"
-  else
-    echo "缺少 $SRC" >&2
-    echo "需要先用 arduino-cli 编一次固件，例如：" >&2
-    echo "  arduino-cli compile --fqbn '$FQBN' --build-path '$BUILD' '$SKETCH'" >&2
-    exit 1
-  fi
+if [ ! -f "$SRC" ]; then
+  echo "缺少 $SRC" >&2
+  echo "先单独生成一次（arduino-cli，几分钟）：" >&2
+  echo "  ./compile_ino.sh $([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)" >&2
+  exit 1
+fi
+
+# 用源码内容哈希判断过期（mtime 不可靠：arduino-cli 增量缓存不重写未变产物）
+STAMP="$BUILD/.ino_src_hash"
+NOW_HASH="$( cd "$SKETCH" && cat *.ino *.h 2>/dev/null | sha256sum | cut -d' ' -f1 )"
+if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" != "$NOW_HASH" ]; then
+  echo "[build] ✘ 固件源码变了，.ino.cpp 已过期（仿真器会用到旧代码）" >&2
+  echo "        先跑：./compile_ino.sh $([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)" >&2
+  echo "        （或在这次构建加 AUTO_INO=1 自动重新生成）" >&2
+  exit 1
 fi
 
 mkdir -p "$GEN"

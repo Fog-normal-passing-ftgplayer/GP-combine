@@ -23,6 +23,7 @@ from ..config_backup import export_config, import_config
 from ..wizard_state import WizardState
 from .background_page import BackgroundPage
 from .gif_page import GifPage
+from .sim_page import SimPage
 from .layout_page import LayoutPage
 from .lite_source_page import LiteSourcePage
 from .lite_uf2_page import LiteUf2Page
@@ -42,6 +43,7 @@ FULL_STEPS = [
     "GIF 动画",
     "小游戏（NES）",
     "网页配置",
+    "仿真器预览",
     "编译上传",
     "整机重刷",
 ]
@@ -125,6 +127,7 @@ class MainWindow(QWidget):
         self.layout_page = LayoutPage(self.state)
         self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
+        self.sim_page = SimPage(self.state)
         self.nes_page = NesPage(self.state)
         self.upload_page = UploadPage(self.state)
         self.reflash_page = ReflashPage(self.state)
@@ -139,6 +142,7 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.gif_page)
         self.stack.addWidget(self.nes_page)
         self.stack.addWidget(self.webconfig_page)
+        self.stack.addWidget(self.sim_page)
         self.stack.addWidget(self.upload_page)
         self.stack.addWidget(self.reflash_page)
         self.stack.addWidget(self.lite_source_page)
@@ -194,8 +198,10 @@ class MainWindow(QWidget):
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
         if self._mode == "full" and row == 7:
-            self.upload_page.on_shown()
+            self.sim_page.on_shown()
         if self._mode == "full" and row == 8:
+            self.upload_page.on_shown()
+        if self._mode == "full" and row == 9:
             self.reflash_page.on_shown()
         if self._mode == "lite" and row == 3:
             self.lite_uf2_page.on_shown()
@@ -214,8 +220,10 @@ class MainWindow(QWidget):
             return bool(self.state.lite_source_dir)
         if i == 0:
             return self.prep_page.is_ready()
-        if i in (1, 2, 3, 4, 5):
+        if i in (1, 2, 3, 4, 5, 6):
             return bool(self.state.source_dir)
+        if i == 7:          # 仿真器预览：可选步骤，不影响放行
+            return True
         return False
 
     def _can_continue(self, idx: int) -> bool:
@@ -229,7 +237,7 @@ class MainWindow(QWidget):
             return bool(self.state.source_dir)
         if idx == 2:
             return bool(self.state.background_src) and bool(self.state.source_dir)
-        if idx in (3, 4, 5):
+        if idx in (3, 4, 5, 6):
             return bool(self.state.source_dir)
         return True
 
@@ -278,6 +286,7 @@ class MainWindow(QWidget):
                 self.layout_page,
                 self.pico_page,
                 self.gif_page,
+                self.sim_page,
                 self.lite_source_page,
                 self.lite_webconfig_page,
                 self.lite_layout_page,

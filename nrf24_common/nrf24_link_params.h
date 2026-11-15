@@ -36,7 +36,13 @@
 #define NRF24_REG_SETUP_AW   0x03   /* SETUP_AW: 5 字节地址 */
 #define NRF24_REG_EN_AA      0x01   /* EN_AA: 仅 pipe0 开 auto-ack */
 #define NRF24_REG_EN_RXADDR  0x01   /* EN_RXADDR: 仅 pipe0 */
-#define NRF24_REG_RF_SETUP   0x0E   /* RF_SETUP: 2 Mbps, 0 dBm */
+#define NRF24_REG_RF_SETUP   0x0E   /* RF_SETUP: 2 Mbps, 0 dBm —— 接收端 ACK 保持满功率 */
+/* 发射端单独降功率：RF_PWR 只影响发射电流，接收灵敏度不变。
+ * 电池供电的 ESP32 开机就 0 dBm 连发，会把供电拉塌成 brownout 复位（黑屏）；
+ * 手柄离接收器一两米，-6 dBm 足够，同时把发射电流峰值压下去。
+ * RF_SETUP 位定义：bit3=RF_DR_HIGH(2Mbps)，bit2:1=RF_PWR，
+ *   11=0dBm / 10=-6dBm / 01=-12dBm / 00=-18dBm */
+#define NRF24_REG_RF_SETUP_TX 0x0C  /* RF_SETUP: 2 Mbps, -6 dBm（仅 ESP32 发射端） */
 #define NRF24_REG_CONFIG_TX  0x0E   /* CONFIG: PWR_UP | EN_CRC | CRCO(2 字节 CRC) */
 #define NRF24_REG_CONFIG_RX  0x0F   /* 上面 + PRIM_RX */
 #define NRF24_REG_STATUS_CLR 0x70   /* 写 1 清 RX_DR / TX_DS / MAX_RT */

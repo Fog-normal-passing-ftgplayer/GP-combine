@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <string.h>
 #include <LittleFS.h>
+#include <esp_system.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "background.h"
@@ -38,6 +39,44 @@ static bool wallpaperActive = false;
 #ifndef DEFAULT_LAYOUT
 #define DEFAULT_LAYOUT 1
 #endif
+
+
+// ---- 复位原因诊断 ----------------------------------------------------------
+// 电池供电 + 无线发射时，如果供电撑不住会反复 brownout 复位，现象就是
+// "开机黑屏、没有任何画面" —— 每轮都在屏幕点亮之前就被打断。
+// 这里记下本次复位原因：开机画面显示一行 RST:xxx，串口也打一次。
+static char bootResetReason[12] = "UNKNOWN";
+static bool wirelessStartPending = false;   // 无线延后到开机动画结束后再上电
+
+static const char *resetReasonName() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "POWERON";
+    case ESP_RST_EXT:       return "EXT";
+    case ESP_RST_SW:        return "SW";
+    case ESP_RST_PANIC:     return "PANIC";
+    case ESP_RST_INT_WDT:   return "INT_WDT";
+    case ESP_RST_TASK_WDT:  return "TASK_WDT";
+    case ESP_RST_WDT:       return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";
+    case ESP_RST_SDIO:      return "SDIO";
+    default:                return "UNKNOWN";
+  }
+}
+
+// 屏幕上用的短名：3x5 点阵里 'W' 与 'H'/'M'/'U' 无法区分（见 font.h），
+// 所以这里避开 W。串口仍然打印 ESP 的规范名字，便于检索。
+static const char *resetReasonShort(const char *canonical) {
+  if (!strcmp(canonical, "POWERON"))   return "COLD";
+  if (!strcmp(canonical, "BROWNOUT"))  return "LOWVOLT";
+  if (!strcmp(canonical, "PANIC"))     return "CRASH";
+  if (!strcmp(canonical, "TASK_WDT"))  return "HANG";
+  if (!strcmp(canonical, "INT_WDT"))   return "IRQHANG";
+  if (!strcmp(canonical, "WDT"))       return "TIMEOUT";
+  if (!strcmp(canonical, "SW"))        return "SOFT";
+  if (!strcmp(canonical, "DEEPSLEEP")) return "SLEEP";
+  return canonical;   // EXT / SDIO / UNKNOWN 本身不含 W
+}
 
 // ---- 板上占用脚（加外设/改硬件前先看这里）------------------------------------
 //   8 / 9 / 10 / 13  屏 RST / DC / CS / BL
@@ -2144,6 +2183,15 @@ void renderBootAnim(float t) {
     }
   }
 
+  // 左下：本次复位原因。电池供电撑不住时会反复 brownout 复位（开机黑屏），
+  // 这是唯一能留下来的线索 —— 恢复正常后这一行会告诉你原因。
+  if (t >= 0.10f && t < 0.95f) {
+    char rst[20];
+    snprintf(rst, sizeof(rst), "RST:%s", resetReasonShort(bootResetReason));
+    bool bad = strcmp(bootResetReason, "BROWNOUT") == 0;
+    drawText(8, SCR_H - 14, rst, bad ? RGB565(255, 90, 90) : RGB565(90, 96, 110));
+  }
+
   // 左侧系统信息：淡入显示 INITIALIZING + 动态省略号
   if (t >= 0.22f && t < 0.95f) {
     drawText(10, 8, "GP-CONTROLLER SYSTEM", RGB565(115, 115, 118));
@@ -2955,8 +3003,12 @@ void linkTask(void *) {
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 void setup(){
+  // 先记下复位原因（要在任何耗时初始化之前，brownout 复位就得靠它判断）
+  strncpy(bootResetReason, resetReasonName(), sizeof(bootResetReason) - 1);
   ledcAttach(BL, 5000, 8);
-  ledcWrite(BL, 255);
+  // 背光软启动：开机先给一小档，避免一上来就满背光 + 无线发射一起拉电流。
+  // 配置读完后 applyBgSettings() 会按用户设置拉满。
+  ledcWrite(BL, 60);
   pinMode(CS,OUTPUT);pinMode(DC,OUTPUT);pinMode(RST,OUTPUT);digitalWrite(CS,HIGH);
   {   // 显示屏 SPI：IDF DMA 驱动，80MHz
     spi_bus_config_t buscfg;
@@ -2984,13 +3036,15 @@ void setup(){
   renderBootAnim(0.0f);
   pushFrame();
   Serial.begin(UART_BAUD, SERIAL_8N1, ESP_RX, ESP_TX);
+  Serial.printf("[boot] reset=%s\n", bootResetReason);
   uartMx = xSemaphoreCreateMutex(); // 必须在任何写 UART 之前
   sendMuteFrame(false); // 开机同步：确保 Pico 端不残留静音状态
   pinMode(48,OUTPUT);
   digitalWrite(48, LOW);
   nrfSpi.begin(16, 18, 17, -1); // SCK, MISO, MOSI (CSN/CE managed by driver)
   radio.begin(nrfSpi, NRF_CSN, NRF_CE);
-  radioUp = true;  // 初版行为：无线默认开启
+  radioUp = false;  // 不默认开：由 applyWirelessSettings() 按配置决定。
+                     // 开机就 0dBm 发射会在电池供电时拉塌电压（brownout 黑屏）
   linkQ = xQueueCreate(16, sizeof(LinkFrame));
   // 收帧任务优先于发包任务：到了就先拆出来，等 loop 有空再跑 UI 逻辑
   radioMx = xSemaphoreCreateMutex();
@@ -3000,10 +3054,20 @@ void setup(){
   Serial.onReceive(linkRxNotify);
   LittleFS.begin(true);   // 挂载文件系统（首次自动格式化）
   loadConfigFile();
+  applyBgSettings();   // 背光/翻转按配置（此前一直是软启动的低亮度）
+  // 无线：关就立刻关掉；开则等开机动画结束后再上电 —— 电池供电下
+  // 显示还没亮就发射，最容易把启动电压拉塌成 brownout 复位循环。
+  if (wlOpts[0].value == 0) applyWirelessSettings();
+  else wirelessStartPending = true;
   gifInit();              // GIF 源：卡内 /wp/1.gfr（无则退回静态背景）
 }
 
 void loop(){
+  // 无线延后启动：开机动画播完（UI 已经正常显示）再给射频上电
+  if (wirelessStartPending && !bootAnimActive) {
+    wirelessStartPending = false;
+    applyWirelessSettings();
+  }
   // CONFIG 帧重传：200ms 没收到 CONFIG_ACK 就再发，最多 3 次
   if (cfgPending && !configAcked && cfgRetries < 3 && millis() - lastConfigSent > 200) {
     cfgRetries++;

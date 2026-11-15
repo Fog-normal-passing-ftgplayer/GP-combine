@@ -38,7 +38,7 @@ public:
     writeReg(0x03, NRF24_REG_SETUP_AW);     // SETUP_AW: 5-byte addresses
     writeReg(0x04, NRF24_REG_SETUP_RETR);   // SETUP_RETR: ARD=250us, ARC=3
     writeReg(0x05, NRF24_CHANNEL);          // RF_CH
-    writeReg(0x06, NRF24_REG_RF_SETUP);     // RF_SETUP: 2Mbps, 0dBm
+    writeReg(0x06, NRF24_REG_RF_SETUP_TX);  // RF_SETUP: 2Mbps, -6dBm（省发射电流）
     static const uint8_t addr[5] = NRF24_ADDR_INIT;
     writeReg(0x10, addr, 5);                // TX_ADDR
     writeReg(0x0A, addr, 5);                // RX_ADDR_P0 (auto-ack pipe)

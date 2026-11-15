@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_config import (
+    is_vertical,
     local_defaults_header,
     local_layout_header,
     screen_dims,
@@ -561,7 +562,7 @@ class LayoutPage(QWidget):
     def reset_defaults(self) -> None:
         if self.lite:
             self.state.lite_layout = Layout.lite_preset()
-        elif self.state.screen_res == "170x320":
+        elif is_vertical(self.state.screen_res):
             self.state.layout = Layout.preset_170x320()
         else:
             self.state.layout = Layout.preset()
@@ -608,7 +609,7 @@ class LayoutPage(QWidget):
             self.status_label.setStyleSheet("color: #FFB454;")
             return
         try:
-            out = local_defaults_header(Path(self.state.source_dir))
+            out = local_defaults_header(Path(self.state.source_dir), self.state.screen_res)
             write_defaults_header(self.state.default_layout, out)
             self.status_label.setText("✔ 默认布局已写入 %s" % out)
             self.status_label.setStyleSheet("color: #64E0A0;")

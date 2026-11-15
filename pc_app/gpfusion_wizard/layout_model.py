@@ -66,8 +66,9 @@ class Layout:
 
     @classmethod
     def preset_170x320(cls) -> "Layout":
-        """170x320 物理屏默认布局：内容区 320x170 横屏，
-        与固件 esp32_170x320.ino 的 HITBOX_MOVE/RIGHT_CLUSTER 一致。"""
+        """竖屏变体默认布局：内容区 320×高 横屏，
+        与固件 esp32_170x320 / esp32_172x320 的 HITBOX_MOVE/RIGHT_CLUSTER 一致。
+        172 版内容高 172，下列坐标 y≤151 不溢出，直接复用。"""
         move = [
             Btn(0x04, 23, 55, 13, False, "L", True),
             Btn(0x02, 72, 55, 13, False, "D", True),

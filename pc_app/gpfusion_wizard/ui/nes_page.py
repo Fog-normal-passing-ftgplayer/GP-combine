@@ -1,4 +1,4 @@
-"""小游戏（NES）配置：缩放模式 + ROM 导入（仅 170x320 版）。"""
+"""小游戏（NES）配置：缩放模式 + ROM 导入（仅竖屏版 170x320 / 172x320）。"""
 from __future__ import annotations
 
 import shutil
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_config import local_nes_conf, local_nes_dir
+from ..app_config import is_vertical, local_nes_conf, local_nes_dir
 from ..wizard_state import WizardState
 
 SCALE_MODES = [("1", "等比居中（左右黑边，推荐）"), ("0", "拉伸铺满（画面变形）")]
@@ -39,7 +39,7 @@ class NesPage(QWidget):
         title.setObjectName("StepTitle")
         root.addWidget(title)
         self.hint = QLabel(
-            "仅 170x320 版支持。ROM 会被写入设备卡内 /nes/，"
+            "仅竖屏版（170x320 / 172x320）支持。ROM 会被写入设备卡内 /nes/，"
             "在机内滑动菜单「小游戏」里选择运行。"
         )
         self.hint.setObjectName("Hint")
@@ -81,13 +81,14 @@ class NesPage(QWidget):
     # ---------- 状态 ----------
 
     def reload_state(self) -> None:
-        enabled = self.state.screen_res == "170x320"
+        enabled = is_vertical(self.state.screen_res)
         self.scale_combo.setEnabled(enabled)
         self.rom_list.setEnabled(enabled)
         if not enabled:
             self.hint.setStyleSheet("color: #FFB454;")
             self.hint.setText(
-                "小游戏功能仅支持 170x320 版（在「设备与源码」页切换分辨率后启用）"
+                "小游戏功能仅支持竖屏版 170x320 / 172x320"
+                "（在「设备与源码」页切换分辨率后启用）"
             )
             self.scale_combo.setCurrentIndex(0)
             self._refresh_rom_list()
@@ -126,7 +127,7 @@ class NesPage(QWidget):
     # ---------- 操作 ----------
 
     def _on_scale_changed(self) -> None:
-        if not self.state.source_dir or self.state.screen_res != "170x320":
+        if not self.state.source_dir or not is_vertical(self.state.screen_res):
             return
         val = str(self.scale_combo.currentData())
         conf = local_nes_conf(Path(self.state.source_dir), self.state.screen_res)
@@ -141,8 +142,8 @@ class NesPage(QWidget):
             self.rom_status.setText("写入失败：%s" % exc)
 
     def import_roms(self) -> None:
-        if self.state.screen_res != "170x320":
-            self.rom_status.setText("小游戏仅支持 170x320 版")
+        if not is_vertical(self.state.screen_res):
+            self.rom_status.setText("小游戏仅支持竖屏版 170x320 / 172x320")
             return
         if not self.state.source_dir:
             self.rom_status.setText("源码目录未就绪")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .app_config import BG_ALPHAS, MENU_BG, SCREEN_RESOLUTIONS
+from .app_config import BG_ALPHAS, MENU_BG, SCREEN_RESOLUTIONS, background_single_array
 
 
 def prepare_image(
@@ -79,8 +79,8 @@ def generate_background_header(
     with out.open("w", encoding="utf-8") as f:
         f.write("#pragma once\n")
         f.write("#include <stdint.h>\n")
-        if (w, h) == SCREEN_RESOLUTIONS["170x320"]:
-            # 170x320：只存一张原图，透明度由固件运行时混合（省 flash）
+        if background_single_array((w, h)):
+            # 竖屏（170/172）：只存一张原图，透明度由固件运行时混合（省 flash）
             data = [_rgb565(*px) for px in im.getdata()]
             f.write("\n// %dx%d raw background (alpha 1.0)，固件运行时按透明度混合\n"
                     % (w, h))

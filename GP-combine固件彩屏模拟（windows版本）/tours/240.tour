@@ -1,0 +1,50 @@
+shot home_wallpaper 4100
+hold 4100 7300 s2
+shot page_01_setting 7850
+hold 7850 7980 a
+shot setting_sections 8450
+hold 8450 8580 a
+shot opt_handle 9050
+hold 9050 9180 b
+hold 9560 9690 down
+hold 10070 10200 a
+shot opt_display 10670
+hold 10670 10800 b
+hold 11180 11310 down
+hold 11690 11820 down
+hold 12200 12330 a
+shot opt_system 12800
+hold 12800 12930 b
+hold 13310 13440 b
+hold 13990 14120 right
+shot page_02_battery 14750
+hold 14950 15080 right
+shot page_03_led 15710
+hold 15710 15840 a
+shot opt_led 16310
+hold 16310 16440 b
+hold 17140 17270 right
+hold 17750 17880 right
+hold 18360 18490 right
+shot page_04_bg 19120
+hold 19120 19250 a
+shot opt_bg 19720
+hold 19720 19850 b
+hold 20550 20680 right
+hold 21160 21290 right
+hold 21770 21900 right
+hold 22380 22510 right
+shot page_05_sleep 23140
+hold 23140 23270 a
+shot opt_sleep 23740
+hold 23740 23870 b
+hold 24570 24700 right
+hold 25180 25310 right
+hold 25790 25920 right
+hold 26400 26530 right
+hold 27010 27140 right
+shot page_06_wireless 27770
+hold 27770 27900 a
+shot opt_wireless 28370
+hold 28370 28500 b
+end 29700

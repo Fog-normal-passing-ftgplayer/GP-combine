@@ -1,0 +1,101 @@
+116 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.10
+116 INFO: Python: 3.9.13
+131 INFO: Platform: Windows-10-10.0.26200-SP0
+132 INFO: Python environment: C:\Users\50180\AppData\Local\Programs\Python\Python39
+134 INFO: Removing temporary files and cleaning cache in C:\Users\50180\AppData\Local\pyinstaller
+136 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\50180\\GPFusion\\gp-fusion\\pc_app',
+ 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\python39.zip',
+ 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\DLLs',
+ 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib',
+ 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39',
+ 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages',
+ 'C:\\Users\\50180\\GPFusion\\gp-fusion\\pc_app']
+636 INFO: checking Analysis
+636 INFO: Building Analysis because Analysis-00.toc is non existent
+636 INFO: Looking for Python shared library...
+636 INFO: Using Python shared library: C:\Users\50180\AppData\Local\Programs\Python\Python39\python39.dll
+636 INFO: Running Analysis Analysis-00.toc
+636 INFO: Target bytecode optimization level: 0
+636 INFO: Initializing module dependency graph...
+637 INFO: Initializing module graph hook caches...
+648 INFO: Analyzing modules for base_library.zip ...
+1183 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+1428 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+1715 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+2002 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+2190 INFO: Caching module dependency graph...
+2210 INFO: Analyzing C:\Users\50180\GPFusion\gp-fusion\pc_app\main.py
+2217 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+2594 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+2657 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+3704 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+5008 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+6277 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+18469 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+18557 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+18590 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+18837 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+18905 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+19050 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+19126 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+19398 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+19480 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+19509 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+20212 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+20213 INFO: SetuptoolsInfo: initializing cached setuptools info...
+20557 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+20628 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+20750 INFO: Processing standard module hook 'hook-PySide6.QtWebEngineWidgets.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+21005 INFO: Processing standard module hook 'hook-PySide6.QtPrintSupport.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+21290 INFO: Processing standard module hook 'hook-PySide6.QtWebEngineCore.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+21991 INFO: Processing standard module hook 'hook-PySide6.QtWebChannel.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+22311 INFO: Processing module hooks (post-graph stage)...
+22429 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+22462 INFO: Processing standard module hook 'hook-PySide6.QtPositioning.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+22936 INFO: Processing standard module hook 'hook-PySide6.QtQuick.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+23970 INFO: Processing standard module hook 'hook-PySide6.QtOpenGL.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+25855 INFO: Processing standard module hook 'hook-PySide6.QtQml.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+35066 INFO: Processing standard module hook 'hook-PySide6.QtQuickWidgets.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+35368 INFO: Performing binary vs. data reclassification (2666 entries)
+35726 INFO: Looking for ctypes DLLs
+35732 WARNING: Ignoring /System/Library/Frameworks/IOKit.framework/IOKit imported from C:\Users\50180\AppData\Local\Programs\Python\Python39\lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+35732 WARNING: Ignoring /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation imported from C:\Users\50180\AppData\Local\Programs\Python\Python39\lib\site-packages\serial\tools\list_ports_osx.py - only basenames are supported with ctypes imports!
+35733 INFO: Analyzing run-time hooks ...
+35735 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+35736 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+35738 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks'
+35739 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+35740 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+35741 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+35788 INFO: Creating base_library.zip...
+35798 INFO: Looking for dynamic libraries
+36615 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\Lib\\site-packages\\shiboken6', 'C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\lib\\site-packages\\numpy.libs']
+36615 INFO: Extra DLL search directories (PATH): ['C:\\Users\\50180\\AppData\\Local\\Programs\\Python\\Python39\\Lib\\site-packages\\PySide6']
+39475 INFO: Warnings written to C:\Users\50180\GPFusion\gp-fusion\pc_app\build\gpfusion\warn-gpfusion.txt
+39508 INFO: Graph cross-reference written to C:\Users\50180\GPFusion\gp-fusion\pc_app\build\gpfusion\xref-gpfusion.html
+39562 INFO: checking PYZ
+39562 INFO: Building PYZ because PYZ-00.toc is non existent
+39562 INFO: Building PYZ (ZlibArchive) C:\Users\50180\GPFusion\gp-fusion\pc_app\build\gpfusion\PYZ-00.pyz
+39797 INFO: Building PYZ (ZlibArchive) C:\Users\50180\GPFusion\gp-fusion\pc_app\build\gpfusion\PYZ-00.pyz completed successfully.
+39805 INFO: checking PKG
+39805 INFO: Building PKG because PKG-00.toc is non existent
+39805 INFO: Building PKG (CArchive) GPFusionWizard.pkg
+39813 INFO: Building PKG (CArchive) GPFusionWizard.pkg completed successfully.
+39814 INFO: Bootloader C:\Users\50180\AppData\Local\Programs\Python\Python39\lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+39814 INFO: checking EXE
+39814 INFO: Building EXE because EXE-00.toc is non existent
+39814 INFO: Building EXE from EXE-00.toc
+39814 INFO: Copying bootloader EXE to C:\Users\50180\GPFusion\gp-fusion\pc_app\build\gpfusion\GPFusionWizard.exe
+39817 WARNING: Execution of 'remove_all_resources' failed on attempt #1 / 20: error(5, 'EndUpdateResourceW', '¾Ü¾ø·ÃÎÊ¡£'). Retrying in 0.05 second(s)...
+39872 INFO: Copying icon to EXE
+39875 INFO: Copying 0 resources to EXE
+39875 INFO: Embedding manifest in EXE
+39877 INFO: Appending PKG archive to EXE
+39878 INFO: Fixing EXE headers
+39937 INFO: Building EXE from EXE-00.toc completed successfully.
+39954 INFO: checking COLLECT
+39954 INFO: Building COLLECT because COLLECT-00.toc is non existent
+39954 INFO: Building COLLECT COLLECT-00.toc
+43061 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+43098 INFO: Build complete! The results are available in: C:\Users\50180\GPFusion\gp-fusion\pc_app\dist

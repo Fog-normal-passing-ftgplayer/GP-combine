@@ -246,7 +246,7 @@ class GifPage(QWidget):
             self.status.setStyleSheet("color: #FF7B72;")
             return
         self.status.setText("%s\n正在写入设备（会清空板内配置）…" % msg)
-        self.status.setStyleSheet("color: #50C8FF;")
+        self.status.setStyleSheet("color: #FFB273;")
         runner = JobRunner()
         self._fs_runner = runner
         runner.line_ready.connect(self._on_flash_log)

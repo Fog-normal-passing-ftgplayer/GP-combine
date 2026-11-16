@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GP-Fusion 配置向导入口（开发运行：python main.py）。"""
+"""GP-Combine 配置助手入口（开发运行：python main.py）。"""
 from __future__ import annotations
 
 import sys
@@ -30,7 +30,7 @@ def _excepthook(etype, value, tb) -> None:
         from PySide6.QtWidgets import QApplication, QMessageBox
         app = QApplication.instance() or QApplication(sys.argv)
         box = QMessageBox()
-        box.setWindowTitle("GP-Fusion 启动失败")
+        box.setWindowTitle("GP-Combine 配置助手 启动失败")
         box.setText("程序启动时发生错误，详情已写入：\n%s" % _crash_log_path())
         box.setDetailedText(msg)
         box.exec()

@@ -173,7 +173,7 @@ class UploadPage(QWidget):
                   "app 3MB / LittleFS 12.94MB")
         self._log("提示：首次写入会重排分区表，板内 LittleFS 会被清空"
                   "（屏幕配置会自动从 Pico 镜像恢复）")
-        self._set_status("正在编译固件…（首次约 2~5 分钟）", "#50C8FF")
+        self._set_status("正在编译固件…（首次约 2~5 分钟）", "#FFB273")
         self.progress.setVisible(True)
         self.start_btn.setEnabled(False)
         self.cancel_btn.setVisible(True)
@@ -199,7 +199,7 @@ class UploadPage(QWidget):
             return
         self._log("✔ 编译成功，开始上传…")
         self._phase = "upload"
-        self._set_status("正在上传到 ESP32-S3…", "#50C8FF")
+        self._set_status("正在上传到 ESP32-S3…", "#FFB273")
         cli = Path(self.state.cli_path)
         res2 = self.state.screen_res
         fqbn2 = fqbn_for(res2)

@@ -1,1 +1,1 @@
-"""GP-Fusion 配置向导 UI。"""
+"""GP-Combine 配置助手 UI。"""

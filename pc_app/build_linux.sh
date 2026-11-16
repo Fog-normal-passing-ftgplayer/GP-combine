@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建 Linux 版 GP-Fusion 配置向导
+# 构建 Linux 版 GP-Combine 配置助手
 set -euo pipefail
 cd "$(dirname "$0")"
 

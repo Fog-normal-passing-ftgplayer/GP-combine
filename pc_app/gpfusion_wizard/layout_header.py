@@ -21,7 +21,7 @@ def _btn_line(b: Btn) -> str:
 def generate_layout_header(layout: Layout) -> str:
     lines: list[str] = []
     lines.append("#pragma once")
-    lines.append("// GP-Fusion 用户按键布局 — 由 GP-Fusion 配置向导自动生成，请勿手改。")
+    lines.append("// GP-Fusion 用户按键布局 — 由 GP-Combine 配置助手自动生成，请勿手改。")
     lines.append('#include "menu.h"')
     lines.append("")
     lines.append("#define USER_LAYOUT 1")

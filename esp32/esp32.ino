@@ -1186,7 +1186,7 @@ void drawStatusBar() {
       drawMiniBattery(198, 2, 18, 10, pct, LAYOUT_TEXT);
     }
   }
-  if (radioUp) drawMiniWireless(232, 11, radioLinked);
+  if (radioUp) drawMiniWireless(232, 11, true);  // 无线开着就亮；ACK 细节看无线页
 }
 
 // layout tables: movement side per layout + shared right cluster
@@ -1354,15 +1354,22 @@ void renderSub() {
     drawCJKTextCentered(120, 5, sec.title, colText, 1);
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
-      if (radioUp && radioLinked) {
-        snprintf(lb, sizeof(lb), "已连接%d%% R%d.%d", radioHistOk,
-                 radioAvgArc10 / 10, radioAvgArc10 % 10);
+      uint16_t lc;
+      if (radioUp) {
+        if (radioLinked) {
+          snprintf(lb, sizeof(lb), "已连接%d%% R%d.%d", radioHistOk,
+                   radioAvgArc10 / 10, radioAvgArc10 % 10);
+        } else {
+          snprintf(lb, sizeof(lb), "无线开 R%d.%d",
+                   radioAvgArc10 / 10, radioAvgArc10 % 10);
+        }
+        lc = ACC_SETTINGS;
       } else {
-        snprintf(lb, sizeof(lb), "断链 R%d.%d",
+        snprintf(lb, sizeof(lb), "无线关 R%d.%d",
                  radioAvgArc10 / 10, radioAvgArc10 % 10);
+        lc = RGB565(170,70,70);
       }
-      drawCJKText(226 - cjkTextWidth(lb, 1), 5, lb,
-                  radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
+      drawCJKText(226 - cjkTextWidth(lb, 1), 5, lb, lc, 1);
     }
     int hY = 28 + (int)(selY - scrollOff);
     lfbRect(6, hY - 2, 228, 19, RGB565(42,54,72)); // gliding highlight bar

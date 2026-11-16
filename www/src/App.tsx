@@ -14,6 +14,7 @@ import AddonsConfigPage from './Pages/AddonsConfigPage';
 import BackupPage from './Pages/BackupPage';
 import PlaygroundPage from './Pages/PlaygroundPage';
 import InputMacroAddonPage from './Pages/InputMacroAddonPage';
+import LedConfigPage from './Pages/LedConfigPage';
 import BootModeMappingPage from './Pages/BootModeMapping';
 
 import './App.scss';
@@ -39,6 +40,7 @@ const App = () => {
 							/>
 							<Route path="/reset-settings" element={<ResetSettingsPage />} />
 							<Route path="/display-config" element={<DisplayConfigPage />} />
+							<Route path="/led-config" element={<LedConfigPage />} />
 							<Route path="/add-ons" element={<AddonsConfigPage />} />
 							<Route path="/backup" element={<BackupPage />} />
 							<Route path="/playground" element={<PlaygroundPage />} />

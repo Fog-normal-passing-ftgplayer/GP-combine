@@ -1,6 +1,6 @@
 import { useContext, useState } from 'react';
-import { Nav, NavDropdown, Navbar, Button, Modal } from 'react-bootstrap';
-import { NavLink } from 'react-router-dom';
+import { Button, Modal } from 'react-bootstrap';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AppContext } from '../Contexts/AppContext';
 import FormSelect from './FormSelect';
@@ -8,7 +8,6 @@ import { saveButtonLabels } from '../Services/Storage';
 import { BUTTONS } from '../Data/Buttons';
 import './Navigation.scss';
 import WebApi from '../Services/WebApi';
-import ColorScheme from './ColorScheme';
 import LanguageSelector from './LanguageSelector';
 
 const BOOT_MODES = {
@@ -17,11 +16,34 @@ const BOOT_MODES = {
 	BOOTSEL: 2,
 };
 
+const ROUTE_TITLES = {
+	'/': 'home-label',
+	'/settings': 'settings-label',
+	'/pin-mapping': 'pin-mapping-label',
+	'/boot-mode-mapping': 'boot-mode-mapping-label',
+	'/peripheral-mapping': 'peripheral-mapping-label',
+	'/display-config': 'display-config-label',
+	'/add-ons': 'add-ons-label',
+	'/macro': 'macro-label',
+	'/backup': 'backup-label',
+	'/reset-settings': 'resetSettings-label',
+};
+
 const Navigation = () => {
 	const { buttonLabels, setButtonLabels } = useContext(AppContext);
 
 	const [show, setShow] = useState(false);
 	const [isRebooting, setIsRebooting] = useState(null); // null because we want the button to assume untouched state
+	const [menuOpen, setMenuOpen] = useState(false);
+
+	const location = useLocation();
+	const { t } = useTranslation('');
+
+	const pageTitle = t(
+		`Navigation:${ROUTE_TITLES[location.pathname] || 'home-label'}`,
+	);
+
+	const closeMenu = () => setMenuOpen(false);
 
 	const handleClose = () => setShow(false);
 	const handleShow = () => {
@@ -43,110 +65,128 @@ const Navigation = () => {
 		setButtonLabels({ buttonLabelType: e.target.value });
 	};
 
-	const { t } = useTranslation('');
-
-	// eventKey prop is required on NavLink components in order for mobile menu
-	// to autoclose, so just auto increment as we build the menu
-	let eventKey = 0;
+	const linkClass = ({ isActive }) =>
+		'sidebar-link' + (isActive ? ' active' : '');
 
 	return (
-		<Navbar collapseOnSelect expand="md" fixed="top">
-			<Navbar.Brand title={`GP-Combine ${t('Navigation:home-label')}`}>
-				<Nav.Link as={NavLink} to="/" eventKey={eventKey++}>
-					<img
-						src="images/logo.png"
-						className="title-logo"
-						alt="GP-Combine logo"
-					/>
-				</Nav.Link>
-			</Navbar.Brand>
-			<Navbar.Toggle aria-controls="responsive-navbar-nav" />
-			<Navbar.Collapse id="basic-navbar-nav">
-				<Nav className="me-auto nav-menu">
-					<Nav.Link as={NavLink} to="/settings" eventKey={eventKey++}>
-						{t('Navigation:settings-label')}
-					</Nav.Link>
-					<NavDropdown title={t('Navigation:config-label')}>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
+		<>
+			<aside className={'app-sidebar' + (menuOpen ? ' open' : '')}>
+				<div className="brand-card">
+					<NavLink to="/" onClick={closeMenu}>
+						<img src="/images/logo.png" alt="GP-Combine" />
+					</NavLink>
+					<div className="brand-sub">Web Configurator</div>
+				</div>
+
+				<nav className="sidebar-nav">
+					<div className="nav-section">
+						<div className="nav-section-title">
+							{t('Navigation:config-label')}
+						</div>
+						<NavLink to="/" end className={linkClass} onClick={closeMenu}>
+							{t('Navigation:home-label')}
+						</NavLink>
+						<NavLink
+							to="/settings"
+							className={linkClass}
+							onClick={closeMenu}
+						>
+							{t('Navigation:settings-label')}
+						</NavLink>
+						<NavLink
 							to="/pin-mapping"
+							className={linkClass}
+							onClick={closeMenu}
 						>
 							{t('Navigation:pin-mapping-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
+						</NavLink>
+						<NavLink
 							to="/boot-mode-mapping"
+							className={linkClass}
+							onClick={closeMenu}
 						>
 							{t('Navigation:boot-mode-mapping-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
+						</NavLink>
+						<NavLink
 							to="/peripheral-mapping"
+							className={linkClass}
+							onClick={closeMenu}
 						>
 							{t('Navigation:peripheral-mapping-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
-							to="/led-config"
-						>
-							{t('Navigation:led-config-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
-							to="/custom-theme"
-						>
-							{t('Navigation:custom-theme-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
+						</NavLink>
+						<NavLink
 							to="/display-config"
+							className={linkClass}
+							onClick={closeMenu}
 						>
 							{t('Navigation:display-config-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/add-ons">
-							{t('Navigation:add-ons-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/macro">
-							{t('Navigation:macro-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/backup">
-							{t('Navigation:backup-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							as={NavLink}
-							eventKey={eventKey++}
-							to="/reset-settings"
+						</NavLink>
+						<NavLink
+							to="/add-ons"
+							className={linkClass}
+							onClick={closeMenu}
 						>
-							<span className="reset-settings-link">
-								{t('Navigation:resetSettings-label')}
-							</span>
-						</NavDropdown.Item>
-					</NavDropdown>
-					<NavDropdown title={t('Navigation:links-label')}>
-						<NavDropdown.Item href="https://gp2040-ce.info/" target="_blank">
-							{t('Navigation:docs-label')}
-						</NavDropdown.Item>
-						<NavDropdown.Item
-							href="https://github.com/Fog-normal-passing-ftgplayer/GP-combine"
+							{t('Navigation:add-ons-label')}
+						</NavLink>
+						<NavLink to="/macro" className={linkClass} onClick={closeMenu}>
+							{t('Navigation:macro-label')}
+						</NavLink>
+						<NavLink to="/backup" className={linkClass} onClick={closeMenu}>
+							{t('Navigation:backup-label')}
+						</NavLink>
+						<NavLink
+							to="/reset-settings"
+							className={({ isActive }) =>
+								'sidebar-link danger' + (isActive ? ' active' : '')
+							}
+							onClick={closeMenu}
+						>
+							{t('Navigation:resetSettings-label')}
+						</NavLink>
+					</div>
+
+					<div className="nav-section">
+						<div className="nav-section-title">
+							{t('Navigation:links-label')}
+						</div>
+						<a
+							className="sidebar-link"
+							href="https://gp2040-ce.info/"
 							target="_blank"
+							rel="noreferrer"
+						>
+							{t('Navigation:docs-label')}
+						</a>
+						<a
+							className="sidebar-link"
+							href="https://github.com/OpenStickCommunity/GP2040-CE"
+							target="_blank"
+							rel="noreferrer"
 						>
 							{t('Navigation:github-label')}
-						</NavDropdown.Item>
-					</NavDropdown>
-				</Nav>
-				<Nav className="navbar-actions">
-					<Button variant="success" onClick={handleShow}>
+						</a>
+					</div>
+				</nav>
+
+				<div className="sidebar-foot">GP-Combine · Web Configurator</div>
+			</aside>
+
+			<header className="app-topbar">
+				<button
+					type="button"
+					className="topbar-burger"
+					aria-label="Menu"
+					onClick={() => setMenuOpen((v) => !v)}
+				>
+					☰
+				</button>
+				<div className="topbar-title">{pageTitle}</div>
+				<div className="topbar-actions">
+					<Button variant="primary" size="sm" onClick={handleShow}>
 						{t('Navigation:reboot-label')}
 					</Button>
-					<ColorScheme />
 					<LanguageSelector />
-					<div className="navbar-label-select">
+					<div className="topbar-button-labels">
 						<FormSelect
 							name="buttonLabels"
 							className="form-select"
@@ -154,17 +194,18 @@ const Navigation = () => {
 							onChange={updateButtonLabels}
 						>
 							{Object.keys(BUTTONS).map((b, i) => (
-								<option
-									key={`button-label-option-${i}`}
-									value={BUTTONS[b].value}
-								>
+								<option key={`button-label-option-${i}`} value={BUTTONS[b].value}>
 									{BUTTONS[b].label}
 								</option>
 							))}
 						</FormSelect>
 					</div>
-				</Nav>
-			</Navbar.Collapse>
+				</div>
+			</header>
+
+			{menuOpen && (
+				<div className="sidebar-backdrop" onClick={closeMenu} />
+			)}
 
 			<Modal show={show} onHide={handleClose}>
 				<Modal.Header closeButton>
@@ -208,7 +249,7 @@ const Navigation = () => {
 					</Button>
 				</Modal.Footer>
 			</Modal>
-		</Navbar>
+		</>
 	);
 };
 

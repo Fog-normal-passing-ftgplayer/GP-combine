@@ -1,6 +1,6 @@
 {
-  "short_name": "GP-Combine Configurator",
-  "name": "GP-Combine Configurator",
+  "short_name": "GP-Combine Lite",
+  "name": "GP-Combine Lite Web Configurator",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,6 +10,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#0b0d12",
+  "background_color": "#0b0d12"
 }

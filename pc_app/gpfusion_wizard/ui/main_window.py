@@ -29,7 +29,6 @@ from .lite_source_page import LiteSourcePage
 from .lite_uf2_page import LiteUf2Page
 from .lite_webconfig_page import LiteWebConfigPage
 from .nes_page import NesPage
-from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .reflash_page import ReflashPage
 from .upload_page import UploadPage
@@ -39,7 +38,6 @@ FULL_STEPS = [
     "设备与源码",
     "背景 / 壁纸",
     "按键布局",
-    "Pico 灯带",
     "GIF 动画",
     "小游戏（NES）",
     "网页配置",
@@ -164,7 +162,6 @@ class MainWindow(QWidget):
         )
         self.bg_page = BackgroundPage(self.state)
         self.layout_page = LayoutPage(self.state)
-        self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
         self.sim_page = SimPage(self.state)
         self.nes_page = NesPage(self.state)
@@ -177,7 +174,6 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.prep_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
-        self.stack.addWidget(self.pico_page)
         self.stack.addWidget(self.gif_page)
         self.stack.addWidget(self.nes_page)
         self.stack.addWidget(self.webconfig_page)
@@ -247,11 +243,11 @@ class MainWindow(QWidget):
         idx = self._mode_offset() + row
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
-        if self._mode == "full" and row == 7:
+        if self._mode == "full" and row == 6:
             self.sim_page.on_shown()
-        if self._mode == "full" and row == 8:
+        if self._mode == "full" and row == 7:
             self.upload_page.on_shown()
-        if self._mode == "full" and row == 9:
+        if self._mode == "full" and row == 8:
             self.reflash_page.on_shown()
         if self._mode == "lite" and row == 3:
             self.lite_uf2_page.on_shown()
@@ -274,9 +270,9 @@ class MainWindow(QWidget):
             return bool(self.state.lite_source_dir)
         if i == 0:
             return self.prep_page.is_ready()
-        if i in (1, 2, 3, 4, 5, 6):
+        if i in (1, 2, 3, 4, 5):
             return bool(self.state.source_dir)
-        if i == 7:          # 仿真器预览：可选步骤，不影响放行
+        if i == 6:          # 仿真器预览：可选步骤，不影响放行
             return True
         return False
 
@@ -338,7 +334,6 @@ class MainWindow(QWidget):
                 self.webconfig_page,
                 self.bg_page,
                 self.layout_page,
-                self.pico_page,
                 self.gif_page,
                 self.sim_page,
                 self.lite_source_page,

@@ -23,6 +23,8 @@ const ROUTE_TITLES = {
 	'/boot-mode-mapping': 'boot-mode-mapping-label',
 	'/peripheral-mapping': 'peripheral-mapping-label',
 	'/display-config': 'display-config-label',
+	'/led-config': 'led-config-label',
+	'/custom-theme': 'custom-theme-label',
 	'/add-ons': 'add-ons-label',
 	'/macro': 'macro-label',
 	'/backup': 'backup-label',
@@ -122,6 +124,20 @@ const Navigation = () => {
 							{t('Navigation:display-config-label')}
 						</NavLink>
 						<NavLink
+							to="/led-config"
+							className={linkClass}
+							onClick={closeMenu}
+						>
+							{t('Navigation:led-config-label')}
+						</NavLink>
+						<NavLink
+							to="/custom-theme"
+							className={linkClass}
+							onClick={closeMenu}
+						>
+							{t('Navigation:custom-theme-label')}
+						</NavLink>
+						<NavLink
 							to="/add-ons"
 							className={linkClass}
 							onClick={closeMenu}
@@ -159,7 +175,7 @@ const Navigation = () => {
 						</a>
 						<a
 							className="sidebar-link"
-							href="https://github.com/OpenStickCommunity/GP2040-CE"
+							href="https://github.com/Fog-normal-passing-ftgplayer/GP-combine"
 							target="_blank"
 							rel="noreferrer"
 						>

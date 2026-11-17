@@ -1,12 +1,12 @@
-"""GP-Fusion 配置向导：共享常量与路径。"""
+"""GP-Combine 配置助手：共享常量与路径。"""
 from __future__ import annotations
 
 import os
 import platform
 from pathlib import Path
 
-APP_NAME = "GP-Fusion 配置向导"
-APP_VERSION = "0.5.0"
+APP_NAME = "GP-Combine 配置助手"
+APP_VERSION = "1.0"
 
 # ESP32 UI 可选分辨率（准备步骤选择）
 SCREEN_RESOLUTIONS: dict[str, tuple[int, int]] = {
@@ -57,7 +57,7 @@ def local_build_dir_name(screen_res: str) -> str:
 ESP32_CORE = "esp32:esp32"
 ESP32_INDEX_URL = "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
-# 默认仓库地址（GP-Fusion 官方仓库）
+# 默认仓库地址（GP-Combine 官方仓库）
 DEFAULT_REPO_URL = "https://github.com/Fog-normal-passing-ftgplayer/GP-combine.git"
 
 

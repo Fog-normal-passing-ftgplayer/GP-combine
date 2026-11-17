@@ -4,9 +4,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.2.0)
-set(toolchainVersion 14_2_Rel1)
-set(picotoolVersion 2.2.0-a4)
+set(sdkVersion 2.3.1)
+set(toolchainVersion 15_2_Rel1)
+set(picotoolVersion 2.3.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -59,8 +59,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # note: this must happen before project()
 include(pico_sdk_import.cmake)
 
-if (PICO_SDK_VERSION_STRING VERSION_LESS "2.2.0")
-  message(FATAL_ERROR "Raspberry Pi Pico SDK version 2.2.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
+if (PICO_SDK_VERSION_STRING VERSION_LESS "2.3.1")
+  message(FATAL_ERROR "Raspberry Pi Pico SDK version 2.3.1 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
 endif()
 
 # set the version for webconfig, etc. based on git
@@ -75,9 +75,9 @@ execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --abbrev=7
 	OUTPUT_STRIP_TRAILING_WHITESPACE)
 string(REGEX REPLACE "v([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" CMAKE_GIT_REPO_VERSION ${GIT_REPO_VERSION})
 string(REGEX REPLACE "^(.......-.*)|(.......)$" "0.0.0" CMAKE_GIT_REPO_VERSION ${CMAKE_GIT_REPO_VERSION}) # fix if all we have is the git SHA
-# GP-Combine 固定版本号
-set(GIT_REPO_VERSION "0.1.2b")
-set(CMAKE_GIT_REPO_VERSION "0.1.2")
+# GP-Combine：合并上游 CE v0.7.12 后的里程碑版本，不再跟随 git describe
+set(GIT_REPO_VERSION "0.2.0-combine")
+set(CMAKE_GIT_REPO_VERSION "0.2.0")
 configure_file("headers/version.h.in" "headers/version.h")
 message("GIT_REPO_VERSION is ${GIT_REPO_VERSION}")
 message("CMAKE_GIT_REPO_VERSION is ${CMAKE_GIT_REPO_VERSION}")
@@ -200,6 +200,8 @@ src/gamepad.cpp
 src/gamepad/GamepadState.cpp
 src/addonmanager.cpp
 src/playerleds.cpp
+src/drivers/shared/USBReportScheduler.cpp
+src/drivers/shared/InputReportPolicy.cpp
 src/drivers/shared/xinput_host.cpp
 src/drivers/shared/xgip_protocol.cpp
 src/drivers/shared/xsm3/excrypt_des.c
@@ -223,8 +225,10 @@ src/drivers/p5general/P5GeneralAuth.cpp
 src/drivers/p5general/P5GeneralAuthUSBListener.cpp
 src/drivers/p5general/P5GeneralDriver.cpp
 src/drivers/psclassic/PSClassicDriver.cpp
+src/drivers/sinput/SInputDriver.cpp
 src/drivers/switch/SwitchDriver.cpp
 src/drivers/switchpro/SwitchProDriver.cpp
+src/drivers/switch2pro/Switch2ProDriver.cpp
 src/drivers/xbone/XBOneAuth.cpp
 src/drivers/xbone/XBOneAuthUSBListener.cpp
 src/drivers/xbone/XBOneDriver.cpp
@@ -237,9 +241,9 @@ src/drivers/xboxog/XboxOriginalDriver.cpp
 src/drivers/xinput/XInputAuth.cpp
 src/drivers/xinput/XInputAuthUSBListener.cpp
 src/drivers/xinput/XInputDriver.cpp
+src/drivers/xinput/XInputReportPolicy.cpp
 src/interfaces/i2c/i2cdevicebase.cpp
 src/interfaces/i2c/pcf8575/pcf8575.cpp
-src/interfaces/i2c/ssd1306/obd_ssd1306.cpp
 src/interfaces/i2c/ssd1306/tiny_ssd1306.cpp
 src/display/ui/elements/GPWidget.cpp
 src/display/ui/elements/GPButton.cpp
@@ -280,6 +284,7 @@ src/addons/buzzerspeaker.cpp
 src/addons/dualdirectional.cpp
 src/addons/keyboard_host.cpp
 src/addons/keyboard_host_listener.cpp
+src/addons/i2canalog1115.cpp
 src/addons/i2canalog1219.cpp
 src/addons/i2c_gpio_pcf8575.cpp
 src/addons/display.cpp
@@ -291,6 +296,7 @@ src/addons/reverse.cpp
 src/addons/drv8833_rumble.cpp
 src/addons/turbo.cpp
 src/addons/slider_socd.cpp
+src/addons/slider_profile.cpp
 src/addons/wiiext.cpp
 src/addons/input_macro.cpp
 src/addons/snes_input.cpp
@@ -303,13 +309,15 @@ src/addons/uart_link.cpp
 src/addons/wireless_receiver.cpp
 src/animationstation/animation.cpp
 src/animationstation/animationstation.cpp
+src/animationstation/effects/burstcolor.cpp
 src/animationstation/effects/chase.cpp
-src/animationstation/effects/customtheme.cpp
-src/animationstation/effects/customthemepressed.cpp
+src/animationstation/effects/idletimeout.cpp
+src/animationstation/effects/jigglestaticcolor.cpp
+src/animationstation/effects/jiggletwostaticcolor.cpp
+src/animationstation/effects/rain.cpp
 src/animationstation/effects/rainbow.cpp
-src/animationstation/effects/rainbowwave.cpp
+src/animationstation/effects/randomcolor.cpp
 src/animationstation/effects/staticcolor.cpp
-src/animationstation/effects/statictheme.cpp
 src/hosts/DualsensePS5Host.cpp
 src/hosts/DualshockPS4Host.cpp
 src/hosts/GoogleStadioHost.cpp
@@ -333,10 +341,10 @@ tinyusb_host
 tinyusb_pico_pio_usb
 CRC32
 FlashPROM
+ADS1115
 ADS1219
 ADS1256
 NeoPico
-OneBitDisplay
 ArduinoJson
 rndis
 hardware_adc
@@ -357,6 +365,7 @@ headers/drivers/shared
 headers/events
 headers/interfaces
 headers/interfaces/i2c
+headers/interfaces/i2c/ads1115
 headers/interfaces/i2c/ads1219
 headers/interfaces/i2c/pcf8575
 headers/interfaces/i2c/ssd1306
@@ -382,6 +391,10 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
   GP2040_BOARDCONFIG="${GP2040_BOARDCONFIG}"
 )
 
+if(PICO_RP2040)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC PICO_FLOAT_IN_RAM=1)
+endif()
+
 target_include_directories(${PROJECT_NAME}  PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/.. # for our common lwipopts or any other standard includes, if required
@@ -395,7 +408,7 @@ install(FILES
     DESTINATION .
 )
 
-if (NOT DEFINED ENV{CI} AND EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake)
+if (NOT (DEFINED ENV{CI}) AND (EXISTS ${CMAKE_SOURCE_DIR}/modules/Custom.cmake))
   message(STATUS "Found custom script.")
 	include(${CMAKE_SOURCE_DIR}/modules/Custom.cmake)
 endif()

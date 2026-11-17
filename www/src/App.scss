@@ -1,4 +1,29 @@
 .body-content {
-	margin-top: 58px;
-	padding: 10px 20px;
+	max-width: 1320px;
+	margin: 0 auto;
+	padding: 24px 26px 48px;
+}
+
+.splash-panel + .splash-panel {
+	border-top: var(--bs-border-width) solid var(--bs-border-color);
+	padding-top: 1rem;
+
+	@media (min-width: 768px) {
+		border-top: none;
+		padding-top: 0;
+		border-left: var(--bs-border-width) solid var(--bs-border-color);
+	}
+}
+
+.app-main {
+	min-height: 100vh;
+	margin-left: 264px;
+	padding-top: 62px;
+	background: #0b0d12;
+}
+
+@media (max-width: 991.98px) {
+	.app-main {
+		margin-left: 0;
+	}
 }

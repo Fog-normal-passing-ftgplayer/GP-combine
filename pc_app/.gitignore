@@ -4,3 +4,5 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+# 打包用的 headless 仿真器二进制（由 prepare_sim.sh 生成，架构相关不入库）
+gpfusion_wizard/bin/

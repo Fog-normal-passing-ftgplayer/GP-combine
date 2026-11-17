@@ -1,9 +1,9 @@
-"""向导主窗口：左侧步骤栏 + 右侧内容页。"""
+"""向导主窗口：顶部品牌栏 + 左侧步骤栏 + 底部状态栏。"""
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -23,12 +23,12 @@ from ..config_backup import export_config, import_config
 from ..wizard_state import WizardState
 from .background_page import BackgroundPage
 from .gif_page import GifPage
+from .sim_page import SimPage
 from .layout_page import LayoutPage
 from .lite_source_page import LiteSourcePage
 from .lite_uf2_page import LiteUf2Page
 from .lite_webconfig_page import LiteWebConfigPage
 from .nes_page import NesPage
-from .pico_config_page import PicoConfigPage
 from .prep_page import PrepPage
 from .reflash_page import ReflashPage
 from .upload_page import UploadPage
@@ -38,10 +38,10 @@ FULL_STEPS = [
     "设备与源码",
     "背景 / 壁纸",
     "按键布局",
-    "Pico 灯带",
     "GIF 动画",
     "小游戏（NES）",
     "网页配置",
+    "仿真器预览",
     "编译上传",
     "整机重刷",
 ]
@@ -61,56 +61,95 @@ class MainWindow(QWidget):
         super().__init__(parent)
         self.state = state
         self.setWindowTitle("%s v%s" % (APP_NAME, APP_VERSION))
-        self.resize(1100, 720)
+        self.resize(1320, 760)
         self.setObjectName("Root")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
+        # ---------- 顶部品牌栏 ----------
+        header = QWidget()
+        header.setObjectName("Header")
+        header.setFixedHeight(68)
+        head = QHBoxLayout(header)
+        head.setContentsMargins(20, 0, 20, 0)
+        head.setSpacing(12)
+
+        logo = QLabel("GP")
+        logo.setObjectName("Logo")
+        logo.setFixedSize(36, 36)
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        head.addWidget(logo)
+
+        title_box = QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 0, 0)
+        title_box.setSpacing(1)
+        app_title = QLabel("GP-Combine")
+        app_title.setObjectName("AppTitle")
+        app_sub = QLabel("配置助手")
+        app_sub.setObjectName("AppSub")
+        title_box.addWidget(app_title)
+        title_box.addWidget(app_sub)
+        head.addLayout(title_box)
+
+        version = QLabel("v%s" % APP_VERSION)
+        version.setObjectName("VersionChip")
+        version.setFixedHeight(26)
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        head.addWidget(version)
+        head.addStretch(1)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.setObjectName("ModeCombo")
+        self.mode_combo.addItem("正式版", "full")
+        self.mode_combo.addItem("Lite 版本", "lite")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        head.addWidget(self.mode_combo)
+
+        export_btn = QPushButton("导出配置")
+        export_btn.setObjectName("Ghost")
+        export_btn.clicked.connect(self._export_config)
+        head.addWidget(export_btn)
+
+        import_btn = QPushButton("导入配置")
+        import_btn.setObjectName("Ghost")
+        import_btn.clicked.connect(self._import_config)
+        head.addWidget(import_btn)
+
+        outer.addWidget(header)
+
+        # ---------- 主体：侧栏 + 内容 ----------
         body = QWidget()
         root = QHBoxLayout(body)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 左侧步骤栏
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(232)
         side_l = QVBoxLayout(sidebar)
-        side_l.setContentsMargins(12, 22, 12, 16)
-        app_title = QLabel("GP-Fusion")
-        app_title.setObjectName("AppTitle")
-        app_sub = QLabel("配置向导")
-        app_sub.setObjectName("AppSub")
-        side_l.addWidget(app_title)
-        side_l.addWidget(app_sub)
-        side_l.addSpacing(10)
+        side_l.setContentsMargins(14, 18, 14, 14)
+        side_l.setSpacing(6)
 
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItem("正式版", "full")
-        self.mode_combo.addItem("Lite 版本", "lite")
-        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        side_l.addWidget(self.mode_combo)
-        side_l.addSpacing(10)
+        nav_caption = QLabel("配 置 流 程")
+        nav_caption.setObjectName("NavCaption")
+        side_l.addWidget(nav_caption)
+        side_l.addSpacing(2)
 
         self.step_list = QListWidget()
         self.step_list.setObjectName("Steps")
-        side_l.addWidget(self.step_list)
-        side_l.addSpacing(8)
-        export_btn = QPushButton("导出配置…")
-        export_btn.clicked.connect(self._export_config)
-        side_l.addWidget(export_btn)
-        import_btn = QPushButton("导入配置…")
-        import_btn.clicked.connect(self._import_config)
-        side_l.addWidget(import_btn)
-        side_l.addStretch(1)
-        ver = QLabel("v%s" % APP_VERSION)
-        ver.setObjectName("AppSub")
-        side_l.addWidget(ver)
+        self.step_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        side_l.addWidget(self.step_list, 1)
+
         root.addWidget(sidebar)
 
-        # 右侧内容区
+        content = QWidget()
+        content.setObjectName("Content")
+        content_l = QVBoxLayout(content)
+        content_l.setContentsMargins(24, 20, 24, 20)
+        content_l.setSpacing(0)
+
         self.stack = QStackedWidget()
         self.prep_page = PrepPage(self.state)
         self.webconfig_page = WebConfigPage(
@@ -123,8 +162,8 @@ class MainWindow(QWidget):
         )
         self.bg_page = BackgroundPage(self.state)
         self.layout_page = LayoutPage(self.state)
-        self.pico_page = PicoConfigPage(self.state)
         self.gif_page = GifPage(self.state)
+        self.sim_page = SimPage(self.state)
         self.nes_page = NesPage(self.state)
         self.upload_page = UploadPage(self.state)
         self.reflash_page = ReflashPage(self.state)
@@ -135,28 +174,39 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.prep_page)
         self.stack.addWidget(self.bg_page)
         self.stack.addWidget(self.layout_page)
-        self.stack.addWidget(self.pico_page)
         self.stack.addWidget(self.gif_page)
         self.stack.addWidget(self.nes_page)
         self.stack.addWidget(self.webconfig_page)
+        self.stack.addWidget(self.sim_page)
         self.stack.addWidget(self.upload_page)
         self.stack.addWidget(self.reflash_page)
         self.stack.addWidget(self.lite_source_page)
         self.stack.addWidget(self.lite_webconfig_page)
         self.stack.addWidget(self.lite_layout_page)
         self.stack.addWidget(self.lite_uf2_page)
-        root.addWidget(self.stack, 1)
+        content_l.addWidget(self.stack, 1)
+        root.addWidget(content, 1)
         outer.addWidget(body, 1)
 
-        # 未插设备的提示条
-        self.device_banner = QLabel(
-            "未插入 ESP32-S3：可以预览/编辑，但不会写入固件，插入后重试上传。"
-        )
-        self.device_banner.setStyleSheet(
-            "background: #4A3200; color: #FFD27A; padding: 6px 16px; font-size: 13px;"
-        )
-        self.device_banner.setVisible(False)
-        outer.addWidget(self.device_banner)
+        # ---------- 底部状态栏 ----------
+        footer = QWidget()
+        footer.setObjectName("Footer")
+        footer.setFixedHeight(34)
+        foot = QHBoxLayout(footer)
+        foot.setContentsMargins(20, 0, 20, 0)
+        foot.setSpacing(8)
+
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("StatusDot")
+        self.status_text = QLabel("")
+        self.status_text.setObjectName("StatusText")
+        foot.addWidget(self.status_dot)
+        foot.addWidget(self.status_text)
+        foot.addStretch(1)
+        foot_hint = QLabel("GP-Combine · 桌面配置助手")
+        foot_hint.setObjectName("FooterHint")
+        foot.addWidget(foot_hint)
+        outer.addWidget(footer)
 
         self.prep_page.ready_changed.connect(self._update_nav)
         self.lite_source_page.ready_changed.connect(self._update_nav)
@@ -179,8 +229,8 @@ class MainWindow(QWidget):
     def _apply_mode_steps(self) -> None:
         self.step_list.blockSignals(True)
         self.step_list.clear()
-        for name in (FULL_STEPS if self._mode == "full" else LITE_STEPS):
-            self.step_list.addItem(QListWidgetItem(name))
+        for i, name in enumerate(FULL_STEPS if self._mode == "full" else LITE_STEPS):
+            self.step_list.addItem(QListWidgetItem("%02d   %s" % (i + 1, name)))
         self.step_list.blockSignals(False)
 
     def _on_mode_changed(self) -> None:
@@ -193,6 +243,8 @@ class MainWindow(QWidget):
         idx = self._mode_offset() + row
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
+        if self._mode == "full" and row == 6:
+            self.sim_page.on_shown()
         if self._mode == "full" and row == 7:
             self.upload_page.on_shown()
         if self._mode == "full" and row == 8:
@@ -203,9 +255,13 @@ class MainWindow(QWidget):
 
     def _update_nav(self) -> None:
         if self._mode == "lite":
-            self.device_banner.setVisible(False)
+            dot, text = "#8B95A7", "Lite 模式 · 只生成 UF2，不写入设备"
+        elif self.state.port:
+            dot, text = "#3DDC97", "ESP32-S3 已连接"
         else:
-            self.device_banner.setVisible(not bool(self.state.port))
+            dot, text = "#FFB454", "未检测到 ESP32-S3 · 可预览和编辑，插入后重试上传"
+        self.status_dot.setStyleSheet("color: %s;" % dot)
+        self.status_text.setText(text)
 
     def _step_done(self, i: int) -> bool:
         if self._mode == "lite":
@@ -216,6 +272,8 @@ class MainWindow(QWidget):
             return self.prep_page.is_ready()
         if i in (1, 2, 3, 4, 5):
             return bool(self.state.source_dir)
+        if i == 6:          # 仿真器预览：可选步骤，不影响放行
+            return True
         return False
 
     def _can_continue(self, idx: int) -> bool:
@@ -229,7 +287,7 @@ class MainWindow(QWidget):
             return bool(self.state.source_dir)
         if idx == 2:
             return bool(self.state.background_src) and bool(self.state.source_dir)
-        if idx in (3, 4, 5):
+        if idx in (3, 4, 5, 6):
             return bool(self.state.source_dir)
         return True
 
@@ -246,7 +304,7 @@ class MainWindow(QWidget):
             self,
             "导出配置备份",
             str(Path.home() / "gp-fusion-config.json"),
-            "GP-Fusion 配置 (*.json)",
+            "GP-Combine 配置 (*.json)",
         )
         if not path:
             return
@@ -263,7 +321,7 @@ class MainWindow(QWidget):
             self,
             "导入配置备份",
             str(Path.home()),
-            "GP-Fusion 配置 (*.json)",
+            "GP-Combine 配置 (*.json)",
         )
         if not path:
             return
@@ -276,8 +334,8 @@ class MainWindow(QWidget):
                 self.webconfig_page,
                 self.bg_page,
                 self.layout_page,
-                self.pico_page,
                 self.gif_page,
+                self.sim_page,
                 self.lite_source_page,
                 self.lite_webconfig_page,
                 self.lite_layout_page,

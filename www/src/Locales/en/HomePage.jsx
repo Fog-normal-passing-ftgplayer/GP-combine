@@ -11,7 +11,7 @@ export default {
 	'memory-header-text': 'Memory (KB)',
 	'memory-heap-text': 'Heap',
 	'memory-static-allocations-text': 'Static Allocations',
-	'sub-header-text': 'Please select a menu option to proceed.',
+	'sub-header-text': 'Pick a section from the left to start configuring your controller.',
 	'system-stats-header-text': 'System Stats',
 	'version-text': 'Version',
 };

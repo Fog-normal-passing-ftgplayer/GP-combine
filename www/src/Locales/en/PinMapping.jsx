@@ -6,7 +6,7 @@ export default {
 	'pin-pressed': 'Pressed GPIO Pin: {{pressedPin}}',
 	'profile-label-title': 'Profile name',
 	'profile-label-description':
-		'Max 16 characters. Letters, numbers, and spaces allowed.',
+		'Max 16 characters. Printable ASCII characters allowed.',
 	'profile-pin-mapping-title': '{{profileLabel}} - GPIO Pin Mapping',
 	'profile-label-default': 'Profile {{profileNumber}}',
 	'profile-add-button': '+ Add Profile',
@@ -18,6 +18,10 @@ export default {
 	'profile-pins-warning':
 		'Try to avoid changing the buttons and/or directions used for the switch profile hotkeys. Otherwise, it will be difficult to understand what profile is being selected!',
 	'profile-copy-base': 'Copy base profile',
+	'pin-inversion-label': 'Invert Pins',
+	'pin-inversion-tooltip':
+		'Shows a checkbox next to each pin. Checked pins are pressed when the pin reads high, for active-high switches such as optical switches.',
+	'pin-invert-label': 'Invert GP{{pin}}',
 	actions: {
 		NONE: 'None',
 		RESERVED: 'Reserved',

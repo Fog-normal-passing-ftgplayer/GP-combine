@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -46,9 +46,10 @@ class GifPage(QWidget):
         title = QLabel("GIF 动画")
         title.setObjectName("StepTitle")
         left.addWidget(title)
-        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩，"
-                      "生成固件内的 gif_user.h。作为屏保选择「GIF」播放；"
-                      "若在「背景 / 壁纸」页选了「动态壁纸」，它将成为主界面动态背景（屏保禁用）。")
+        hint = QLabel("选择 GIF 动画，自动缩放成屏幕分辨率并做行程压缩。"
+                      "选「动态壁纸」时写卡内 /wp/1.gfr，成为主界面动态背景（此时屏保禁用）；"
+                      "固件不再内嵌 GIF，换壁纸只需替换卡内文件。"
+                      "右侧预览是固件本体渲染的真实画面，不是把 GIF 缩放给你看。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -93,13 +94,24 @@ class GifPage(QWidget):
         left.addStretch(1)
         root.addLayout(left, 2)
 
+        right = QVBoxLayout()
         self.preview = QLabel()
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumSize(240 * 3, 135 * 3)
+        w, h = screen_dims(self.state.screen_res)
+        self.preview.setMinimumSize(w * 2, h * 2)
         self.preview.setStyleSheet(
             "background: #0D1117; border: 1px solid #232C3C; border-radius: 8px;"
         )
-        root.addWidget(self.preview, 3)
+        right.addWidget(self.preview, 1)
+        self.preview_note = QLabel(
+            "这里只显示 GIF 本身；想看它在真机界面上的实际效果，"
+            "去左侧「仿真器预览」页（可以按按键）"
+        )
+        self.preview_note.setObjectName("Muted")
+        self.preview_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_note.setWordWrap(True)
+        right.addWidget(self.preview_note)
+        root.addLayout(right, 3)
 
     def _load_previous(self) -> None:
         if self.state.gif_src and Path(self.state.gif_src).is_file():
@@ -147,7 +159,7 @@ class GifPage(QWidget):
             im = Image.open(self.state.gif_src)
             im.seek(0)
             w, h = screen_dims(self.state.screen_res)
-            im2 = im.convert("RGB").resize((w * 3, h * 3), Image.LANCZOS)
+            im2 = im.convert("RGB").resize((w * 2, h * 2), Image.LANCZOS)
             qim = QImage(im2.tobytes("raw", "RGB"), im2.width, im2.height,
                          im2.width * 3, QImage.Format.Format_RGB888)
             self.preview.setPixmap(QPixmap.fromImage(qim))
@@ -234,7 +246,7 @@ class GifPage(QWidget):
             self.status.setStyleSheet("color: #FF7B72;")
             return
         self.status.setText("%s\n正在写入设备（会清空板内配置）…" % msg)
-        self.status.setStyleSheet("color: #50C8FF;")
+        self.status.setStyleSheet("color: #FFB273;")
         runner = JobRunner()
         self._fs_runner = runner
         runner.line_ready.connect(self._on_flash_log)

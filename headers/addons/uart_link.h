@@ -42,6 +42,19 @@
 #define LINK_FRAME_TYPE_ESP_LOAD 0x09      // Pico -> ESP32: 回传设置
 #define LINK_FRAME_TYPE_MUTE 0x0A          // ESP32 -> Pico: 1=静音USB输入 0=恢复
 
+// ---- LED 配置帧（type 0x06）payload 语义，Pico 与 ESP32 必须一致 ----
+//   [0] AnimationNonPressedEffects 枚举 id（CE 的 LED 重写，0..LINK_LED_EFFECT_MAX）
+//   [1] 亮度档位（CE 的 brightness 是 0..10 档，不是 0..255）
+//   [2] 预定义颜色索引（见 animation.h colors[]，0..13）
+//   [3] flags：bit0 = 挂起时关灯
+//   [4] 速度档位（0..LINK_LED_CYCLE_STEPS-1，对应 AnimationProfile.baseCycleTime）
+//   [5..9] 保留
+// 帧长保持 10 字节，CRC / 长度校验与旧固件完全一致。
+#define LINK_LED_EFFECT_MAX      19   // AnimationNonPressedEffects 的最大值（EFFECT_RAIN）
+#define LINK_LED_CYCLE_STEPS     10   // 必须与 animationstation.h 的 CYCLE_STEPS 相同
+#define LINK_LED_BRIGHTNESS_MAX  10   // CE 亮度档位上限
+#define LINK_LED_COLOR_MAX       13   // animation.h colors[] 的最后一个索引（Magenta）
+
 class UARTLinkAddon : public GPAddon {
 public:
     virtual bool available();
@@ -59,8 +72,6 @@ private:
                         uint8_t lt, uint8_t rt);
     void sendStatusFrame(uint8_t socdMode, uint8_t dpadMode, uint8_t inputMode,
                          uint8_t flags, uint8_t debounceDelay,
-                         uint8_t animIndex, uint8_t brightness, uint8_t staticColor,
-                         uint16_t chaseCycle, uint16_t rainbowCycle, uint16_t flowCycle,
                          uint8_t ledFlags, uint16_t battMv, uint8_t battFlags);
     void onConfigFrame(uint8_t *payload, uint8_t len);
     void onLedConfigFrame(uint8_t *payload, uint8_t len);

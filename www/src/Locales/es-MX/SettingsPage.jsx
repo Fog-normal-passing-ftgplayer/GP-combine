@@ -59,7 +59,7 @@ export default {
 	'debounce-delay-label': 'Retraso de Antirrebote en milisegundos',
 	'mini-menu-gamepad-input': 'Usar Entrada de Control para Menú Mini',
 	'ps4-mode-explanation-text':
-		'El modo PS4 permite a GP-Combine funcionar como un control PS4 autenticado.',
+		'El modo PS4 permite a GP2040-CE funcionar como un control PS4 autenticado.',
 	'ps4-mode-warning-text':
 		'<span>⏳ ADVERTENCIA ⏳:</span> PS4 se desconectará después de 8 minutos sin autenticación.',
 	'ps4-usb-host-mode-text':
@@ -72,7 +72,7 @@ export default {
 		emulation: 'Remoto/Emulación',
 	},
 	'ps5-mode-explanation-text':
-		'El modo PS5 permite a GP-Combine funcionar como un arcade stick compatible autenticado con PS5.',
+		'El modo PS5 permite a GP2040-CE funcionar como un arcade stick compatible autenticado con PS5.',
 	'ps5-mode-warning-text':
 		'<span>⏳ ADVERTENCIA ⏳:</span> PS5 se desconectará después de 8 minutos sin autenticación.',
 	'ps5-usb-host-mode-text':
@@ -129,7 +129,7 @@ export default {
 		'load-profile-4': 'Cargar Perfil #4',
 		'load-profile-5': 'Cargar Perfil #5',
 		'load-profile-6': 'Cargar Perfil #6',
-		'reboot-default': 'Reiniciar GP-Combine',
+		'reboot-default': 'Reiniciar GP2040-CE',
 		'save-config': 'Guardar Configuración',
 		'next-profile': 'Siguiente Perfil',
 		'previous-profile': 'Perfil Anterior',
@@ -148,7 +148,8 @@ export default {
 		'disable-web-config': 'Deshabilitar Config Web',
 		'disable-both': 'Deshabilitar Ambos',
 	},
-	'forced-setup-mode-modal-title': 'Advertencia de Modo de Configuración Forzado',
+	'forced-setup-mode-modal-title':
+		'Advertencia de Modo de Configuración Forzado',
 	'forced-setup-mode-modal-body':
 		'Si reinicia al modo Controlador después de guardar, ya no tendrá acceso a la configuración web. Por favor escriba "<strong>{{warningCheckText}}</strong>" a continuación para desbloquear el botón Guardar si reconoce completamente esto y es su intención. Hacer clic en Descartar revertirá esta configuración que luego se guardará.',
 	'4-way-joystick-mode-label': 'Modo Joystick 4 Vías',

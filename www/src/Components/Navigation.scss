@@ -1,66 +1,203 @@
-$nav-outer-margin: 0.75rem;
+$sidebar-width: 264px;
+$topbar-height: 62px;
+$ink: #e7ebf2;
+$muted: #8b95a7;
+$line: #242b36;
+$panel: #10141b;
+$sidebar: #0e1116;
+$accent: #ff7a00;
 
-.nav {
-	padding-bottom: 1.5rem;
+.app-sidebar {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: $sidebar-width;
+	z-index: 1031;
+	display: flex;
+	flex-direction: column;
+	padding: 16px 12px 10px;
+	background: $sidebar;
+	border-right: 1px solid $line;
+	overflow: hidden;
 }
 
-nav.navbar {
+.brand-card {
+	background: #ffffff;
+	border-radius: 14px;
+	padding: 12px 14px 10px;
+	text-align: center;
+
+	img {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+}
+
+.brand-sub {
+	margin-top: 6px;
+	color: #6b7280;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.sidebar-nav {
+	flex: 1;
+	overflow-y: auto;
+	padding: 14px 2px 8px;
+
+	&::-webkit-scrollbar {
+		width: 6px;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: #2c3442;
+		border-radius: 3px;
+	}
+}
+
+.nav-section {
+	margin-bottom: 14px;
+}
+
+.nav-section-title {
+	padding: 8px 12px 5px;
+	color: #6f7a8c;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.sidebar-link {
+	display: flex;
+	align-items: center;
+	min-height: 38px;
+	margin: 1px 0;
+	padding: 8px 12px;
+	border-left: 3px solid transparent;
+	border-radius: 9px;
+	color: #a7b0c0;
+	font-size: 14px;
+	text-decoration: none;
+	transition:
+		background 0.12s ease,
+		color 0.12s ease;
+
+	&:hover {
+		background: #1a202a;
+		color: #ffffff;
+	}
+
+	&.active {
+		background: #2a1e12;
+		border-left-color: $accent;
+		color: #ffd9b0;
+	}
+
+	&.danger {
+		color: #d98a8a;
+	}
+	&.danger:hover {
+		color: #ff9a9a;
+	}
+}
+
+.sidebar-foot {
+	padding: 10px 12px 4px;
+	border-top: 1px solid $line;
+	color: #566173;
+	font-size: 10px;
+	letter-spacing: 0.04em;
+}
+
+.app-topbar {
+	position: fixed;
+	top: 0;
+	right: 0;
+	left: $sidebar-width;
+	height: $topbar-height;
+	z-index: 1030;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 0 22px;
+	background: $panel;
+	border-bottom: 1px solid $line;
+}
+
+.topbar-title {
+	flex: 0 1 auto;
+	overflow: hidden;
+	color: #ffffff;
+	font-size: 15px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.topbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-left: auto;
+}
+
+.topbar-button-labels .form-select {
+	width: 150px;
+	min-height: 30px;
+	padding-top: 0.2rem;
+	padding-bottom: 0.2rem;
+	font-size: 12px;
+}
+
+.topbar-burger {
+	display: none;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
 	padding: 0;
-	background-color: white;
-	box-shadow: 0 1px 2px 0 #0000001a;
-
-	.navbar-brand {
-		margin-right: $nav-outer-margin;
-	}
-
-	.navbar-toggler {
-		margin-right: $nav-outer-margin;
-	}
-
-	.navbar-actions {
-		margin-right: $nav-outer-margin;
-		column-gap: 0.5rem;
-		align-items: center;
-		flex-direction: row-reverse;
-
-		.dropdown-menu {
-			position: absolute;
-		}
-	}
-
-	.reset-settings-link {
-		color: #ff0000;
-	}
-}
-[data-bs-theme="dark"] {
-	nav.navbar {
-		background-color: #242526;
-	}
+	border: 1px solid #2c3442;
+	border-radius: 8px;
+	background: #151a22;
+	color: $ink;
+	font-size: 16px;
 }
 
-.title-logo {
-	height: 56px;
-	margin: 0.25rem 0rem 0.25rem $nav-outer-margin;
+.sidebar-backdrop {
+	display: none;
 }
 
-@media (max-width: 767.98px) {
-	nav.navbar {
-		.navbar-actions {
-			margin-top: 1rem;
-			margin-bottom: 1rem;
-		}
+@media (max-width: 991.98px) {
+	.app-sidebar {
+		transform: translateX(-100%);
+		transition: transform 0.2s ease;
 
-		.nav-link {
-			margin-left: $nav-outer-margin;
+		&.open {
+			transform: translateX(0);
 		}
-		.nav-menu {
-			.dropdown-menu {
-				background-color: transparent;
-				border: none;
-				.dropdown-item {
-					padding-left: 1.5rem;
-				}
-			}
-		}
+	}
+
+	.app-topbar {
+		left: 0;
+	}
+
+	.topbar-burger {
+		display: flex;
+	}
+
+	.topbar-button-labels {
+		display: none;
+	}
+
+	.sidebar-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 1025;
+		background: rgba(0, 0, 0, 0.55);
 	}
 }

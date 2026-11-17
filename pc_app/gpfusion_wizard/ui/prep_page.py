@@ -146,7 +146,7 @@ class PrepPage(QWidget):
         root.addWidget(tools)
 
         # 固件源码
-        src = QGroupBox("固件源码（GP-Fusion 仓库）")
+        src = QGroupBox("固件源码（GP-Combine 仓库）")
         src_l = QVBoxLayout(src)
         res_row = QHBoxLayout()
         res_row.addWidget(QLabel("屏幕分辨率"))
@@ -161,7 +161,7 @@ class PrepPage(QWidget):
         url_row = QHBoxLayout()
         url_row.addWidget(QLabel("仓库地址"))
         self.url_edit = QLineEdit(DEFAULT_REPO_URL)
-        self.url_edit.setPlaceholderText("请填写你 fork 的 GP-Fusion 仓库地址")
+        self.url_edit.setPlaceholderText("请填写你 fork 的 GP-Combine 仓库地址")
         url_row.addWidget(self.url_edit, 1)
         src_l.addLayout(url_row)
 
@@ -517,7 +517,7 @@ class PrepPage(QWidget):
                 self._finish_step("源码已就绪")
                 return
             self._log("目标目录 %s 已存在但缺少 esp32/esp32.ino" % dest)
-            self._log("请用「选择已有文件夹」指定正确的 GP-Fusion 源码目录。")
+            self._log("请用「选择已有文件夹」指定正确的 GP-Combine 源码目录。")
             self._refresh_all()
             return
         self._log("开始克隆仓库：%s" % url)
@@ -535,12 +535,12 @@ class PrepPage(QWidget):
             self.state.source_dir = ""
             self._log(
                 "克隆完成，但仓库中没有 esp32/esp32.ino——"
-                "请确认填写的是包含 esp32 固件目录的 GP-Fusion 仓库地址。"
+                "请确认填写的是包含 esp32 固件目录的 GP-Combine 仓库地址。"
             )
             self._finish_step("克隆完成（目录不完整）")
 
     def pick_local_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "选择 GP-Fusion 源码文件夹")
+        folder = QFileDialog.getExistingDirectory(self, "选择 GP-Combine 源码文件夹")
         if not folder:
             return
         p = Path(folder)

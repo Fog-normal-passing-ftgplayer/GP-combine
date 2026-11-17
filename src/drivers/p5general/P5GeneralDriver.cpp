@@ -103,6 +103,8 @@ bool P5GeneralDriver::getDongleAuthRequired() {
 }
 
 bool P5GeneralDriver::process(Gamepad * gamepad) {
+    processDongle();
+
     if (!p5GeneralAuthData || !p5GeneralAuthData->dongle_ready) {
         return false;
     }
@@ -231,11 +233,13 @@ bool P5GeneralDriver::process(Gamepad * gamepad) {
         memcpy(p5GeneralAuthData->hash_pending_buffer, &p5GeneralReport, sizeof(p5GeneralReport));
         p5GeneralAuthData->hash_pending = true;
         diff_report_repeat = 4;
+        processDongle();
         return true;
     } else if (diff_report_repeat) {
         diff_report_repeat--;
         memcpy(p5GeneralAuthData->hash_pending_buffer, &p5GeneralReport, sizeof(p5GeneralReport));
         p5GeneralAuthData->hash_pending = true;
+        processDongle();
         return true;
     } else {
         return false;
@@ -243,6 +247,9 @@ bool P5GeneralDriver::process(Gamepad * gamepad) {
 }
 
 void P5GeneralDriver::processAux() {
+}
+
+void P5GeneralDriver::processDongle() {
     if ( p5GeneralAuthDriver != nullptr && p5GeneralAuthDriver->available() ) {
         p5GeneralAuthDriver->process();
     }
@@ -271,7 +278,7 @@ uint16_t P5GeneralDriver::get_report(uint8_t report_id, hid_report_type_t report
         if (reqlen < sizeof(output_0x03)) {
             return -1;
         }
-        responseLen = MAX(reqlen, sizeof(output_0x03));
+        responseLen = MIN(reqlen, sizeof(output_0x03));
         memcpy(buffer, output_0x03, responseLen);
         return responseLen;
     case P5GeneralAuthReport::P5GENERAL_GET_SIGNATURE_NONCE:
@@ -311,6 +318,9 @@ void P5GeneralDriver::set_report(uint8_t report_id, hid_report_type_t report_typ
 }
 
 const uint16_t * P5GeneralDriver::get_descriptor_string_cb(uint8_t index, uint16_t langid) {
+    if (index >= TU_ARRAY_SIZE(p5general_string_descriptors))
+        return nullptr;
+
     const char *value = (const char *)p5general_string_descriptors[index];
     P5DRPINTF("P5D:get_descriptor_string_cb Index %d. langid %d, value %x\n", index, langid, (uint32_t)value);
     return getStringDescriptor(value, index); // getStringDescriptor returns a static array

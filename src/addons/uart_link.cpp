@@ -11,6 +11,9 @@
 #include "pico/time.h"
 #include "hardware/sync.h"
 #include "CRC32.h"
+#include "animationstation/animationstation.h"
+#include "drivermanager.h"
+#include "FlashPROM.h"
 
 bool UARTLinkAddon::inputMuted = false;
 
@@ -185,10 +188,33 @@ void UARTLinkAddon::sendInputFrame(uint16_t buttons, uint8_t dpad,
     uart_write_blocking(uart0, frame, sizeof(frame));
 }
 
+// ---- GP-Combine: LED 状态与 CE AnimationProfile 模型的映射 ----
+// combine 机内「灯光」页面是简化模型（单一动画 + 亮度 + 颜色 + 速度），
+// CE 的 LED 重写后配置存在 AnimationOptions.profiles[baseProfileIndex] 里，
+// 两者在这里对齐。上一级（ESP32）不做任何 LED 结构假设，只看这几个字节。
+static int8_t ledProfileIndex(AnimationOptions &aOpts) {
+    if (aOpts.profiles_count == 0) return -1;
+    int8_t p = (int8_t)aOpts.baseProfileIndex;
+    if (p < 0 || p >= (int8_t)aOpts.profiles_count) p = 0;
+    return p;
+}
+
+static uint8_t ledProfileColorIndex(AnimationOptions &aOpts, int8_t p) {
+    if (p < 0) return 1;
+    const AnimationProfile &prof = aOpts.profiles[p];
+    if (prof.notPressedStaticColors.size == 0) return 1;
+    uint8_t idx = prof.notPressedStaticColors.bytes[0];
+    return (idx < (uint8_t)colors.size()) ? idx : 1;
+}
+
+static uint32_t ledColorRGB(uint8_t index) {
+    if (index >= colors.size()) index = 1; // fallback: white
+    const RGB &c = colors[index];
+    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+}
+
 void UARTLinkAddon::sendStatusFrame(uint8_t socdMode, uint8_t dpadMode, uint8_t inputMode,
                                     uint8_t flags, uint8_t debounceDelay,
-                                    uint8_t animIndex, uint8_t brightness, uint8_t staticColor,
-                                    uint16_t chaseCycle, uint16_t rainbowCycle, uint16_t flowCycle,
                                     uint8_t ledFlags, uint16_t battMv, uint8_t battFlags) {
     uint8_t frame[24];
     frame[0] = LINK_FRAME_MAGIC;
@@ -200,16 +226,23 @@ void UARTLinkAddon::sendStatusFrame(uint8_t socdMode, uint8_t dpadMode, uint8_t 
     frame[6] = inputMode;
     frame[7] = flags;
     frame[8] = debounceDelay;
-    frame[9] = animIndex;
-    frame[10] = brightness;
-    frame[11] = staticColor;
-    frame[12] = (uint8_t)(chaseCycle & 0xFF);
-    frame[13] = (uint8_t)(chaseCycle >> 8);
-    frame[14] = (uint8_t)(rainbowCycle & 0xFF);
-    frame[15] = (uint8_t)(rainbowCycle >> 8);
+
+    // LED 状态直接从 CE 的配置模型读出来（不再维护 combine 的 ANIM_/COLOR_ 索引）
+    AnimationOptions &aOpts = Storage::getInstance().getAnimationOptions();
+    int8_t ledProfile = ledProfileIndex(aOpts);
+    uint8_t ledEffect = (ledProfile >= 0) ? (uint8_t)aOpts.profiles[ledProfile].baseNonPressedEffect : 0;
+    uint8_t ledColor = ledProfileColorIndex(aOpts, ledProfile);
+    uint16_t ledCycle = (ledProfile >= 0) ? (uint16_t)aOpts.profiles[ledProfile].baseCycleTime : 0;
+    frame[9] = ledEffect;
+    frame[10] = (uint8_t)aOpts.brightness;
+    frame[11] = ledColor;
+    frame[12] = (uint8_t)(ledCycle & 0xFF);
+    frame[13] = (uint8_t)(ledCycle >> 8);
+    frame[14] = 0; // 旧固件的 rainbowCycle 槽位，CE 已并入 baseCycleTime
+    frame[15] = 0;
     frame[16] = ledFlags;
-    frame[17] = (uint8_t)(flowCycle & 0xFF);
-    frame[18] = (uint8_t)(flowCycle >> 8);
+    frame[17] = 0; // 旧固件的 flowCycle 槽位（CE 无“流水”特效）
+    frame[18] = 0;
     frame[19] = (uint8_t)(battMv & 0xFF);
     frame[20] = (uint8_t)(battMv >> 8);
     frame[21] = battFlags;
@@ -220,27 +253,50 @@ void UARTLinkAddon::sendStatusFrame(uint8_t socdMode, uint8_t dpadMode, uint8_t 
     uart_write_blocking(uart0, frame, sizeof(frame));
 }
 
+// LED 配置帧：字节含义见 headers/addons/uart_link.h 的 LINK_LED_* 说明。
+// 帧长仍然是 10 字节，改变的是 payload 语义（旧固件的 CRC / 长度校验不受影响）。
 void UARTLinkAddon::onLedConfigFrame(uint8_t *payload, uint8_t len) {
-    if (len < 10) return;
+    if (len < 5) return;
     AnimationOptions &aOpts = Storage::getInstance().getAnimationOptions();
     LEDOptions &lOpts = Storage::getInstance().getLedOptions();
-    aOpts.baseAnimationIndex = payload[0];
+
+    // CE 的 LED 配置是按 profile 存的；机内页面只编辑“当前 profile”
+    if (aOpts.profiles_count == 0) {
+        aOpts.profiles_count = 1;
+        aOpts.baseProfileIndex = 0;
+    }
+    int8_t p = ledProfileIndex(aOpts);
+    if (p < 0) p = 0;
+    AnimationProfile &prof = aOpts.profiles[p];
+
+    uint8_t effect = payload[0];
+    if (effect > LINK_LED_EFFECT_MAX) effect = 0;
+    uint8_t colorIdx = payload[2];
+    if (colorIdx >= (uint8_t)colors.size()) colorIdx = 1;
+    uint8_t cycle = payload[4];
+    if (cycle >= CYCLE_STEPS) cycle = CYCLE_STEPS - 1;
+
+    prof.bEnabled = true;
+    prof.baseNonPressedEffect = (AnimationNonPressedEffects)effect;
+    prof.baseCycleTime = cycle;
+    prof.nonPressedSpecialColor = ledColorRGB(colorIdx);
+    // 静态色按灯位存“调色板索引”，这里把整条灯带刷成同一个索引
+    memset(prof.notPressedStaticColors.bytes, colorIdx, sizeof(prof.notPressedStaticColors.bytes));
+    prof.notPressedStaticColors.size = sizeof(prof.notPressedStaticColors.bytes);
+    // 按下时保持同一颜色，行为与原固件「静态/追逐/彩虹按下不变色」一致
+    prof.basePressedEffect = AnimationPressedEffects::AnimationPressedEffects_PRESSEDEFFECT_STATIC_COLOR;
+
     aOpts.brightness = payload[1];
-    aOpts.staticColorIndex = payload[2];
     lOpts.turnOffWhenSuspended = (payload[3] & 0x01) != 0;
-    aOpts.chaseCycleTime = (uint32_t)(payload[4] | ((uint16_t)payload[5] << 8));
-    aOpts.rainbowCycleTime = (uint32_t)(payload[6] | ((uint16_t)payload[7] << 8));
-    aOpts.flowCycleTime = (uint32_t)(payload[8] | ((uint16_t)payload[9] << 8));
 
     Storage::getInstance().save(true);
-    // report the new state immediately; the LED addon hot-swaps it live
+    // CE 原生的重载路径：下一帧 LED 循环会 InitSettings() + configureLEDs()
+    AnimationStation::getInstance().setRestartLeds(true);
+
     GamepadOptions &opts = Storage::getInstance().getGamepadOptions();
     sendStatusFrame((uint8_t)opts.socdMode, (uint8_t)opts.dpadMode, (uint8_t)opts.inputMode,
                     (opts.fourWayMode ? 0x01 : 0) | (opts.invertXAxis ? 0x02 : 0) |
                     (opts.invertYAxis ? 0x04 : 0), (uint8_t)opts.debounceDelay,
-                    (uint8_t)aOpts.baseAnimationIndex, (uint8_t)aOpts.brightness,
-                    (uint8_t)aOpts.staticColorIndex, (uint16_t)aOpts.chaseCycleTime,
-                    (uint16_t)aOpts.rainbowCycleTime, (uint16_t)aOpts.flowCycleTime,
                     lOpts.turnOffWhenSuspended ? 0x01 : 0, battMv, battFlags);
 }
 
@@ -260,7 +316,16 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
     uint8_t flags = payload[3];
     uint8_t debounce = payload[4];
 
+    // 以「正在运行的驱动」为准判断要不要重启，而不是存储里的 options.inputMode。
+    // options.inputMode 在下一行就会被覆盖：一旦出现「存储已是目标值、驱动还是旧模式」
+    // 的不同步（开机时按住键走了 boot override、或上一次重启/写盘没成功），旧写法
+    // 永远判成“没变化”-> 永不重启 -> ESP 菜单里怎么改都改不动。
+    InputMode activeMode = DriverManager::getInstance().getInputMode();
     bool inputChanged = (inputMode != (uint8_t)options.inputMode);
+    // 额外排除一种情况：设备正跑在 CONFIG（网页配置）模式时，ESP 菜单只改了 SOCD/
+    // 去抖等别的项，也会带着“当前存储的模式”过来——这时不应该把设备踢出网页配置。
+    bool modeMismatch = (inputMode != (uint8_t)activeMode) &&
+                        !(activeMode == INPUT_MODE_CONFIG && !inputChanged);
     options.inputMode = (InputMode)inputMode;
     options.socdMode = (SOCDMode)socdMode;
     options.dpadMode = (DpadMode)dpadMode;
@@ -284,22 +349,23 @@ void UARTLinkAddon::onConfigFrame(uint8_t *payload, uint8_t len) {
     uart_write_blocking(uart0, ack, sizeof(ack));
     // report the new state immediately so the ESP32 can confirm
     GamepadOptions &o2 = Storage::getInstance().getGamepadOptions();
-    AnimationOptions &a2 = Storage::getInstance().getAnimationOptions();
     LEDOptions &l2 = Storage::getInstance().getLedOptions();
     sendStatusFrame((uint8_t)o2.socdMode, (uint8_t)o2.dpadMode, (uint8_t)o2.inputMode,
                     (o2.fourWayMode ? 0x01 : 0) | (o2.invertXAxis ? 0x02 : 0) |
                     (o2.invertYAxis ? 0x04 : 0), (uint8_t)o2.debounceDelay,
-                    (uint8_t)a2.baseAnimationIndex, (uint8_t)a2.brightness,
-                    (uint8_t)a2.staticColorIndex, (uint16_t)a2.chaseCycleTime,
-                    (uint16_t)a2.rainbowCycleTime, (uint16_t)a2.flowCycleTime,
                     l2.turnOffWhenSuspended ? 0x01 : 0, battMv, battFlags);
-    if (inputChanged) {
+    if (modeMismatch) {
         // 重启前把还没落盘的 ESP 镜像写完，否则 Pico flash 里留下旧镜像，
         // 下次开机会被 ESP32 当成“权威配置”覆盖掉刚存的设置在 LittleFS 里的值。
         if (espCfgWritePending) espCfgCommitNow();
-        // FlashPROM::commit() defers the real flash write to a 50ms alarm;
-        // give it time to finish before rebooting, otherwise the config is lost
-        sleep_ms(400);
+        // 不能再用固定 sleep 猜刷写时间：FlashPROM 是「+50ms 再擦写」的延迟提交，
+        // 擦 32KB 又要几十毫秒，机器一忙就会在写完之前重启，配置直接丢（表现为
+        // 菜单里改了输入模式，重启后还是老模式）。这里直接等写盘完成再重启。
+        if (!EEPROM.waitCommit(1500)) {
+            // 超时（极少见）：再补一次提交并多等一会儿，别刚点保存就丢配置
+            EEPROM.commit();
+            EEPROM.waitCommit(1500);
+        }
         // input mode is applied at boot by the driver, so reboot to switch
         System::reboot(System::BootMode::DEFAULT);
     }
@@ -444,15 +510,11 @@ void UARTLinkAddon::postprocess(bool sent) {
                     (options.invertXAxis ? 0x02 : 0) |
                     (options.invertYAxis ? 0x04 : 0);
     uint8_t debounce = (uint8_t)options.debounceDelay;
-    AnimationOptions &aOpts = Storage::getInstance().getAnimationOptions();
     LEDOptions &lOpts = Storage::getInstance().getLedOptions();
     if (socdMode != lastSocdMode || dpadMode != lastDpadMode ||
         inputMode != lastInputMode || flags != lastFlags ||
         debounce != lastDebounce || now - lastStatusSent >= 1000) {
         sendStatusFrame(socdMode, dpadMode, inputMode, flags, debounce,
-                        (uint8_t)aOpts.baseAnimationIndex, (uint8_t)aOpts.brightness,
-                        (uint8_t)aOpts.staticColorIndex, (uint16_t)aOpts.chaseCycleTime,
-                        (uint16_t)aOpts.rainbowCycleTime, (uint16_t)aOpts.flowCycleTime,
                         lOpts.turnOffWhenSuspended ? 0x01 : 0, battMv, battFlags);
         lastSocdMode = socdMode;
         lastDpadMode = dpadMode;

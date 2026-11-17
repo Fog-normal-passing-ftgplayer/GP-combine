@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import omit from 'lodash/omit';
 import WebApi from '../Services/WebApi';
 import { PinActionValues } from '../Data/Pins';
 
@@ -47,7 +48,17 @@ export type PinsType = {
 	pin29: MaskPayload;
 	profileLabel: string;
 	enabled: boolean;
+	pinInversionEnabled: boolean;
+	invertedPins: number[];
 };
+
+export const getProfilePins = (profile: PinsType) =>
+	omit(profile, [
+		'profileLabel',
+		'enabled',
+		'pinInversionEnabled',
+		'invertedPins',
+	]);
 
 type State = {
 	profiles: PinsType[];
@@ -67,6 +78,8 @@ type Actions = {
 	saveProfiles: () => Promise<object>;
 	setProfileLabel: (profileIndex: number, profileLabel: string) => void;
 	setProfilePin: SetProfilePinType;
+	setPinInversionEnabled: (profileIndex: number, enabled: boolean) => void;
+	togglePinInverted: (profileIndex: number, pin: number) => void;
 	toggleProfileEnabled: (profileIndex: number) => void;
 };
 
@@ -87,6 +100,7 @@ const useProfilesStore = create<State & Actions>()((set, get) => ({
 					{
 						...state.profiles[0],
 						profileLabel: `Profile ${state.profiles.length + 1}`,
+						enabled: true,
 					},
 				],
 			}));
@@ -96,25 +110,14 @@ const useProfilesStore = create<State & Actions>()((set, get) => ({
 		set({ loadingProfiles: true });
 
 		// TODO, unify baseProfile with other profiles when done in web api
-		// 注意：两个接口失败时 WebApi 会返回 undefined（内部 catch 掉了错误），
-		// 以前这里直接 [baseProfile, ...profiles] 会抛 TypeError，
-		// loadingProfiles 就永远停在 true —— 表现就是「引脚设置页一直转圈」。
-		try {
-			const baseProfile = await WebApi.getPinMappings();
-			const profiles = await WebApi.getProfileOptions();
+		const baseProfile = await WebApi.getPinMappings();
+		const profiles = await WebApi.getProfileOptions();
 
-			set((state) => ({
-				...state,
-				profiles: [
-					baseProfile,
-					...(Array.isArray(profiles) ? profiles : []),
-				].filter(Boolean),
-				loadingProfiles: false,
-			}));
-		} catch (error) {
-			console.error('fetchProfiles failed', error);
-			set({ loadingProfiles: false });
-		}
+		set((state) => ({
+			...state,
+			profiles: [baseProfile, ...profiles],
+			loadingProfiles: false,
+		}));
 	},
 	copyBaseProfile: (profileIndex) =>
 		set((state) => ({
@@ -154,11 +157,30 @@ const useProfilesStore = create<State & Actions>()((set, get) => ({
 		}),
 	saveProfiles: async () => {
 		const [baseProfile, ...profiles] = get().profiles;
-		return Promise.all([
-			WebApi.setPinMappings(baseProfile),
-			WebApi.setProfileOptions(profiles),
-		]);
+		await WebApi.setPinMappings(baseProfile);
+		return WebApi.setProfileOptions(profiles);
 	},
+	setPinInversionEnabled: (profileIndex, pinInversionEnabled) =>
+		set((state) => {
+			const profiles = [...state.profiles];
+			profiles[profileIndex] = {
+				...profiles[profileIndex],
+				pinInversionEnabled,
+			};
+			return { profiles };
+		}),
+	togglePinInverted: (profileIndex, pin) =>
+		set((state) => {
+			const profiles = [...state.profiles];
+			const invertedPins = profiles[profileIndex].invertedPins ?? [];
+			profiles[profileIndex] = {
+				...profiles[profileIndex],
+				invertedPins: invertedPins.includes(pin)
+					? invertedPins.filter((invertedPin) => invertedPin !== pin)
+					: [...invertedPins, pin],
+			};
+			return { profiles };
+		}),
 	toggleProfileEnabled: (profileIndex) =>
 		set((state) => {
 			const profiles = [...state.profiles];

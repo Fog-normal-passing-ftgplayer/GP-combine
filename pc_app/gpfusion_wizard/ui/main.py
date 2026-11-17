@@ -1,4 +1,4 @@
-"""GP-Fusion 配置向导入口。"""
+"""GP-Combine 配置助手入口。"""
 from __future__ import annotations
 
 import sys

@@ -3,6 +3,7 @@
 #
 #   ./build.sh             # 240x135，对应 esp32/
 #   ./build.sh 320         # 170x320，对应 esp32_170x320/
+#   ./build.sh 172         # 172x320，对应 esp32_172x320/
 #   SKETCH=/path/to/sketch ./build.sh
 #
 # 首次会自动调 arduino-cli 编译固件，拿到带自动函数原型的 .ino.cpp
@@ -16,11 +17,18 @@ FQBN="${FQBN:-esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=custom
 case "${1:-240}" in
   240)     DEF_SKETCH="$REPO/esp32" ;;
   320)     DEF_SKETCH="$REPO/esp32_170x320" ;;
+  172)     DEF_SKETCH="$REPO/esp32_172x320" ;;
   -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
   *)       DEF_SKETCH="$1" ;;
 esac
 SKETCH="${SKETCH:-$DEF_SKETCH}"
 NAME="$(basename "$SKETCH")"
+# 共享库/headless 短名：170/172 都是 320 宽但各编各的库，按工程名区分
+case "$NAME" in
+  esp32_172x320) TAG=172 ;;
+  esp32_170x320) TAG=320 ;;
+  *)             TAG=240 ;;
+esac
 BUILD="${BUILD:-$SIM/build/$NAME}"
 GEN="$SIM/build/gen"
 SRC="$BUILD/sketch/$NAME.ino.cpp"
@@ -39,13 +47,13 @@ _auto_needed() {
 }
 if [ "${AUTO_INO:-0}" = "1" ] && _auto_needed; then
   echo "[build] AUTO_INO=1：自动调用 compile_ino.sh"
-  "$SIM/compile_ino.sh" "$([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)"
+  "$SIM/compile_ino.sh" "$TAG"
 fi
 
 if [ ! -f "$SRC" ]; then
   echo "缺少 $SRC" >&2
   echo "先单独生成一次（arduino-cli，几分钟）：" >&2
-  echo "  ./compile_ino.sh $([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)" >&2
+  echo "  ./compile_ino.sh $TAG" >&2
   exit 1
 fi
 
@@ -54,7 +62,7 @@ STAMP="$BUILD/.ino_src_hash"
 NOW_HASH="$( cd "$SKETCH" && cat *.ino *.h 2>/dev/null | sha256sum | cut -d' ' -f1 )"
 if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" != "$NOW_HASH" ]; then
   echo "[build] ✘ 固件源码变了，.ino.cpp 已过期（仿真器会用到旧代码）" >&2
-  echo "        先跑：./compile_ino.sh $([ "$NAME" = "esp32_170x320" ] && echo 320 || echo 240)" >&2
+  echo "        先跑：./compile_ino.sh $TAG" >&2
   echo "        （或在这次构建加 AUTO_INO=1 自动重新生成）" >&2
   exit 1
 fi
@@ -76,15 +84,15 @@ if [ -d "$SKETCH/src" ]; then
 fi
 
 # 4) 构建形态
-#    HEADLESS=1 -> 不编图形后端，输出短名 build/sim240 | build/sim320（配置助手直接调用）
+#    HEADLESS=1 -> 不编图形后端，输出短名 build/sim240 | build/sim320 | build/sim172（配置助手直接调用）
 #    默认       -> 带 X11 窗口，输出 build/sim_<sketch>
 if [ "${LIB:-0}" = "1" ]; then
-  OUT="$SIM/build/libsim$([ "$SIM_W" = "320" ] && echo 320 || echo 240).so"
+  OUT="$SIM/build/libsim$TAG.so"
   FLAGS=(-O2 -fPIC -shared -DSIM_LIB)
   LIBS=(-lz)
   echo "[build] 共享库构建（配置助手内嵌预览）"
 elif [ "${HEADLESS:-0}" = "1" ]; then
-  OUT="$SIM/build/sim$([ "$SIM_W" = "320" ] && echo 320 || echo 240)"
+  OUT="$SIM/build/sim$TAG"
   FLAGS=(-O2 -DSIM_HEADLESS)
   LIBS=(-lz)
   echo "[build] headless 构建（无窗口）"

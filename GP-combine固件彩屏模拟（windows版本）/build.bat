@@ -45,6 +45,12 @@ if not exist "%SRC%" (
 if not exist "%GEN%" mkdir "%GEN%"
 copy /Y "%SRC%" "%GEN%\esp32.ino.cpp" >nul || (echo [build] copy ino.cpp failed & exit /b 1)
 
+REM 1b) read firmware SCR_W/SCR_H from generated source (fall back 240x135)
+set "SIM_W=240"
+set "SIM_H=135"
+for /f "tokens=3" %%a in ('findstr /C:"#define SCR_W" "%SRC%"') do set "SIM_W=%%a"
+for /f "tokens=3" %%a in ('findstr /C:"#define SCR_H" "%SRC%"') do set "SIM_H=%%a"
+
 REM 2) collect extra cpp under sketch/src (embedded NES emulator)
 set "EXTRA="
 if exist "%SKETCH%\src" (
@@ -74,7 +80,7 @@ echo [build] %NAME%  (sketch %SKETCH%)
 if not exist "%BUILD%" mkdir "%BUILD%"
 
 cl /nologo /std:c++17 /O2 /w /EHsc /utf-8 ^
-  /DSIM_IMG_W=240 /DSIM_IMG_H=135 ^
+  /DSIM_IMG_W=%SIM_W% /DSIM_IMG_H=%SIM_H% ^
   /I "%SIM%\shim" /I "%SKETCH%" /I "%GEN%" ^
   /Fo"%BUILD%\\" /Fe"%SIM%\build\sim_%NAME%.exe" ^
   "%SIM%\sim_main.cpp" %EXTRA% ^

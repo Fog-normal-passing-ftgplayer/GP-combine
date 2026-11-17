@@ -4,9 +4,10 @@
 # 为什么要单独一步：arduino-cli 要跑 ESP32 工具链，几分钟；而编仿真器/共享库
 # 只要几秒。拆开之后改仿真器本身不用等工具链，改固件时也明确知道慢在哪一步。
 #
-#   ./compile_ino.sh          # 两个分辨率都编
+#   ./compile_ino.sh          # 全部分辨率都编
 #   ./compile_ino.sh 240      # 只编 240x135
 #   ./compile_ino.sh 320      # 只编 170x320
+#   ./compile_ino.sh 172      # 只编 172x320
 set -euo pipefail
 
 SIM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,8 +39,9 @@ compile_one() {
 case "${1:-all}" in
   240) compile_one esp32 ;;
   320) compile_one esp32_170x320 ;;
-  all) compile_one esp32; compile_one esp32_170x320 ;;
+  172) compile_one esp32_172x320 ;;
+  all) compile_one esp32; compile_one esp32_170x320; compile_one esp32_172x320 ;;
   -h|--help) sed -n '2,12p' "$0" ;;
-  *) echo "用法: ./compile_ino.sh [240|320|all]" >&2; exit 1 ;;
+  *) echo "用法: ./compile_ino.sh [240|320|172|all]" >&2; exit 1 ;;
 esac
 echo "[ino] 完成。接下来可以直接 ./build.sh / LIB=1 ./build.sh，或 pc_app/prepare_sim.sh"

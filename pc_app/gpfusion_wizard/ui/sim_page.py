@@ -19,19 +19,19 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_config import local_wallpaper_gfr, screen_dims
-from ..sim_engine import find_lib
+from ..sim_engine import find_lib, lib_tag
 from ..wizard_state import WizardState
 from .firmware_screen import FirmwareScreen
 
 HOWTO = """仿真库是分开编译的，不需要 ESP32 工具链：
 
   cd "tools/GP-combine固件彩屏模拟（linux版本）"
-  LIB=1 ./build.sh 240      # 或 320
+  LIB=1 ./build.sh 240      # 或 320 / 172
   cd ../../pc_app && ./prepare_sim.sh
 
 注意：改了固件（.ino/.h）之后要先单独重新生成一次 .ino.cpp：
 
-  ./compile_ino.sh 240      # 或 320 / all
+  ./compile_ino.sh 240      # 或 320 / 172 / all
 
 否则仿真器会用到旧代码。"""
 
@@ -69,6 +69,7 @@ class SimPage(QWidget):
         self.res_combo = QComboBox()
         self.res_combo.addItem("240 × 135", "240x135")
         self.res_combo.addItem("170 × 320", "170x320")
+        self.res_combo.addItem("172 × 320", "172x320")
         self.res_combo.currentIndexChanged.connect(self._on_res_changed)
         row.addWidget(self.res_combo)
         self.reload_btn = QPushButton("重新加载")
@@ -127,7 +128,7 @@ class SimPage(QWidget):
         lib = find_lib(res)
         if lib is None:
             self.howto_btn.setVisible(True)
-            self.info.setText("找不到仿真库 libsim%s.so —— 真机预览不可用。" % ("320" if "320" in res else "240"))
+            self.info.setText("找不到仿真库 libsim%s.so —— 真机预览不可用。" % lib_tag(res))
             return
         self.howto_btn.setVisible(False)
 

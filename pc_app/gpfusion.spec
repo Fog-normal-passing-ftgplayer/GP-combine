@@ -6,11 +6,11 @@ import os
 # 存在才打包：缺了也能正常出包，只是预览退化为静态图。
 _sim_binaries = [
     (path, "gpfusion_wizard/bin")
-    for path in ("gpfusion_wizard/bin/libsim240.so", "gpfusion_wizard/bin/libsim320.so")
+    for path in ("gpfusion_wizard/bin/libsim240.so", "gpfusion_wizard/bin/libsim320.so", "gpfusion_wizard/bin/libsim172.so")
     if os.path.isfile(path)
 ]
 if not _sim_binaries:
-    print("[spec] 未找到 libsim240.so / libsim320.so —— 真机预览将不可用")
+    print("[spec] 未找到 libsim240.so / libsim320.so / libsim172.so —— 真机预览将不可用")
 
 a = Analysis(
     ["main.py"],

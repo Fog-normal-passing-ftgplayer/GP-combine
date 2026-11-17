@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 构建 headless 仿真器并把二进制放进助手包（供「GIF 页真机预览」调用）。
 #
-#   ./prepare_sim.sh            构建 240 + 320 并复制到 gpfusion_wizard/bin/
+#   ./prepare_sim.sh            构建 240 + 320 + 172 并复制到 gpfusion_wizard/bin/
 #   ./prepare_sim.sh --check    只检查现有二进制，不重新构建
 #
 # 找不到仿真器源码目录时给出提示但不失败 —— 预览会降级成静态图，不影响向导其它功能。
@@ -26,18 +26,18 @@ fi
 echo "[sim] 仿真器目录: $SIM_DIR"
 
 need_build=0
-for v in 240 320; do
+for v in 240 320 172; do
   [ -f "$SIM_DIR/build/libsim$v.so" ] || need_build=1
 done
 if [ "$need_build" = "1" ] && [ "$CHECK_ONLY" = "0" ]; then
-  for v in 240 320; do
+  for v in 240 320 172; do
     echo "[sim] 构建共享库 $v…"
     ( cd "$SIM_DIR" && LIB=1 ./build.sh "$v" >/dev/null )
   done
 fi
 
 mkdir -p "$DEST"
-for v in 240 320; do
+for v in 240 320 172; do
   src="$SIM_DIR/build/libsim$v.so"
   if [ -f "$src" ]; then
     cp -f "$src" "$DEST/libsim$v.so"

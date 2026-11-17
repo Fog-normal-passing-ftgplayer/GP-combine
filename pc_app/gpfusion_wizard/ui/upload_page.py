@@ -19,7 +19,9 @@ from ..app_config import (
     FQBN,
     default_tool_dir,
     fqbn_for,
+    is_vertical,
     local_background_header,
+    local_build_dir_name,
     local_sketch_dir,
     local_sketch_ino,
     local_wallpaper_header,
@@ -99,7 +101,7 @@ class UploadPage(QWidget):
             "目标板：ESP32-S3（%s）%s" % (
                 fqbn_for(res),
                 "　16MB 自定义分区（app 3MB / LittleFS 12.94MB）"
-                if res == "170x320" else "",
+                if is_vertical(res) else "",
             )
         )
         if self._auto_started:
@@ -163,8 +165,7 @@ class UploadPage(QWidget):
 
         sketch_dir = local_sketch_dir(Path(self.state.source_dir), res)
         fqbn = fqbn_for(res)
-        build_dir = default_tool_dir() / (
-            "build_esp32s3_170x320" if res == "170x320" else "build_esp32s3")
+        build_dir = default_tool_dir() / local_build_dir_name(res)
         stale = prepare_build_dir(build_dir)
         self.log.clear()
         if stale:
@@ -203,8 +204,7 @@ class UploadPage(QWidget):
         cli = Path(self.state.cli_path)
         res2 = self.state.screen_res
         fqbn2 = fqbn_for(res2)
-        build_dir = default_tool_dir() / (
-            "build_esp32s3_170x320" if res2 == "170x320" else "build_esp32s3")
+        build_dir = default_tool_dir() / local_build_dir_name(res2)
         self._log("$ %s" % " ".join(upload_cmd(cli, self.state.port, build_dir, fqbn2)))
         runner = JobRunner()
         self._runner = runner

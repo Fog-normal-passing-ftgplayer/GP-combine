@@ -86,7 +86,8 @@ def import_config(
                 led_pin=new_state.led_pin,
                 leds_per_button=new_state.leds_per_button,
             )
-            write_defaults_header(new_state.default_layout, local_defaults_header(src))
+            write_defaults_header(new_state.default_layout,
+                                  local_defaults_header(src, new_state.screen_res))
             write_layout_header(
                 new_state.layout, local_layout_header(src, new_state.screen_res)
             )

@@ -27,9 +27,17 @@ DP_LEFT = 0x04
 DP_RIGHT = 0x08
 
 
+def lib_tag(res: str) -> str:
+    """分辨率 → 仿真库短名。170/172 都是 320 宽但各编各的库，不能共用。"""
+    res = str(res or "")
+    if res == "172x320":
+        return "172"
+    return "320" if "320" in res else "240"
+
+
 def find_lib(res: str) -> Path | None:
     """找仿真库。优先级：环境变量 > 打包内 bin/ > 仓库 tools/ 下。"""
-    key = "320" if "320" in str(res) else "240"
+    key = lib_tag(res)
     pkg = Path(__file__).resolve().parent          # .../gpfusion_wizard
     cands: list[Path] = []
     env = os.environ.get(f"GPFUSION_SIMLIB_{key}")
@@ -53,7 +61,7 @@ class SimEngine:
         if path is None:
             raise FileNotFoundError(
                 "找不到仿真库 libsim%s（先跑 tools 下 HEADLESS=1 ./build.sh 或 pc_app/prepare_sim.sh）"
-                % ("320" if "320" in str(res) else "240")
+                % lib_tag(res)
             )
         self._lib = ctypes.CDLL(str(path))
         lib = self._lib

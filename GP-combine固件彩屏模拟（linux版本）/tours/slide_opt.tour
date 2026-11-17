@@ -1,0 +1,10 @@
+# 抓选项列表滚动：进菜单 -> 设置 -> 手柄(7 项，可见 4 项) -> 连续下移触发滚屏
+hold 3700 6900 s2
+hold 7100 7230 a
+hold 7550 7680 a
+hold 8000 8130 down
+hold 8300 8430 down
+hold 8600 8730 down
+hold 8900 9030 down
+hold 9200 9330 down
+end 9800

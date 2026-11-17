@@ -25,6 +25,7 @@ from ..app_config import (
     DEFAULT_REPO_URL,
     default_source_dir,
     is_windows,
+    local_sketch_dir,
     local_sketch_ino,
 )
 from ..jobs import JobRunner, core_install_progress
@@ -152,6 +153,7 @@ class PrepPage(QWidget):
         self.res_combo = QComboBox()
         self.res_combo.addItem("240x135（默认）", "240x135")
         self.res_combo.addItem("170x320（1.9寸竖屏）", "170x320")
+        self.res_combo.addItem("172x320（1.47寸竖屏）", "172x320")
         self.res_combo.currentIndexChanged.connect(self._on_res_changed)
         res_row.addWidget(self.res_combo)
         res_row.addStretch(1)
@@ -277,9 +279,10 @@ class PrepPage(QWidget):
                 self.src_status.setStyleSheet("color: #FFB454;")
         elif self.state.source_dir:
             self._source_ok = False
-            sketch = "esp32_170x320" if res == "170x320" else "esp32"
+            ino = local_sketch_ino(Path(self.state.source_dir), res)
             self.src_status.setText(
-                "所选目录缺少 %s/%s.ino：%s" % (sketch, sketch, self.state.source_dir)
+                "所选目录缺少 %s：%s" % (ino.relative_to(Path(self.state.source_dir)),
+                                          self.state.source_dir)
             )
             self.src_status.setStyleSheet("color: #FF7B72;")
         else:
@@ -295,9 +298,9 @@ class PrepPage(QWidget):
             return
         p = Path(self.state.source_dir)
         res = self.state.screen_res
-        sketch = "esp32_170x320" if res == "170x320" else "esp32"
-        ino_name = sketch + ".ino"
-        if (p / ino_name).is_file() and not (p / sketch / ino_name).is_file():
+        sketch_dir = local_sketch_dir(p, res)
+        ino_name = local_sketch_ino(p, res).name
+        if (p / ino_name).is_file() and not (sketch_dir / ino_name).is_file():
             self.state.source_dir = str(p.parent)
 
     def _on_res_changed(self) -> None:

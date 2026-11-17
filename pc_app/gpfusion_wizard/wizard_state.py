@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from .app_config import screen_dims, state_file
+from .app_config import is_vertical, local_sketch_ino, screen_dims, state_file
 from .layout_model import (
     LITE_SCREEN,
     LITE_STATUS_H,
@@ -21,7 +21,7 @@ class WizardState:
     port: str = ""
     cli_path: str = ""
     source_dir: str = ""
-    screen_res: str = "240x135"      # 240x135 默认 / 170x320 竖屏
+    screen_res: str = "240x135"      # 240x135 默认 / 170x320、172x320 竖屏
     lite_source_dir: str = ""
     pico_sdk_dir: str = ""
     lite_screen_size: str = "0.96"
@@ -53,7 +53,7 @@ class WizardState:
         s.cli_path = str(d.get("cli_path", ""))
         s.source_dir = str(d.get("source_dir", ""))
         res = str(d.get("screen_res", ""))
-        s.screen_res = res if res in ("240x135", "170x320") else "240x135"
+        s.screen_res = res if res in ("240x135",) or is_vertical(res) else "240x135"
         s.lite_source_dir = str(d.get("lite_source_dir", ""))
         s.pico_sdk_dir = str(d.get("pico_sdk_dir", ""))
         s.lite_screen_size = str(d.get("lite_screen_size", "0.96"))
@@ -134,7 +134,4 @@ class WizardState:
 def source_ready(source_dir: str, screen_res: str = "240x135") -> bool:
     if not source_dir:
         return False
-    p = Path(source_dir)
-    ino = ("esp32_170x320" if screen_res == "170x320" else "esp32")
-    name = ("esp32_170x320.ino" if screen_res == "170x320" else "esp32.ino")
-    return (p / ino / name).is_file()
+    return local_sketch_ino(Path(source_dir), screen_res).is_file()

@@ -12,13 +12,30 @@ APP_VERSION = "1.0"
 SCREEN_RESOLUTIONS: dict[str, tuple[int, int]] = {
     "240x135": (240, 135),     # 默认横屏内容（驱动层旋转到竖屏面板）
     "170x320": (320, 170),     # 1.9寸物理屏 170x320，内容仍为 320x170 横屏
+    "172x320": (320, 172),     # 1.47寸物理屏 172x320，内容仍为 320x172 横屏
 }
 SCREEN_W, SCREEN_H = SCREEN_RESOLUTIONS["240x135"]   # 兼容默认值
+
+# 竖屏变体：工程目录名/ino 名与分辨率字符串同名，NES 小游戏、单数组背景等特性一致
+VERTICAL_RES: tuple[str, ...] = ("170x320", "172x320")
+
+
+def is_vertical(screen_res: str) -> bool:
+    """是否为 320×高 的竖屏变体（区别于默认 240x135 横屏工程）。"""
+    return str(screen_res or "") in VERTICAL_RES
 
 
 def screen_dims(screen_res: str) -> tuple[int, int]:
     """按屏幕分辨率字符串返回 (宽, 高)，未知值回退默认。"""
     return SCREEN_RESOLUTIONS.get(str(screen_res or ""), SCREEN_RESOLUTIONS["240x135"])
+
+
+def background_single_array(size: tuple[int, int]) -> bool:
+    """竖屏变体背景只存一张原图，透明度由固件运行时混合（省 flash）。"""
+    return size in (
+        SCREEN_RESOLUTIONS["170x320"],
+        SCREEN_RESOLUTIONS["172x320"],
+    )
 MENU_BG = (21, 27, 39)                      # esp32.ino 里的 COL_BG
 BG_ALPHAS = (0.25, 0.40, 0.55, 0.70, 0.85)  # 5 档透明度，对应机内菜单
 
@@ -30,8 +47,13 @@ FQBN_170x320 = FQBN_16MB      # 兼容旧引用
 
 
 def fqbn_for(screen_res: str) -> str:
-    """正式版（240x135 / 170x320）都编译为 N16R8 16MB + OPI PSRAM + 自定义分区。"""
+    """正式版（240x135 / 170x320 / 172x320）都编译为 N16R8 16MB + OPI PSRAM + 自定义分区。"""
     return FQBN_16MB
+
+
+def local_build_dir_name(screen_res: str) -> str:
+    """本地编译缓存目录名：竖屏变体各自独立，避免 core.a 串用。"""
+    return "build_esp32s3_%s" % screen_res if is_vertical(screen_res) else "build_esp32s3"
 ESP32_CORE = "esp32:esp32"
 ESP32_INDEX_URL = "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
@@ -76,12 +98,16 @@ def state_file() -> Path:
 
 
 def local_sketch_dir(source_dir: Path, screen_res: str = "240x135") -> Path:
-    return source_dir / ("esp32_170x320" if screen_res == "170x320" else "esp32")
+    if is_vertical(screen_res):
+        return source_dir / ("esp32_%s" % screen_res)
+    return source_dir / "esp32"
 
 
 def local_sketch_ino(source_dir: Path, screen_res: str = "240x135") -> Path:
     d = local_sketch_dir(source_dir, screen_res)
-    return d / ("esp32_170x320.ino" if screen_res == "170x320" else "esp32.ino")
+    if is_vertical(screen_res):
+        return d / ("esp32_%s.ino" % screen_res)
+    return d / "esp32.ino"
 
 
 def local_background_header(source_dir: Path, screen_res: str = "240x135") -> Path:
@@ -108,12 +134,12 @@ def local_nes_dir(source_dir: Path) -> Path:
 
 
 def local_nes_conf(source_dir: Path, screen_res: str = "240x135") -> Path:
-    """小游戏运行配置头（缩放模式），仅 170x320 版使用。"""
+    """小游戏运行配置头（缩放模式），仅竖屏版使用。"""
     return local_sketch_dir(source_dir, screen_res) / "nes_conf.h"
 
 
-def local_defaults_header(source_dir: Path) -> Path:
-    return local_sketch_dir(source_dir) / "defaults.h"
+def local_defaults_header(source_dir: Path, screen_res: str = "240x135") -> Path:
+    return local_sketch_dir(source_dir, screen_res) / "defaults.h"
 
 
 def local_pico_user_header(source_dir: Path) -> Path:

@@ -213,7 +213,7 @@ class GifPage(QWidget):
             self.status.setStyleSheet("color: #FF7B72;")
 
     def flash_wallpaper_fs(self) -> None:
-        """把 /wp/1.gfr 写入设备 LittleFS（仅 170x320，会清空板内配置）。"""
+        """把 /wp/1.gfr 写入设备 LittleFS（竖屏版，会清空板内配置）。"""
         if not self.state.source_dir:
             self.status.setText("源码目录未就绪")
             self.status.setStyleSheet("color: #FFB454;")

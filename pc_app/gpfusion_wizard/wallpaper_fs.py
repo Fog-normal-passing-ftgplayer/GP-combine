@@ -1,6 +1,6 @@
 """把壁纸文件写入设备 LittleFS：mklittlefs 打包 + esptool 按分区偏移烧写。
 
-适用于正式版两块 N16R8 板（240x135 与 170x320 用同一分区表：
+适用于正式版 N16R8 板（240x135 / 170x320 / 172x320 用同一分区表：
 LittleFS 位于 0x310000，大小 12.94MB）。
 """
 from __future__ import annotations

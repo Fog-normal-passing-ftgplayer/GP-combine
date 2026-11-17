@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ..app_config import (
     default_tool_dir,
     fqbn_for,
+    local_build_dir_name,
     local_sketch_dir,
     local_wallpaper_gfr,
     local_nes_dir,
@@ -132,8 +133,7 @@ class ReflashPage(QWidget):
         self.log.clear()
         res = st.screen_res
         self._sketch = local_sketch_dir(Path(st.source_dir), res)
-        self._build = default_tool_dir() / (
-            "build_esp32s3_170x320" if res == "170x320" else "build_esp32s3")
+        self._build = default_tool_dir() / local_build_dir_name(res)
         self._fqbn = fqbn_for(res)
         stale = prepare_build_dir(self._build)
         self._log("目标：%s（%s）" % (res, self._fqbn))

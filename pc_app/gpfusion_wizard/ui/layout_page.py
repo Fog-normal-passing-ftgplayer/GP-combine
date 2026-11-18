@@ -38,6 +38,11 @@ from ..layout_model import (
     GROUP_CLUSTER,
     GROUP_LEVER,
     GROUP_MOVE,
+    GROUP_STATUS,
+    STATUS_KEYS,
+    STATUS_NAMES,
+    StatusPos,
+    status_defaults,
     LITE_SCREEN,
     LITE_STATUS_H,
     Btn,
@@ -76,7 +81,8 @@ class LayoutPage(QWidget):
         left.addWidget(title)
         hint = QLabel("在这里设计的布局对应机内第 4 个「自定义」布局选项。"
                       "拖动任意按键调整位置，右侧面板可改文字/大小/形状，"
-                      "任意按键都能删除，改动实时写入固件源文件。")
+                      "任意按键都能删除。顶部的状态栏文字、电量、无线图标也能直接拖，"
+                      "改动实时写入固件源文件。")
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         left.addWidget(hint)
@@ -124,6 +130,7 @@ class LayoutPage(QWidget):
         self.canvas.item_moved.connect(self._on_item_moved)
         self.canvas.lever_moved.connect(self._on_lever_moved)
         self.canvas.item_selected.connect(self._on_item_selected)
+        self.canvas.status_moved.connect(self._on_status_moved)
         left.addWidget(self.canvas, 1)
 
         btn_row = QHBoxLayout()
@@ -230,6 +237,9 @@ class LayoutPage(QWidget):
     def _sync_from_state(self) -> None:
         # 载入时统一夹取：越界按键直接拉回屏内（旧状态文件/换屏都会踩到）
         w, h, sh = self._dims()
+        # 换到非 240 分辨率且用户没动过状态栏时，套用该分辨率的默认位置
+        if not self.lite and self._layout().status.is_default() and (w, h) != (240, 135):
+            self._layout().status = status_defaults(w, h)
         fixed = sanitize_layout(self._layout(), w, h, status_h=sh)
         self.canvas.set_layout(self._layout())
         self._set_combo_by_data(self.default_combo, self.state.default_layout)
@@ -329,6 +339,23 @@ class LayoutPage(QWidget):
     def _refresh_panel(self) -> None:
         group = self.canvas.sel_group
         index = self.canvas.sel_index
+        if group == GROUP_STATUS:
+            key = STATUS_KEYS[max(0, min(len(STATUS_KEYS) - 1, index))]
+            self.name_label.setText(STATUS_NAMES.get(key, "状态栏"))
+            self.lever_box.setVisible(False)
+            self.label_edit.setEnabled(False)
+            self.label_edit.blockSignals(True)
+            self.label_edit.clear()
+            self.label_edit.blockSignals(False)
+            self.shape_combo.setEnabled(False)
+            self.size_slider.setEnabled(False)
+            self.size_label.setText("尺寸")
+            self.size_value.setText("随内容")
+            self.del_btn.setEnabled(False)          # 状态栏元素不能删
+            x, y = self._layout().status.get(key)
+            self._set_spin(self.x_spin, x)
+            self._set_spin(self.y_spin, y)
+            return
         if group == GROUP_LEVER:
             lv = self._layout().lever
             self.name_label.setText("街机摇杆")
@@ -430,6 +457,16 @@ class LayoutPage(QWidget):
         self.canvas.update()
         self._write_and_save()
 
+    def _on_status_moved(self, key: str, x: int, y: int) -> None:
+        # 模型是唯一真相：画布拖动时它已经改过了，但数字框那条路径不会，
+        # 所以这里无条件再写一次（值是相同的也无所谓）
+        self._layout().status.set(key, x, y)
+        self.canvas.set_selection(GROUP_STATUS, STATUS_KEYS.index(key))
+        self._set_spin(self.x_spin, x)      # blockSignals，避免又触发一次写盘
+        self._set_spin(self.y_spin, y)
+        self._refresh_panel()
+        self._write_and_save()
+
     def _on_lever_moved(self, x: int, y: int) -> None:
         self._layout().lever.x, self._layout().lever.y = x, y
         self._set_spin(self.x_spin, x)
@@ -437,6 +474,14 @@ class LayoutPage(QWidget):
         self._write_and_save()
 
     def _on_x_changed(self, value: int) -> None:
+        if self.canvas.sel_group == GROUP_STATUS:
+            key = STATUS_KEYS[max(0, min(len(STATUS_KEYS) - 1, self.canvas.sel_index))]
+            cx, cy = self._layout().status.get(key)
+            self._layout().status.set(key, value if "x" == "x" else cx,
+                                      value if "x" == "y" else cy)
+            self.canvas.update()
+            self._write_and_save()
+            return
         if self.canvas.sel_group == GROUP_LEVER:
             self._layout().lever.x = value
         else:
@@ -447,6 +492,14 @@ class LayoutPage(QWidget):
         self._write_and_save()
 
     def _on_y_changed(self, value: int) -> None:
+        if self.canvas.sel_group == GROUP_STATUS:
+            key = STATUS_KEYS[max(0, min(len(STATUS_KEYS) - 1, self.canvas.sel_index))]
+            cx, cy = self._layout().status.get(key)
+            self._layout().status.set(key, value if "y" == "x" else cx,
+                                      value if "y" == "y" else cy)
+            self.canvas.update()
+            self._write_and_save()
+            return
         if self.canvas.sel_group == GROUP_LEVER:
             self._layout().lever.y = value
         else:

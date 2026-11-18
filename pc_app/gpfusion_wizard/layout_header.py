@@ -40,6 +40,15 @@ def generate_layout_header(layout: Layout) -> str:
     lines.append("#define USER_LEVER_RING %d" % layout.lever.ring)
     lines.append("#define USER_LEVER_KNOB %d" % layout.lever.knob)
     lines.append("")
+    lines.append("// 状态栏元素位置（逻辑坐标；wifi 用的是圆心，和固件 drawMiniWireless 一致）")
+    st = layout.status
+    lines.append("#define USER_STATUS_TEXT_X %d" % st.text_x)
+    lines.append("#define USER_STATUS_TEXT_Y %d" % st.text_y)
+    lines.append("#define USER_STATUS_BATT_X %d" % st.batt_x)
+    lines.append("#define USER_STATUS_BATT_Y %d" % st.batt_y)
+    lines.append("#define USER_STATUS_WIFI_X %d" % st.wifi_x)
+    lines.append("#define USER_STATUS_WIFI_Y %d" % st.wifi_y)
+    lines.append("")
     return "\n".join(lines)
 
 

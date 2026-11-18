@@ -9,7 +9,19 @@ from PySide6.QtCore import Qt, QRectF, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from ..layout_model import GROUP_CLUSTER, GROUP_LEVER, GROUP_MOVE, Btn, Layout
+from ..layout_model import (
+    GROUP_CLUSTER,
+    GROUP_LEVER,
+    GROUP_MOVE,
+    GROUP_STATUS,
+    STATUS_BATT,
+    STATUS_KEYS,
+    STATUS_NAMES,
+    STATUS_TEXT,
+    STATUS_WIFI,
+    Btn,
+    Layout,
+)
 
 COL_RING = QColor(150, 160, 175)
 COL_KNOB = QColor(80, 200, 255)
@@ -20,6 +32,7 @@ class LayoutCanvas(QWidget):
     item_moved = Signal(str, int, int, int)      # group, index, x, y
     lever_moved = Signal(int, int)               # x, y
     item_selected = Signal(str, int)             # group, index
+    status_moved = Signal(str, int, int)         # key(text/batt/wifi), x, y
 
     def __init__(
         self,
@@ -57,6 +70,25 @@ class LayoutCanvas(QWidget):
             out += [(GROUP_MOVE, i, b) for i, b in enumerate(self.layout_data.move)]
         out += [(GROUP_CLUSTER, i, b) for i, b in enumerate(self.layout_data.cluster)]
         return out
+
+    # ---------- 状态栏元素 ----------
+
+    @staticmethod
+    def _status_key_at(idx: int) -> str:
+        return STATUS_KEYS[max(0, min(len(STATUS_KEYS) - 1, idx))]
+
+    def _status_items(self) -> list[tuple[str, int, int]]:
+        sp = self.layout_data.status
+        return [(k, sp.get(k)[0], sp.get(k)[1]) for k in STATUS_KEYS]
+
+    @staticmethod
+    def _status_hit_size(key: str) -> tuple[int, int]:
+        """命中/绘制用的包围盒（w, h）；wifi 按圆心算。"""
+        if key == STATUS_TEXT:
+            return (92, 11)
+        if key == STATUS_BATT:
+            return (18, 10)
+        return (12, 12)
 
     def _group_items(self, group: str) -> list[Btn]:
         if group == GROUP_MOVE:
@@ -97,6 +129,25 @@ class LayoutCanvas(QWidget):
                 self.item_selected.emit(GROUP_LEVER, 0)
                 self.update()
                 return
+        # 状态栏元素优先命中：先看最靠前的那个（wifi -> batt -> text）
+        for idx in range(len(STATUS_KEYS) - 1, -1, -1):
+            key = STATUS_KEYS[idx]
+            sx, sy = self.layout_data.status.get(key)
+            hw, hh = self._status_hit_size(key)
+            if key == STATUS_WIFI:
+                if (x - sx) ** 2 + (y - sy) ** 2 <= 8 * 8:
+                    self.sel_group, self.sel_index = GROUP_STATUS, idx
+                    self._drag = (GROUP_STATUS, idx)
+                    self.item_selected.emit(GROUP_STATUS, idx)
+                    self.update()
+                    return
+            elif sx - 2 <= x <= sx + hw + 2 and sy - 2 <= y <= sy + hh + 2:
+                self.sel_group, self.sel_index = GROUP_STATUS, idx
+                self._drag = (GROUP_STATUS, idx)
+                self.item_selected.emit(GROUP_STATUS, idx)
+                self.update()
+                return
+
         for group, idx, b in reversed(self._all_buttons()):
             hit_r = max(8, b.r + 6)
             if (x - b.x) ** 2 + (y - b.y) ** 2 <= hit_r ** 2:
@@ -111,6 +162,14 @@ class LayoutCanvas(QWidget):
             return
         x, y = self._to_logic(event.position())
         group, idx = self._drag
+        if group == GROUP_STATUS:
+            key = self._status_key_at(idx)
+            nx = max(1, min(self._lw - 1, x))
+            ny = max(1, min(self._lh - 1, y))
+            self.layout_data.status.set(key, nx, ny)
+            self.status_moved.emit(key, nx, ny)
+            self.update()
+            return
         if group == GROUP_LEVER:
             lv = self.layout_data.lever
             margin = 2
@@ -160,6 +219,8 @@ class LayoutCanvas(QWidget):
             painter.setPen(QPen(QColor(90, 70, 40), 1, Qt.PenStyle.DashLine))
             painter.drawLine(0, self._status_h, self._lw, self._status_h)
 
+        self._draw_status(painter)
+
         if self._show_lever():
             self._draw_lever(painter)
         for group, idx, b in self._all_buttons():
@@ -172,6 +233,28 @@ class LayoutCanvas(QWidget):
             painter.drawEllipse(lv.x - lv.ring - 2, lv.y - lv.ring - 2,
                                 (lv.ring + 2) * 2, (lv.ring + 2) * 2)
         painter.restore()
+
+    def _draw_status(self, painter: QPainter) -> None:
+        """状态栏三件套的示意：虚线框 + 简短标签，可直接拖走。"""
+        font = QFont("sans-serif", 5)
+        painter.setFont(font)
+        for idx, key in enumerate(STATUS_KEYS):
+            sx, sy = self.layout_data.status.get(key)
+            hw, hh = self._status_hit_size(key)
+            selected = self.sel_group == GROUP_STATUS and self.sel_index == idx
+            painter.setPen(QPen(QColor(255, 255, 255) if selected else QColor(110, 100, 80),
+                                1, Qt.PenStyle.DashLine))
+            if key == STATUS_WIFI:
+                painter.drawEllipse(sx - 6, sy - 6, 12, 12)
+                painter.setPen(QPen(QColor(190, 200, 215), 1))
+                painter.drawText(sx - 6, sy - 6, 12, 12,
+                                 Qt.AlignmentFlag.AlignCenter, "W")
+            else:
+                painter.drawRect(sx, sy, hw, hh)
+                painter.setPen(QPen(QColor(190, 200, 215), 1))
+                text = "SOCD:…" if key == STATUS_TEXT else "电量"
+                painter.drawText(sx, sy, hw, hh,
+                                 Qt.AlignmentFlag.AlignCenter, text)
 
     def _draw_highlight(self, painter: QPainter, b: Btn) -> None:
         painter.setPen(QPen(QColor(255, 255, 255), 1, Qt.PenStyle.DashLine))

@@ -36,12 +36,63 @@ class Lever:
     knob: int = 7
 
 
+# 状态栏三个可移动元素。坐标是屏内逻辑像素，含义与固件画的时候一致：
+#   text -> 文字左上角        batt -> 电池图标左上角
+#   wifi -> 无线图标圆心（和固件的 drawMiniWireless 一致）
+STATUS_TEXT = "text"
+STATUS_BATT = "batt"
+STATUS_WIFI = "wifi"
+STATUS_KEYS: tuple[str, ...] = (STATUS_TEXT, STATUS_BATT, STATUS_WIFI)
+STATUS_NAMES: dict[str, str] = {
+    STATUS_TEXT: "状态栏文字",
+    STATUS_BATT: "电量指示",
+    STATUS_WIFI: "无线图标",
+}
+
+
+@dataclass
+class StatusPos:
+    text_x: int = 4
+    text_y: int = 3
+    batt_x: int = 198
+    batt_y: int = 2
+    wifi_x: int = 232
+    wifi_y: int = 11
+
+    def get(self, key: str) -> tuple[int, int]:
+        if key == STATUS_TEXT:
+            return self.text_x, self.text_y
+        if key == STATUS_BATT:
+            return self.batt_x, self.batt_y
+        return self.wifi_x, self.wifi_y
+
+    def set(self, key: str, x: int, y: int) -> None:
+        if key == STATUS_TEXT:
+            self.text_x, self.text_y = x, y
+        elif key == STATUS_BATT:
+            self.batt_x, self.batt_y = x, y
+        elif key == STATUS_WIFI:
+            self.wifi_x, self.wifi_y = x, y
+
+    def is_default(self) -> bool:
+        return self == StatusPos()
+
+
+def status_defaults(width: int, height: int) -> StatusPos:
+    """各分辨率在固件里的默认位置（layout_user.h 不覆盖时就用这些）。"""
+    if width >= 300:          # 170x320 / 172x320：内容宽 320
+        return StatusPos(text_x=4, text_y=3, batt_x=282, batt_y=2,
+                         wifi_x=310, wifi_y=11)
+    return StatusPos()        # 240x135
+
+
 @dataclass
 class Layout:
     move: list[Btn] = field(default_factory=list)
     cluster: list[Btn] = field(default_factory=list)
     lever: Lever = field(default_factory=Lever)
     show_lever: bool = False
+    status: StatusPos = field(default_factory=StatusPos)
 
     @classmethod
     def preset(cls) -> "Layout":
@@ -121,11 +172,22 @@ class Layout:
             "cluster": [asdict(b) for b in self.cluster],
             "lever": asdict(self.lever),
             "show_lever": self.show_lever,
+            "status": asdict(self.status),
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Layout":
         p = cls.preset()
+
+        # 状态栏位置（旧状态文件没有这一段，缺省即出厂位置）
+        status = StatusPos()
+        raw_status = d.get("status")
+        if isinstance(raw_status, dict):
+            for k in ("text_x", "text_y", "batt_x", "batt_y", "wifi_x", "wifi_y"):
+                try:
+                    setattr(status, k, int(raw_status.get(k, getattr(status, k))))
+                except (TypeError, ValueError):
+                    pass
 
         def parse_btn(x: Any) -> Btn | None:
             if not isinstance(x, dict):
@@ -180,6 +242,7 @@ class Layout:
             except Exception:
                 pass
         p.show_lever = bool(d.get("show_lever", False))
+        p.status = status
         return p
 
 
@@ -244,6 +307,7 @@ def fit_layout_to_screen(
 GROUP_MOVE = "move"
 GROUP_CLUSTER = "cluster"
 GROUP_LEVER = "lever"
+GROUP_STATUS = "status"      # 状态栏文字 / 电量 / 无线图标
 
 # 可额外添加的按键（掩码与 GP2040-CE GamepadState.h 一致，随 UART 全 16 位传递）
 EXTRA_BUTTONS: list[tuple[str, int]] = [
@@ -294,6 +358,17 @@ def sanitize_layout(
     所以写头文件之前必须过一遍这里。
     """
     fixed = 0
+
+    # 状态栏三个元素：只要不跑出屏幕就行（它们在顶部一条里，用户可自由摆放）
+    sp = layout.status
+    for key in STATUS_KEYS:
+        x, y = sp.get(key)
+        nx = max(0, min(int(width) - 1, int(x)))
+        ny = max(0, min(int(height) - 1, int(y)))
+        if (nx, ny) != (int(x), int(y)):
+            sp.set(key, nx, ny)
+            fixed += 1
+
     # 半径上限要保证 [r+1, 屏边-r] 区间非空，同时不压到顶部状态栏，
     # 否则大半径会把圆心顶出屏（夹取区间反了）。
     r_max = max(

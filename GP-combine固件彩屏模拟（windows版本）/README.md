@@ -58,7 +58,35 @@ run.bat 172          :: 172x320
 run.bat 320 --scale=3 --fps=60
 ```
 
-`build.bat` 首次会自动调 arduino-cli 生成 `.ino.cpp`（几分钟，只做一次）；之后只编本机 exe。
+### 分两步：生成 `.ino.cpp`（慢）和编仿真器（快）
+
+```bat
+compile_ino.bat          :: 三个变体都生成（arduino-cli，几分钟）
+compile_ino.bat 320      :: 只生成 170x320
+
+build.bat                :: 编 exe（几秒；不再碰 ESP32 工具链）
+build.bat --check        :: 只检查工具链，别编译
+```
+
+**为什么拆开**：arduino-cli 要跑 ESP32 工具链（几分钟），编仿真器只要几秒。
+合在一起的话改一行仿真器代码也要等工具链，而且 `.ino.cpp` 没用上最新固件时
+会静默跑旧代码、很难发现。
+
+`build.bat` 现在只做检查：`.ino.cpp` 缺失、或**源码内容哈希**变了（存在
+`build/<名字>/.ino_src_hash`），就报错让你先跑 `compile_ino.bat`。
+加 `set AUTO_INO=1` 可恢复"自动编译"的旧行为。
+
+> 用内容哈希而不是修改时间：arduino-cli 有增量缓存，源码没实质变化时不会
+> 重写产物，靠时间戳判断会一直误报过期。
+
+### 工具链
+
+优先用 **Visual Studio 2019/2022**（「使用 C++ 的桌面开发」）——脚本通过
+`vswhere -find` 找到真正的 `vcvars64.bat`，不写死版本号，也不需要手工拼
+Windows SDK 的 include/lib（`vcvars64` 自己会配好）。
+
+没有 VS 时退化为 **PATH 上的 MinGW-w64 g++**（会把 exe 静态链接，单文件可分发）。
+`build.bat --check` 会打印当前识别到的工具链。
 
 窗口里的按键（电脑键盘模拟手柄）：
 

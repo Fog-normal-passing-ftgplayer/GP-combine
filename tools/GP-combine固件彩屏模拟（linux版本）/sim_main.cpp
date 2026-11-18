@@ -96,8 +96,23 @@ static const int IMG_W = SIM_IMG_W;
 static const int IMG_H = SIM_IMG_H;
 #endif
 
-static_assert((long)IMG_W * IMG_H == (long)(sizeof(lfb) / sizeof(lfb[0])),
+// lfb 在多数变体里是数组；但 esp32_172x320 因为内部 DRAM 余量不足（170 版只剩
+// ~608B），把它改成了 setup() 里从 PSRAM 堆分配的指针。指针版编译期拿不到元素数，
+// 所以：数组版做静态校验，指针版改成 boot 之后运行期校验（lfbReady()）。
+#include <type_traits>
+template <typename L>
+constexpr size_t lfbStaticCount() {
+    if constexpr (std::is_array_v<L>) return (size_t)std::extent_v<L>;
+    else return (size_t)0;      // 指针：编译期无法知道，运行期再查
+}
+constexpr size_t LFB_STATIC_COUNT =
+    lfbStaticCount<std::remove_reference_t<decltype(lfb)>>();
+
+static_assert(LFB_STATIC_COUNT == 0 || LFB_STATIC_COUNT == (size_t)IMG_W * IMG_H,
               "IMG_W*IMG_H 与 lfb[] 大小不符：build.sh 里的 -DSIM_IMG_W/H 传错了");
+
+// lfb 是 PSRAM 指针的变体（172x320）必须等 setup() 分配完才能用
+static inline bool lfbReady() { return lfb != nullptr; }
 
 // ---------------------------------------------------------------------------
 // PNG 输出（zlib）
@@ -695,6 +710,10 @@ int main(int argc, char **argv) {
 
     std::fprintf(stderr, "[sim] %dx%d mode=%s out=%s\n", IMG_W, IMG_H, mode.c_str(), outdir.c_str());
     setup();
+    if (!lfbReady()) {
+        std::fprintf(stderr, "[sim] \u2718 lfb \u6ca1\u5206\u914d\u6210\u529f\uff08\u8be5\u53d8\u4f53\u5728 setup() \u91cc\u4ece PSRAM \u5206\u914d\u5e27\u7f13\u51b2\uff09\n");
+        return 1;
+    }
     std::fprintf(stderr, "[sim] setup() 完成 t=%ums\n", (unsigned)millis());
 
     if (mode == "script") {
@@ -904,6 +923,10 @@ void sim_boot(const char *fs_root) {
     if (g_libBooted) return;
     if (fs_root && *fs_root) g_fsRoot = fs_root;
     setup();
+    if (!lfbReady()) {
+        std::fprintf(stderr, "[sim] \u2718 lfb \u6ca1\u5206\u914d\u6210\u529f\uff08\u8be5\u53d8\u4f53\u5728 setup() \u91cc\u4ece PSRAM \u5206\u914d\u5e27\u7f13\u51b2\uff09\n");
+        return 1;
+    }
     g_libBooted = true;
 }
 

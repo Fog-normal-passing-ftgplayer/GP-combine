@@ -60,13 +60,15 @@ arduino-cli core install esp32:esp32
 cd tools/「仿真器目录」
 
 # 1) 生成 .ino.cpp（arduino-cli，改过固件才需要重跑）
-./compile_ino.sh          # 两个分辨率都编
+./compile_ino.sh          # 三个变体都编
 ./compile_ino.sh 240      # 只编 240x135
 ./compile_ino.sh 320      # 只编 170x320
+./compile_ino.sh 172      # 只编 172x320
 
 # 2) 编仿真器（快；不碰 ESP32 工具链）
 ./build.sh                # 240x135 交互窗口
 ./build.sh 320            # 170x320 交互窗口
+./build.sh 172            # 172x320 交互窗口
 HEADLESS=1 ./build.sh 240 # 无图形后端，出短名 build/sim240
 LIB=1 ./build.sh 320      # 共享库 build/libsim320.so（配置助手内嵌预览用）
 ```
@@ -79,6 +81,10 @@ LIB=1 ./build.sh 320      # 共享库 build/libsim320.so（配置助手内嵌预
 `build/<name>/.ino_src_hash` 里），就明确报错让你先跑 `compile_ino.sh`。
 加 `AUTO_INO=1` 可以恢复"自动编译"的旧行为。
 
+> `172x320` 变体的 `lfb` 不是数组而是 `setup()` 里从 PSRAM 堆分配的指针
+> （它内部 DRAM 余量只有几百字节），所以帧缓冲尺寸无法在编译期校验，
+> 改成 boot 之后运行期检查。
+
 > 用内容哈希而不是 mtime：arduino-cli 有增量缓存，源码没实质变化时不会重写
 > 产物，靠 mtime 判断会一直误报过期。
 
@@ -87,6 +93,7 @@ LIB=1 ./build.sh 320      # 共享库 build/libsim320.so（配置助手内嵌预
 ```bash
 ./run.sh                  # 240x135，开窗口
 ./run.sh 320              # 170x320
+./run.sh 172              # 172x320
 ./run.sh 320 --scale=3 --fps=60
 ```
 

@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <dirent.h>     // POSIX 分支遍历目录要用（Windows 分支走 FindFirstFile）
 #include <zlib.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -340,6 +341,11 @@ static const int IMG_H = SIM_IMG_H;
 static_assert(IMG_W == SCR_W && IMG_H == SCR_H,
               "IMG_W/IMG_H 与固件 SCR_W/SCR_H 不符：build.bat 里的 -DSIM_IMG_W/H 传错了");
 #endif
+
+// esp32_172x320 因为内部 DRAM 余量不足，把 lfb 改成了 setup() 里从 PSRAM 堆分配的
+// 指针（其它变体是数组）。指针版编译期无法校验，所以 boot 之后要再查一次，
+// 否则分配失败会直接踩空指针。
+static inline bool lfbReady() { return lfb != nullptr; }
 
 // ---------------------------------------------------------------------------
 // PNG 输出（Windows: GDI+ 直接存 PNG；POSIX: 手写块结构 + zlib）
@@ -994,6 +1000,10 @@ int main(int argc, char **argv) {
 
     std::fprintf(stderr, "[sim] %dx%d mode=%s out=%s\n", IMG_W, IMG_H, mode.c_str(), outdir.c_str());
     setup();
+    if (!lfbReady()) {
+        std::fprintf(stderr, "[sim] lfb 没有分配成功（172x320 在 setup() 里从 PSRAM 分配）\n");
+        return 1;
+    }
     std::fprintf(stderr, "[sim] setup() 完成 t=%ums\n", (unsigned)millis());
 
     if (mode == "script") {

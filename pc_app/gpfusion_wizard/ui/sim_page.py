@@ -13,12 +13,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ..app_config import local_wallpaper_gfr, screen_dims
+from ..sim_build import SimBuilder, build_plan, find_sim_dir
 from ..sim_engine import find_lib, lib_tag
 from ..wizard_state import WizardState
 from .firmware_screen import FirmwareScreen
@@ -78,8 +80,22 @@ class SimPage(QWidget):
         self.stop_btn = QPushButton("停止")
         self.stop_btn.clicked.connect(self._stop)
         row.addWidget(self.stop_btn)
+        self.build_btn = QPushButton("编译固件并重启预览")
+        self.build_btn.setToolTip(
+            "改了固件（.ino / .h）之后点这里：先 arduino-cli 生成 .ino.cpp（几分钟），"
+            "再重编仿真库，最后重启引擎，预览就反映最新代码"
+        )
+        self.build_btn.clicked.connect(self._rebuild)
+        row.addWidget(self.build_btn)
         row.addStretch(1)
         left.addLayout(row)
+
+        # 构建日志（默认隐藏，跑编译时才出现）
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumHeight(120)
+        self.log_view.setVisible(False)
+        left.addWidget(self.log_view)
 
         self.info = QLabel("")
         self.info.setObjectName("Muted")
@@ -148,6 +164,44 @@ class SimPage(QWidget):
             w, h = screen_dims(res)
             src = "卡内壁纸" if gfr else "静态背景（还没生成动态壁纸）"
             self.info.setText("引擎已启动：%dx%d · %s\n库文件：%s" % (w, h, src, lib))
+
+    def _rebuild(self) -> None:
+        """生成 .ino.cpp → 重编仿真库 → 重启引擎。"""
+        plan = build_plan(str(self.res_combo.currentData() or self.state.screen_res))
+        if not plan:
+            self.info.setText(
+                "没找到可用的仿真器构建脚本；手动在仿真器目录跑 "
+                "compile_ino.sh + LIB=1 build.sh 后点「重新加载」"
+            )
+            return
+        self._builder = SimBuilder(plan, self)
+        self._builder.log.connect(self._on_build_log)
+        self._builder.step.connect(self._on_build_step)
+        self._builder.finished.connect(self._on_build_done)
+        self.log_view.clear()
+        self.log_view.setVisible(True)
+        self.build_btn.setEnabled(False)
+        self.reload_btn.setEnabled(False)
+        self.screen.stop()          # 先停引擎：库文件可能正被占用
+        self._builder.start()
+
+    def _on_build_log(self, line: str) -> None:
+        self.log_view.appendPlainText(line)
+        self.log_view.verticalScrollBar().setValue(
+            self.log_view.verticalScrollBar().maximum()
+        )
+
+    def _on_build_step(self, cur: int, total: int, label: str) -> None:
+        self.info.setText("正在构建 %d/%d：%s" % (cur, total, label))
+
+    def _on_build_done(self, ok: bool) -> None:
+        self.build_btn.setEnabled(True)
+        self.reload_btn.setEnabled(True)
+        if not ok:
+            self.info.setText("构建失败，详情见下方日志（预览仍是旧版本）")
+            return
+        self.info.setText("构建完成，正在重启预览…")
+        self._start()
 
     def _on_res_changed(self) -> None:
         res = str(self.res_combo.currentData())

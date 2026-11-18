@@ -8,7 +8,9 @@
 """
 from __future__ import annotations
 
+import atexit
 import ctypes
+import itertools
 import os
 import shutil
 import tempfile
@@ -53,6 +55,19 @@ def find_lib(res: str) -> Path | None:
     return None
 
 
+# dlopen 对「已加载的同路径」会直接复用旧句柄，而 build.sh 是原地覆盖同一个 .so，
+# 所以「重新编译后重启预览」会拿到旧代码。每次加载前先复制到唯一路径，绕开这个问题。
+_SIM_TMP = Path(tempfile.mkdtemp(prefix="gpsim_"))
+atexit.register(shutil.rmtree, _SIM_TMP, ignore_errors=True)
+_seq = itertools.count(1)
+
+
+def _fresh_copy(src: Path) -> Path:
+    dst = _SIM_TMP / ("%s_%d%s" % (src.stem, next(_seq), src.suffix))
+    shutil.copyfile(src, dst)
+    return dst
+
+
 class SimEngine:
     """一个分辨率对应一个引擎实例（固件的全局变量在库里，两个分辨率各一个库）。"""
 
@@ -63,7 +78,7 @@ class SimEngine:
                 "找不到仿真库 libsim%s（先跑 tools 下 HEADLESS=1 ./build.sh 或 pc_app/prepare_sim.sh）"
                 % lib_tag(res)
             )
-        self._lib = ctypes.CDLL(str(path))
+        self._lib = ctypes.CDLL(str(_fresh_copy(path)))   # 每次加载独立副本
         lib = self._lib
         lib.sim_boot.argtypes = [ctypes.c_char_p]
         lib.sim_boot.restype = None

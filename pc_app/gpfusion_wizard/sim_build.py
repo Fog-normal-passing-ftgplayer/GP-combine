@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
@@ -21,14 +22,48 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def find_sim_dir() -> Path | None:
-    """定位仿真器源码目录（含 sim_main.cpp 与构建脚本）。"""
-    repo = repo_root()
+def _candidate_roots(source_dir: str | None = None) -> list[Path]:
+    """按可靠性排序列出可能包含仿真器目录的根。
+
+    source_dir 是用户在「设备与源码」页选的仓库根 —— 打包成 exe 之后
+    __file__ 落在 _MEIPASS 里，只有这个来源还靠得住。
+    """
+    roots: list[Path] = []
+
+    def add(p) -> None:
+        if not p:
+            return
+        try:
+            r = Path(p).expanduser().resolve()
+        except OSError:
+            return
+        if r.is_dir() and r not in roots:
+            roots.append(r)
+
+    add(source_dir)                                  # 用户选的仓库根（最可靠）
+    if source_dir:
+        add(Path(source_dir).expanduser().resolve().parent)   # 万一选的是 sketch 目录
+    add(repo_root())                                 # 源码运行时
+    if getattr(sys, "frozen", False):                # 打包后：exe 旁边
+        add(Path(sys.executable).resolve().parent)
+    add(Path.cwd())
+    return roots
+
+
+def _scan(source_dir: str | None = None) -> list[Path]:
+    """在所有候补根下找 sim_main.cpp，返回去重后的目录列表。"""
     dirs: list[Path] = []
-    for pat in ("*/sim_main.cpp", "tools/*/sim_main.cpp"):
-        for p in sorted(repo.glob(pat)):
-            if p.is_file() and p.parent not in dirs:
-                dirs.append(p.parent)
+    for root in _candidate_roots(source_dir):
+        for pat in ("*/sim_main.cpp", "tools/*/sim_main.cpp"):
+            for p in sorted(root.glob(pat)):
+                if p.is_file() and p.parent not in dirs:
+                    dirs.append(p.parent)
+    return dirs
+
+
+def find_sim_dir(source_dir: str | None = None) -> Path | None:
+    """定位仿真器源码目录（含 sim_main.cpp 与构建脚本）。"""
+    dirs = _scan(source_dir)
     if not dirs:
         return None
     # 优先挑支持共享库（配置助手预览要用）的那个
@@ -36,6 +71,31 @@ def find_sim_dir() -> Path | None:
         if _supports_lib(d):
             return d
     return dirs[0]
+
+
+def compile_hint() -> str:
+    """手动构建的命令提示（按平台给）。"""
+    if os.name == "nt":
+        return "compile_ino.bat 320 + build.bat 320"
+    return "./compile_ino.sh 320 && LIB=1 ./build.sh 320"
+
+
+def diagnose(source_dir: str | None = None) -> str:
+    """一句话说清为什么不能在此重编（能给界面直接显示）。"""
+    dirs = _scan(source_dir)
+    if not dirs:
+        return ("没找到仿真器源码目录（里面应有 sim_main.cpp）。"
+                "请确认仓库完整，或在「设备与源码」页把源码目录指到仓库根。")
+    d = dirs[0]
+    script = "build.bat" if os.name == "nt" else "build.sh"
+    if not (d / script).is_file():
+        return "仿真器目录里没有 %s：%s" % (script, d)
+    if not _supports_lib(d):
+        if os.name == "nt":
+            return ("Windows 版构建脚本还没有共享库模式（预览需要 libsim*.dll），"
+                    "暂时不能在助手内重编；可先用 run.bat 看效果。")
+        return "构建脚本缺少库模式（没找到 SIM_LIB）：%s" % (d / script)
+    return ""
 
 
 def _supports_lib(d: Path) -> bool:
@@ -48,9 +108,9 @@ def _supports_lib(d: Path) -> bool:
         return False
 
 
-def build_plan(res: str) -> list[dict] | None:
-    """依次要跑的命令：[{label, cmd, env}]；None = 找不到仿真器目录。"""
-    d = find_sim_dir()
+def build_plan(res: str, source_dir: str | None = None) -> list[dict] | None:
+    """依次要跑的命令：[{label, cmd, env}]；None = 不能在此重编（原因见 diagnose）。"""
+    d = find_sim_dir(source_dir)
     if d is None or not _supports_lib(d):
         return None
     tag = lib_tag(res)

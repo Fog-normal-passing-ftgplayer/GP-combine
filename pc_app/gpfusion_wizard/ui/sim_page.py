@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..app_config import local_wallpaper_gfr, screen_dims
-from ..sim_build import SimBuilder, build_plan, find_sim_dir
+from ..sim_build import SimBuilder, build_plan, compile_hint, diagnose
 from ..sim_engine import find_lib, lib_tag
 from ..wizard_state import WizardState
 from .firmware_screen import FirmwareScreen
@@ -167,12 +167,12 @@ class SimPage(QWidget):
 
     def _rebuild(self) -> None:
         """生成 .ino.cpp → 重编仿真库 → 重启引擎。"""
-        plan = build_plan(str(self.res_combo.currentData() or self.state.screen_res))
+        src = getattr(self.state, "source_dir", "") or ""
+        plan = build_plan(str(self.res_combo.currentData() or self.state.screen_res), src)
         if not plan:
-            self.info.setText(
-                "没找到可用的仿真器构建脚本；手动在仿真器目录跑 "
-                "compile_ino.sh + LIB=1 build.sh 后点「重新加载」"
-            )
+            why = diagnose(src)
+            self.info.setText((why + "\n" if why else "")
+                              + "也可以手动跑 " + compile_hint() + " 再点「重新加载」。")
             return
         self._builder = SimBuilder(plan, self)
         self._builder.log.connect(self._on_build_log)

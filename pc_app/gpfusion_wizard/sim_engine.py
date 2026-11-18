@@ -67,6 +67,7 @@ class SimEngine:
         lib = self._lib
         lib.sim_boot.argtypes = [ctypes.c_char_p]
         lib.sim_boot.restype = None
+        lib.sim_ready.restype = ctypes.c_int
         lib.sim_width.restype = ctypes.c_int
         lib.sim_height.restype = ctypes.c_int
         lib.sim_tick.argtypes = [ctypes.c_int]
@@ -78,6 +79,8 @@ class SimEngine:
         lib.sim_wallpaper_active.restype = ctypes.c_int
 
         lib.sim_boot(str(fs_root).encode("utf-8"))
+        if not lib.sim_ready():
+            raise RuntimeError("仿真引擎初始化失败（lfb 分配失败）")
         self.width = int(lib.sim_width())
         self.height = int(lib.sim_height())
         self.buttons = 0

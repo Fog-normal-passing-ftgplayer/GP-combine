@@ -22,7 +22,7 @@ from ..app_config import (
     local_wallpaper_gfr,
     screen_dims,
 )
-from ..gif_convert import generate_gif_header, generate_gif_gfr
+from ..gif_convert import generate_gif_gfr
 from ..jobs import JobRunner
 from ..wallpaper_fs import flash_fs_cmd, stage_fs_image
 from ..wizard_state import WizardState
@@ -177,34 +177,29 @@ class GifPage(QWidget):
             return
         try:
             res = self.state.screen_res
+            # 固件不再内嵌 GIF：两种用途都写卡内 /wp/1.gfr，
+            # 区别只在设备菜单「休眠 > 屏保模式」选什么（GIF = 屏保，其它 = 动态壁纸）
             hdr = local_gif_header(Path(self.state.source_dir), res)
+            gfr = local_wallpaper_gfr(Path(self.state.source_dir))
+            gfr, gf, gb = generate_gif_gfr(
+                self.state.gif_src, gfr,
+                self.MODES[self.mode_combo.currentIndex()][0],
+                palette_size=int(self.palette_combo.currentData()),
+                size=screen_dims(res),
+            )
+            removed = ""
+            if hdr.exists():
+                hdr.unlink()          # 清掉旧版本残留的内嵌 GIF，省 app 空间
+                removed = "（已移除旧的内嵌 gif_user.h）"
             if self.state.bg_kind == "dynamic":
-                # 动态壁纸：只写卡内 /wp/1.gfr，不内嵌进 app（GIF 会顶爆分区）
-                gfr = local_wallpaper_gfr(Path(self.state.source_dir))
-                gfr, gf, gb = generate_gif_gfr(
-                    self.state.gif_src, gfr,
-                    self.MODES[self.mode_combo.currentIndex()][0],
-                    palette_size=int(self.palette_combo.currentData()),
-                    size=screen_dims(res),
-                )
-                if hdr.exists():
-                    hdr.unlink()      # 移除旧的内嵌 GIF，省 app 空间
-                    msg_extra = "（已移除内嵌 gif_user.h）"
-                else:
-                    msg_extra = ""
                 msg = ("✔ 卡内壁纸 %s（%d 帧，%d KB）\n"
-                       "动态壁纸模式不再内嵌 GIF%s；用「整机重刷」写入设备生效。"
-                       % (gfr, gf, gb // 1024, msg_extra))
+                       "开机自动作为动态壁纸，屏保禁用%s；用「整机重刷」写入设备生效。"
+                       % (gfr, gf, gb // 1024, removed))
             else:
-                out, frames, data_bytes = generate_gif_header(
-                    self.state.gif_src,
-                    hdr,
-                    self.MODES[self.mode_combo.currentIndex()][0],
-                    palette_size=int(self.palette_combo.currentData()),
-                    size=screen_dims(res),
-                )
-                msg = "✔ 已写入 %s（%d 帧，压缩后 %d KB，作为 GIF 屏保）" % (
-                    out, frames, data_bytes // 1024)
+                msg = ("✔ 卡内 GIF %s（%d 帧，%d KB）\n"
+                       "在设备菜单「休眠 → 屏保模式」选「GIF」即可当 GIF 屏保"
+                       "（主界面保持静态背景）%s；用「整机重刷」写入设备生效。"
+                       % (gfr, gf, gb // 1024, removed))
             self.status.setText(msg)
             self.status.setStyleSheet("color: #64E0A0;")
             self.changed.emit()

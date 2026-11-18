@@ -913,6 +913,7 @@ int main(int argc, char **argv) {
 // 助手侧零转换、零拷贝上屏（复制一帧 320x170x2 = 108KB，可以忽略）。
 // ---------------------------------------------------------------------------
 static bool     g_libBooted = false;
+static bool     g_libLfbFailed = false;
 static uint16_t g_libButtons = 0;
 static uint8_t  g_libDpad = 0;
 
@@ -924,11 +925,16 @@ void sim_boot(const char *fs_root) {
     if (fs_root && *fs_root) g_fsRoot = fs_root;
     setup();
     if (!lfbReady()) {
-        std::fprintf(stderr, "[sim] \u2718 lfb \u6ca1\u5206\u914d\u6210\u529f\uff08\u8be5\u53d8\u4f53\u5728 setup() \u91cc\u4ece PSRAM \u5206\u914d\u5e27\u7f13\u51b2\uff09\n");
-        return 1;
+        // sim_boot 返回 void，这里只能记下来；调用方用 sim_frame() 前先看 sim_ready()
+        std::fprintf(stderr, "[sim] lfb \u6ca1\u5206\u914d\u6210\u529f\uff08\u8be5\u53d8\u4f53\u5728 setup() \u91cc\u4ece PSRAM \u5206\u914d\u5e27\u7f13\u51b2\uff09\n");
+        g_libLfbFailed = true;
+        return;
     }
     g_libBooted = true;
 }
+
+// 引擎是否可用（lfb 分配失败时为 0，助手据此提示而不是踩空指针）
+int sim_ready(void) { return (g_libBooted && !g_libLfbFailed) ? 1 : 0; }
 
 int sim_width(void)  { return IMG_W; }
 int sim_height(void) { return IMG_H; }
@@ -953,11 +959,11 @@ const void *sim_frame(void) { return (const void *)lfb; }
 int sim_reload_wallpaper(void) {
     gifInit();
     redrawNeeded = true;
-    return wallpaperActive ? 1 : 0;
+    return wallpaperOn() ? 1 : 0;
 }
 
 // 固件当前是否启用了动态壁纸
-int sim_wallpaper_active(void) { return wallpaperActive ? 1 : 0; }
+int sim_wallpaper_active(void) { return wallpaperOn() ? 1 : 0; }
 
 }  // extern "C"
 #endif  // SIM_LIB

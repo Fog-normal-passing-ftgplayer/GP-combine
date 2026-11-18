@@ -80,6 +80,17 @@ class SimPage(QWidget):
         self.stop_btn = QPushButton("停止")
         self.stop_btn.clicked.connect(self._stop)
         row.addWidget(self.stop_btn)
+        row.addWidget(QLabel("  电源图标"))
+        self.power_combo = QComboBox()
+        self.power_combo.addItem("电池 75%", 0)
+        self.power_combo.addItem("USB 供电", 1)
+        self.power_combo.addItem("不显示", 2)
+        self.power_combo.currentIndexChanged.connect(self._on_power_changed)
+        self.power_combo.setToolTip(
+            "宿主机没有 Pico 上报电量，预览里要注入一份才能看到电量/USB 图标；"
+            "真机上这两个由 Pico 的 STATUS 帧决定"
+        )
+        row.addWidget(self.power_combo)
         self.build_btn = QPushButton("编译固件并重启预览")
         self.build_btn.setToolTip(
             "改了固件（.ino / .h）之后点这里：先 arduino-cli 生成 .ino.cpp（几分钟），"
@@ -141,7 +152,7 @@ class SimPage(QWidget):
 
     def _start(self) -> None:
         res = str(self.res_combo.currentData() or self.state.screen_res)
-        lib = find_lib(res)
+        lib = find_lib(res, getattr(self.state, "source_dir", "") or None)
         if lib is None:
             self.howto_btn.setVisible(True)
             self.info.setText("找不到仿真库 libsim%s.so —— 真机预览不可用。" % lib_tag(res))
@@ -160,10 +171,23 @@ class SimPage(QWidget):
         cfg = {"layout": int(self.state.default_layout)}
         ok = self.screen.start(res, gfr, cfg=cfg)
         if ok:
+            self._apply_power()
             self.screen.setFocus()
             w, h = screen_dims(res)
             src = "卡内壁纸" if gfr else "静态背景（还没生成动态壁纸）"
             self.info.setText("引擎已启动：%dx%d · %s\n库文件：%s" % (w, h, src, lib))
+
+    def _apply_power(self) -> None:
+        mode = int(self.power_combo.currentData() or 0)
+        if mode == 2:                 # 不显示
+            self.screen.set_power(0, False)
+        elif mode == 1:               # USB 供电
+            self.screen.set_power(3900, True)
+        else:                         # 电池 75%
+            self.screen.set_power(3900, False)
+
+    def _on_power_changed(self, _idx: int) -> None:
+        self._apply_power()
 
     def _rebuild(self) -> None:
         """生成 .ino.cpp → 重编仿真库 → 重启引擎。"""

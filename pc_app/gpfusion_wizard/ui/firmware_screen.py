@@ -97,6 +97,11 @@ class FirmwareScreen(QWidget):
         self.update()
         return True
 
+    def set_power(self, mv: int, usb: bool) -> None:
+        """预览用：注入电量读数 / USB 供电标志（宿主机没有 Pico 上报）。"""
+        if self._engine is not None:
+            self._engine.set_power(mv, usb)
+
     def stop(self) -> None:
         self._timer.stop()
         self._engine = None

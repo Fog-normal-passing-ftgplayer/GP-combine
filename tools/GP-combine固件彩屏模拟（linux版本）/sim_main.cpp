@@ -936,6 +936,29 @@ void sim_boot(const char *fs_root) {
 // 引擎是否可用（lfb 分配失败时为 0，助手据此提示而不是踩空指针）
 int sim_ready(void) { return (g_libBooted && !g_libLfbFailed) ? 1 : 0; }
 
+// 强制重绘一帧：固件平时只靠事件/输入触发重绘，宿主机改了状态（电量等）后
+// 需要它立刻反映到画面上
+void sim_redraw(void) {
+    redrawNeeded = true;
+    drawPage();
+    pushFrame();
+}
+
+// 宿主机没有 Pico 上报电量：预览时注入一份，否则 battPercent(0) 返回 -1、
+// 电量分支直接不画，用户在预览里怎么拖都看不到电池图标。
+void sim_set_power(int mv, int usb) {
+    stBattMv = (mv > 0 && mv <= 4600) ? (uint16_t)mv : 0;
+    if (usb) stBattFlags |= 0x02;
+    else     stBattFlags = (uint8_t)(stBattFlags & ~0x02);
+    redrawNeeded = true;      // 状态栏只在重绘时重画，不置位预览就不会变
+}
+
+// 无线图标在未连接时是暗灰，预览里几乎看不见；注入成已连接便于对位置
+void sim_set_linked(int linked) {
+    radioLinked = linked ? true : false;
+    redrawNeeded = true;
+}
+
 int sim_width(void)  { return IMG_W; }
 int sim_height(void) { return IMG_H; }
 

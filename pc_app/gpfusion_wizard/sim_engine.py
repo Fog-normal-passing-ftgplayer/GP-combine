@@ -13,6 +13,7 @@ import ctypes
 import itertools
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -37,18 +38,38 @@ def lib_tag(res: str) -> str:
     return "320" if "320" in res else "240"
 
 
-def find_lib(res: str) -> Path | None:
-    """找仿真库。优先级：环境变量 > 打包内 bin/ > 仓库 tools/ 下。"""
+def find_lib(res: str, source_dir: str | None = None) -> Path | None:
+    """找仿真库。
+
+    优先级：环境变量 > 仓库里刚编出来的 build/ > 打包内 bin/ 快照。
+    仓库优先很关键：页面上「编译固件并重启预览」会把新库写到 tools/*/build/，
+    要是还优先用 bin/ 里 prepare_sim.sh 拷的旧快照，重编就白做了。
+    打包成 exe 时仓库路径不存在，自然落到 bin/。
+    """
     key = lib_tag(res)
     pkg = Path(__file__).resolve().parent          # .../gpfusion_wizard
+    suffix = ".dll" if os.name == "nt" else ".so"
+    name = f"libsim{key}{suffix}"
+
     cands: list[Path] = []
     env = os.environ.get(f"GPFUSION_SIMLIB_{key}")
     if env:
         cands.append(Path(env))
-    suffix = ".dll" if os.name == "nt" else ".so"
-    cands.append(pkg / "bin" / f"libsim{key}{suffix}")
-    repo = pkg.parent.parent
-    cands.extend(sorted(repo.glob(f"tools/*/build/libsim{key}{suffix}")))
+
+    roots: list[Path] = []
+    if source_dir:
+        try:
+            roots.append(Path(source_dir).expanduser().resolve())
+        except OSError:
+            pass
+    roots.append(pkg.parent.parent)                # 源码运行时：仓库根
+    if getattr(sys, "frozen", False):
+        roots.append(Path(sys.executable).resolve().parent)
+    for root in roots:
+        cands.extend(sorted(root.glob(f"tools/*/build/{name}")))
+
+    cands.append(pkg / "bin" / name)               # 打包内快照（最后兜底）
+
     for c in cands:
         if c.is_file():
             return c
@@ -83,6 +104,9 @@ class SimEngine:
         lib.sim_boot.argtypes = [ctypes.c_char_p]
         lib.sim_boot.restype = None
         lib.sim_ready.restype = ctypes.c_int
+        lib.sim_set_power.argtypes = [ctypes.c_int, ctypes.c_int]
+        lib.sim_set_linked.argtypes = [ctypes.c_int]
+        lib.sim_redraw.argtypes = []
         lib.sim_width.restype = ctypes.c_int
         lib.sim_height.restype = ctypes.c_int
         lib.sim_tick.argtypes = [ctypes.c_int]
@@ -96,6 +120,10 @@ class SimEngine:
         lib.sim_boot(str(fs_root).encode("utf-8"))
         if not lib.sim_ready():
             raise RuntimeError("仿真引擎初始化失败（lfb 分配失败）")
+        self._lib = lib
+        # 默认给一份"有电池"的读数：没有它 battPercent 返回 -1，电量图标不画
+        self.set_power(3900, False)
+        self.set_linked(True)
         self.width = int(lib.sim_width())
         self.height = int(lib.sim_height())
         self.buttons = 0
@@ -132,6 +160,23 @@ class SimEngine:
         n = max(1, int(ms) // max(1, int(step)))
         for _ in range(n):
             self._lib.sim_tick(int(step))
+
+    def redraw(self) -> None:
+        """强制固件重绘一帧（改了注入状态之后立刻反映到预览）。"""
+        if self._lib is not None:
+            self._lib.sim_redraw()
+
+    def set_power(self, mv: int = 3900, usb: bool = False) -> None:
+        """预览用的电量注入：mv<=0 表示没有电池（电量图标不显示）。"""
+        if self._lib is not None:
+            self._lib.sim_set_power(int(mv), 1 if usb else 0)
+            self._lib.sim_redraw()
+
+    def set_linked(self, linked: bool = True) -> None:
+        """无线图标是否显示成"已连接"（亮色）；未连接是暗灰，预览里看不清。"""
+        if self._lib is not None:
+            self._lib.sim_set_linked(1 if linked else 0)
+            self._lib.sim_redraw()
 
     def reload_wallpaper(self) -> bool:
         """壁纸文件换了之后调用，返回是否成功启用。"""

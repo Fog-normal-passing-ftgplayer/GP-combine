@@ -92,7 +92,23 @@ class Layout:
     cluster: list[Btn] = field(default_factory=list)
     lever: Lever = field(default_factory=Lever)
     show_lever: bool = False
-    status: StatusPos = field(default_factory=StatusPos)
+    # 状态栏位置按分辨率分别保存：240 和 320 宽是两套完全不同的位置，
+    # 共用一个值会在切分辨率时被夹到边缘（"240 错位"的根因）。
+    status_by_res: dict[str, StatusPos] = field(default_factory=dict)
+
+    def status_for(self, res: str, width: int, height: int) -> StatusPos:
+        """取该分辨率的状态栏位置；没有就按该分辨率的默认值建一个。"""
+        key = str(res or "")
+        sp = self.status_by_res.get(key)
+        if sp is None:
+            sp = StatusPos()
+            legacy = self.status_by_res.get(LEGACY_STATUS_KEY)
+            if legacy is not None and width < 300 and legacy.batt_x < width:
+                sp = StatusPos(**asdict(legacy))      # 旧版单值：只在小屏上沿用
+            else:
+                sp = status_defaults(width, height)
+            self.status_by_res[key] = sp
+        return sp
 
     @classmethod
     def preset(cls) -> "Layout":
@@ -172,22 +188,35 @@ class Layout:
             "cluster": [asdict(b) for b in self.cluster],
             "lever": asdict(self.lever),
             "show_lever": self.show_lever,
-            "status": asdict(self.status),
+            "status_by_res": {k: asdict(v) for k, v in self.status_by_res.items()},
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Layout":
         p = cls.preset()
 
-        # 状态栏位置（旧状态文件没有这一段，缺省即出厂位置）
-        status = StatusPos()
-        raw_status = d.get("status")
-        if isinstance(raw_status, dict):
+        # 状态栏位置：按分辨率分别保存
+        def parse_status(v: Any) -> StatusPos | None:
+            if not isinstance(v, dict):
+                return None
+            sp = StatusPos()
             for k in ("text_x", "text_y", "batt_x", "batt_y", "wifi_x", "wifi_y"):
                 try:
-                    setattr(status, k, int(raw_status.get(k, getattr(status, k))))
+                    setattr(sp, k, int(v.get(k, getattr(sp, k))))
                 except (TypeError, ValueError):
                     pass
+            return sp
+
+        status_map: dict[str, StatusPos] = {}
+        raw_map = d.get("status_by_res")
+        if isinstance(raw_map, dict):
+            for key, val in raw_map.items():
+                sp = parse_status(val)
+                if sp is not None:
+                    status_map[str(key)] = sp
+        legacy_status = parse_status(d.get("status"))   # 上一版只有一个全局值
+        if legacy_status is not None and not status_map:
+            status_map[LEGACY_STATUS_KEY] = legacy_status
 
         def parse_btn(x: Any) -> Btn | None:
             if not isinstance(x, dict):
@@ -242,7 +271,7 @@ class Layout:
             except Exception:
                 pass
         p.show_lever = bool(d.get("show_lever", False))
-        p.status = status
+        p.status_by_res = status_map
         return p
 
 
@@ -308,6 +337,39 @@ GROUP_MOVE = "move"
 GROUP_CLUSTER = "cluster"
 GROUP_LEVER = "lever"
 GROUP_STATUS = "status"      # 状态栏文字 / 电量 / 无线图标
+LEGACY_STATUS_KEY = "*"       # 上一版把状态栏位置存成一个全局值，读档时靠它兼容
+
+# 状态栏元素的包围盒（固件 3x5 字形 × FONT_SCALE 2 → 每字符 8px 宽、10px 高）
+STATUS_TEXT_SAMPLE = "SOCD:UP DP:DIG MODE:XIN"
+STATUS_TEXT_W = len(STATUS_TEXT_SAMPLE) * 8       # 184
+STATUS_TEXT_H = 10
+STATUS_BATT_W, STATUS_BATT_H = 18, 10
+STATUS_WIFI_R = 6
+
+
+def status_extent(key: str) -> tuple[int, int]:
+    """元素占的宽高；wifi 的 (x,y) 是圆心，这里按 2r 算。"""
+    if key == STATUS_TEXT:
+        return STATUS_TEXT_W, STATUS_TEXT_H
+    if key == STATUS_BATT:
+        return STATUS_BATT_W, STATUS_BATT_H
+    return STATUS_WIFI_R * 2, STATUS_WIFI_R * 2
+
+
+def clamp_status(sp: "StatusPos", key: str, width: int, height: int) -> bool:
+    """把元素整体夹进屏幕（不是只夹锚点）。返回是否改动过。"""
+    x, y = sp.get(key)
+    if key == STATUS_WIFI:
+        nx = max(STATUS_WIFI_R, min(width - STATUS_WIFI_R, x))
+        ny = max(STATUS_WIFI_R, min(height - STATUS_WIFI_R, y))
+    else:
+        bw, bh = status_extent(key)
+        nx = max(0, min(max(0, width - bw), x))
+        ny = max(0, min(max(0, height - bh), y))
+    if (nx, ny) != (x, y):
+        sp.set(key, nx, ny)
+        return True
+    return False
 
 # 可额外添加的按键（掩码与 GP2040-CE GamepadState.h 一致，随 UART 全 16 位传递）
 EXTRA_BUTTONS: list[tuple[str, int]] = [
@@ -351,6 +413,7 @@ def sanitize_layout(
     height: int,
     status_h: int = 0,
     min_r: int = 3,
+    res: str = "",
 ) -> int:
     """把所有元素夹进目标屏幕，返回被修正的元素个数（原地修改）。
 
@@ -359,15 +422,13 @@ def sanitize_layout(
     """
     fixed = 0
 
-    # 状态栏三个元素：只要不跑出屏幕就行（它们在顶部一条里，用户可自由摆放）
-    sp = layout.status
-    for key in STATUS_KEYS:
-        x, y = sp.get(key)
-        nx = max(0, min(int(width) - 1, int(x)))
-        ny = max(0, min(int(height) - 1, int(y)))
-        if (nx, ny) != (int(x), int(y)):
-            sp.set(key, nx, ny)
-            fixed += 1
+    # 状态栏三个元素：夹当前分辨率这一条（其它分辨率的等切过去再夹）
+    if res:
+        sp = layout.status_by_res.get(str(res))
+        if sp is not None:
+            for key in STATUS_KEYS:
+                if clamp_status(sp, key, int(width), int(height)):
+                    fixed += 1
 
     # 半径上限要保证 [r+1, 屏边-r] 区间非空，同时不压到顶部状态栏，
     # 否则大半径会把圆心顶出屏（夹取区间反了）。

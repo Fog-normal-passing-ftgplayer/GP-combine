@@ -20,12 +20,17 @@ from ..layout_model import (
     STATUS_TEXT,
     STATUS_WIFI,
     Btn,
+    STATUS_TEXT_SAMPLE,
+    clamp_status,
+    status_extent,
     Layout,
 )
 
 COL_RING = QColor(150, 160, 175)
 COL_KNOB = QColor(80, 200, 255)
 COL_BG = QColor(21, 27, 39)
+
+
 
 
 class LayoutCanvas(QWidget):
@@ -39,9 +44,11 @@ class LayoutCanvas(QWidget):
         parent: QWidget | None = None,
         logical_size: tuple[int, int] = (240, 135),
         status_h: int = 0,
+        res: str = "240x135",
     ) -> None:
         super().__init__(parent)
         self._lw, self._lh = logical_size
+        self._res = res
         self._status_h = max(0, int(status_h))
         self.setMinimumSize(self._lw * 2, self._lh * 2)
         self.layout_data: Layout = Layout.preset()
@@ -54,6 +61,15 @@ class LayoutCanvas(QWidget):
 
     def set_layout(self, layout: Layout) -> None:
         self.layout_data = layout
+        self.update()
+
+    def set_resolution(self, res: str, width: int, height: int) -> None:
+        """切分辨率时同步逻辑尺寸（原来只在构造时设一次，切屏后整体错位）。"""
+        if (self._lw, self._lh, self._res) == (width, height, res):
+            return
+        self._lw, self._lh, self._res = width, height, res
+        self.setMinimumSize(self._lw * 2, self._lh * 2)
+        self._drag = None
         self.update()
 
     def set_selection(self, group: str, index: int) -> None:
@@ -77,18 +93,17 @@ class LayoutCanvas(QWidget):
     def _status_key_at(idx: int) -> str:
         return STATUS_KEYS[max(0, min(len(STATUS_KEYS) - 1, idx))]
 
+    def _status_pos(self):
+        return self.layout_data.status_for(self._res, self._lw, self._lh)
+
     def _status_items(self) -> list[tuple[str, int, int]]:
-        sp = self.layout_data.status
+        sp = self._status_pos()
         return [(k, sp.get(k)[0], sp.get(k)[1]) for k in STATUS_KEYS]
 
     @staticmethod
     def _status_hit_size(key: str) -> tuple[int, int]:
         """命中/绘制用的包围盒（w, h）；wifi 按圆心算。"""
-        if key == STATUS_TEXT:
-            return (92, 11)
-        if key == STATUS_BATT:
-            return (18, 10)
-        return (12, 12)
+        return status_extent(key)   # 和固件一致：文字 184x10、电池 18x10、wifi 12x12
 
     def _group_items(self, group: str) -> list[Btn]:
         if group == GROUP_MOVE:
@@ -132,7 +147,7 @@ class LayoutCanvas(QWidget):
         # 状态栏元素优先命中：先看最靠前的那个（wifi -> batt -> text）
         for idx in range(len(STATUS_KEYS) - 1, -1, -1):
             key = STATUS_KEYS[idx]
-            sx, sy = self.layout_data.status.get(key)
+            sx, sy = self._status_pos().get(key)
             hw, hh = self._status_hit_size(key)
             if key == STATUS_WIFI:
                 if (x - sx) ** 2 + (y - sy) ** 2 <= 8 * 8:
@@ -164,9 +179,10 @@ class LayoutCanvas(QWidget):
         group, idx = self._drag
         if group == GROUP_STATUS:
             key = self._status_key_at(idx)
-            nx = max(1, min(self._lw - 1, x))
-            ny = max(1, min(self._lh - 1, y))
-            self.layout_data.status.set(key, nx, ny)
+            sp = self._status_pos()
+            sp.set(key, x, y)
+            clamp_status(sp, key, self._lw, self._lh)   # 整体留在屏内
+            nx, ny = sp.get(key)
             self.status_moved.emit(key, nx, ny)
             self.update()
             return
@@ -239,7 +255,7 @@ class LayoutCanvas(QWidget):
         font = QFont("sans-serif", 5)
         painter.setFont(font)
         for idx, key in enumerate(STATUS_KEYS):
-            sx, sy = self.layout_data.status.get(key)
+            sx, sy = self._status_pos().get(key)
             hw, hh = self._status_hit_size(key)
             selected = self.sel_group == GROUP_STATUS and self.sel_index == idx
             painter.setPen(QPen(QColor(255, 255, 255) if selected else QColor(110, 100, 80),
@@ -252,9 +268,13 @@ class LayoutCanvas(QWidget):
             else:
                 painter.drawRect(sx, sy, hw, hh)
                 painter.setPen(QPen(QColor(190, 200, 215), 1))
-                text = "SOCD:…" if key == STATUS_TEXT else "电量"
-                painter.drawText(sx, sy, hw, hh,
-                                 Qt.AlignmentFlag.AlignCenter, text)
+                if key == STATUS_TEXT:
+                    painter.drawText(sx, sy, hw, hh,
+                                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                     "SOCD:UP DP:DIG MODE:XIN")
+                else:
+                    painter.drawText(sx, sy, hw, hh,
+                                     Qt.AlignmentFlag.AlignCenter, "电量")
 
     def _draw_highlight(self, painter: QPainter, b: Btn) -> None:
         painter.setPen(QPen(QColor(255, 255, 255), 1, Qt.PenStyle.DashLine))

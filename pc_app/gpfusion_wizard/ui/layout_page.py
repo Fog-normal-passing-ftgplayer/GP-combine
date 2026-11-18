@@ -42,7 +42,6 @@ from ..layout_model import (
     STATUS_KEYS,
     STATUS_NAMES,
     StatusPos,
-    status_defaults,
     LITE_SCREEN,
     LITE_STATUS_H,
     Btn,
@@ -237,10 +236,12 @@ class LayoutPage(QWidget):
     def _sync_from_state(self) -> None:
         # 载入时统一夹取：越界按键直接拉回屏内（旧状态文件/换屏都会踩到）
         w, h, sh = self._dims()
-        # 换到非 240 分辨率且用户没动过状态栏时，套用该分辨率的默认位置
-        if not self.lite and self._layout().status.is_default() and (w, h) != (240, 135):
-            self._layout().status = status_defaults(w, h)
-        fixed = sanitize_layout(self._layout(), w, h, status_h=sh)
+        if not self.lite:
+            # 各分辨率各存一份状态栏位置；切屏时画布尺寸必须跟着变，否则整体错位
+            self.canvas.set_resolution(self.state.screen_res, w, h)
+            self._status()          # 没这一分辨率的值时按默认建一份
+        fixed = sanitize_layout(self._layout(), w, h, status_h=sh,
+                                res=self.state.screen_res)
         self.canvas.set_layout(self._layout())
         self._set_combo_by_data(self.default_combo, self.state.default_layout)
         self.lever_check.blockSignals(True)
@@ -275,6 +276,11 @@ class LayoutPage(QWidget):
 
     def _layout(self) -> Layout:
         return self.state.lite_layout if self.lite else self.state.layout
+
+    def _status(self):
+        """当前分辨率那一份状态栏位置（各分辨率独立保存）。"""
+        w, h, _ = self._dims()
+        return self._layout().status_for(self.state.screen_res, w, h)
 
     def _dims(self) -> tuple[int, int, int]:
         """返回 (宽, 高, 状态栏高度)，用于夹取/画布/滑条上限。"""
@@ -352,7 +358,7 @@ class LayoutPage(QWidget):
             self.size_label.setText("尺寸")
             self.size_value.setText("随内容")
             self.del_btn.setEnabled(False)          # 状态栏元素不能删
-            x, y = self._layout().status.get(key)
+            x, y = self._status().get(key)
             self._set_spin(self.x_spin, x)
             self._set_spin(self.y_spin, y)
             return
@@ -460,7 +466,7 @@ class LayoutPage(QWidget):
     def _on_status_moved(self, key: str, x: int, y: int) -> None:
         # 模型是唯一真相：画布拖动时它已经改过了，但数字框那条路径不会，
         # 所以这里无条件再写一次（值是相同的也无所谓）
-        self._layout().status.set(key, x, y)
+        self._status().set(key, x, y)
         self.canvas.set_selection(GROUP_STATUS, STATUS_KEYS.index(key))
         self._set_spin(self.x_spin, x)      # blockSignals，避免又触发一次写盘
         self._set_spin(self.y_spin, y)
@@ -632,7 +638,8 @@ class LayoutPage(QWidget):
     def _write_and_save(self) -> None:
         # 写头文件前再夹一次：拖到边缘/放大后越界的按键会被拉回屏内
         w, h, sh = self._dims()
-        fixed = sanitize_layout(self._layout(), w, h, status_h=sh)
+        fixed = sanitize_layout(self._layout(), w, h, status_h=sh,
+                                res=self.state.screen_res)
         self.state.save()
         src = self.state.lite_source_dir if self.lite else self.state.source_dir
         if not src:
@@ -645,7 +652,8 @@ class LayoutPage(QWidget):
                 write_lite_layout_header(self._layout(), out)
             else:
                 out = local_layout_header(Path(src), self.state.screen_res)
-                write_layout_header(self._layout(), out)
+                write_layout_header(self._layout(), out,
+                                    self.state.screen_res, w, h)
             note = "（已修正 %d 个越界按键）" % fixed if fixed else ""
             self.status_label.setText("✔ 已实时写入 %s%s" % (out, note))
             self.status_label.setStyleSheet("color: #64E0A0;")

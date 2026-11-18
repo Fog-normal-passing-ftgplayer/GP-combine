@@ -18,7 +18,10 @@ def _btn_line(b: Btn) -> str:
     )
 
 
-def generate_layout_header(layout: Layout) -> str:
+def generate_layout_header(
+    layout: Layout, res: str = "240x135",
+    width: int = 240, height: int = 135,
+) -> str:
     lines: list[str] = []
     lines.append("#pragma once")
     lines.append("// GP-Fusion 用户按键布局 — 由 GP-Combine 配置助手自动生成，请勿手改。")
@@ -41,7 +44,7 @@ def generate_layout_header(layout: Layout) -> str:
     lines.append("#define USER_LEVER_KNOB %d" % layout.lever.knob)
     lines.append("")
     lines.append("// 状态栏元素位置（逻辑坐标；wifi 用的是圆心，和固件 drawMiniWireless 一致）")
-    st = layout.status
+    st = layout.status_for(res, width, height)
     lines.append("#define USER_STATUS_TEXT_X %d" % st.text_x)
     lines.append("#define USER_STATUS_TEXT_Y %d" % st.text_y)
     lines.append("#define USER_STATUS_BATT_X %d" % st.batt_x)
@@ -52,7 +55,10 @@ def generate_layout_header(layout: Layout) -> str:
     return "\n".join(lines)
 
 
-def write_layout_header(layout: Layout, out_path: Path) -> None:
+def write_layout_header(
+    layout: Layout, out_path: Path,
+    res: str = "240x135", width: int = 240, height: int = 135,
+) -> None:
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(generate_layout_header(layout), encoding="utf-8")
+    out.write_text(generate_layout_header(layout, res, width, height), encoding="utf-8")

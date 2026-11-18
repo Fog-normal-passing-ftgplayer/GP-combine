@@ -87,8 +87,10 @@ def import_config(
             )
             write_defaults_header(new_state.default_layout,
                                   local_defaults_header(src, new_state.screen_res))
+            _w, _h = screen_dims(new_state.screen_res)
             write_layout_header(
-                new_state.layout, local_layout_header(src, new_state.screen_res)
+                new_state.layout, local_layout_header(src, new_state.screen_res),
+                new_state.screen_res, _w, _h,
             )
             notes.append("灯序 / 布局 / 默认布局已写回源码目录")
         except Exception as exc:  # noqa: BLE001

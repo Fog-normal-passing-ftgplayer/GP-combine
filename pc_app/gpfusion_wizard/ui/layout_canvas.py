@@ -21,8 +21,10 @@ from ..layout_model import (
     STATUS_WIFI,
     Btn,
     STATUS_TEXT_SAMPLE,
+    STATUS_WIFI_ARCS,
+    STATUS_WIFI_DOT_R,
     clamp_status,
-    status_extent,
+    status_box,
     Layout,
 )
 
@@ -101,9 +103,9 @@ class LayoutCanvas(QWidget):
         return [(k, sp.get(k)[0], sp.get(k)[1]) for k in STATUS_KEYS]
 
     @staticmethod
-    def _status_hit_size(key: str) -> tuple[int, int]:
-        """命中/绘制用的包围盒（w, h）；wifi 按圆心算。"""
-        return status_extent(key)   # 和固件一致：文字 184x10、电池 18x10、wifi 12x12
+    def _status_box(key: str) -> tuple[int, int, int, int]:
+        """相对锚点的包围盒；wifi 不对称（锚点是底部圆心）。"""
+        return status_box(key)
 
     def _group_items(self, group: str) -> list[Btn]:
         if group == GROUP_MOVE:
@@ -148,15 +150,9 @@ class LayoutCanvas(QWidget):
         for idx in range(len(STATUS_KEYS) - 1, -1, -1):
             key = STATUS_KEYS[idx]
             sx, sy = self._status_pos().get(key)
-            hw, hh = self._status_hit_size(key)
-            if key == STATUS_WIFI:
-                if (x - sx) ** 2 + (y - sy) ** 2 <= 8 * 8:
-                    self.sel_group, self.sel_index = GROUP_STATUS, idx
-                    self._drag = (GROUP_STATUS, idx)
-                    self.item_selected.emit(GROUP_STATUS, idx)
-                    self.update()
-                    return
-            elif sx - 2 <= x <= sx + hw + 2 and sy - 2 <= y <= sy + hh + 2:
+            bx0, by0, bx1, by1 = self._status_box(key)
+            if (sx + bx0 - 2 <= x <= sx + bx1 + 2
+                    and sy + by0 - 2 <= y <= sy + by1 + 2):
                 self.sel_group, self.sel_index = GROUP_STATUS, idx
                 self._drag = (GROUP_STATUS, idx)
                 self.item_selected.emit(GROUP_STATUS, idx)
@@ -256,25 +252,30 @@ class LayoutCanvas(QWidget):
         painter.setFont(font)
         for idx, key in enumerate(STATUS_KEYS):
             sx, sy = self._status_pos().get(key)
-            hw, hh = self._status_hit_size(key)
+            bx0, by0, bx1, by1 = self._status_box(key)
+            bw, bh = bx1 - bx0, by1 - by0
             selected = self.sel_group == GROUP_STATUS and self.sel_index == idx
             painter.setPen(QPen(QColor(255, 255, 255) if selected else QColor(110, 100, 80),
                                 1, Qt.PenStyle.DashLine))
+            painter.drawRect(sx + bx0, sy + by0, bw, bh)
+            painter.setPen(QPen(QColor(190, 200, 215), 1))
             if key == STATUS_WIFI:
-                painter.drawEllipse(sx - 6, sy - 6, 12, 12)
+                # 和固件一致：底部圆心一个点 + 往上三道弧
+                painter.setBrush(QColor(190, 200, 215))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(sx - STATUS_WIFI_DOT_R, sy - STATUS_WIFI_DOT_R,
+                                    STATUS_WIFI_DOT_R * 2, STATUS_WIFI_DOT_R * 2)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.setPen(QPen(QColor(190, 200, 215), 1))
-                painter.drawText(sx - 6, sy - 6, 12, 12,
-                                 Qt.AlignmentFlag.AlignCenter, "W")
+                for r in STATUS_WIFI_ARCS:
+                    painter.drawArc(sx - r, sy - r, r * 2, r * 2, 35 * 16, 110 * 16)
+            elif key == STATUS_TEXT:
+                painter.drawText(sx, sy, bw, bh,
+                                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                 "SOCD:UP DP:DIG MODE:XIN")
             else:
-                painter.drawRect(sx, sy, hw, hh)
-                painter.setPen(QPen(QColor(190, 200, 215), 1))
-                if key == STATUS_TEXT:
-                    painter.drawText(sx, sy, hw, hh,
-                                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                                     "SOCD:UP DP:DIG MODE:XIN")
-                else:
-                    painter.drawText(sx, sy, hw, hh,
-                                     Qt.AlignmentFlag.AlignCenter, "电量")
+                painter.drawText(sx, sy, bw, bh,
+                                 Qt.AlignmentFlag.AlignCenter, "电量")
 
     def _draw_highlight(self, painter: QPainter, b: Btn) -> None:
         painter.setPen(QPen(QColor(255, 255, 255), 1, Qt.PenStyle.DashLine))

@@ -209,6 +209,7 @@ class MainWindow(QWidget):
         outer.addWidget(footer)
 
         self.prep_page.ready_changed.connect(self._update_nav)
+        self.prep_page.resolution_changed.connect(self._on_resolution_changed)
         self.lite_source_page.ready_changed.connect(self._update_nav)
         self.upload_page.finished_upload.connect(self._on_upload_finished)
         self.lite_uf2_page.finished_build.connect(self._on_lite_build_finished)
@@ -238,11 +239,30 @@ class MainWindow(QWidget):
         self._apply_mode_steps()
         self._go_to(0)
 
+    def _reload_res_pages(self) -> None:
+        """分辨率变了：背景/布局/GIF/预览写到各自的工程目录，必须重载。"""
+        for page in (self.bg_page, self.layout_page, self.gif_page, self.sim_page):
+            try:
+                page.reload_state()
+            except Exception:  # noqa: BLE001  单页失败不该拖垮其它页
+                pass
+
+    def _on_resolution_changed(self) -> None:
+        self._reload_res_pages()
+        self._update_nav()
+
     def _go_to(self, row: int) -> None:
         row = max(0, min(row, self._mode_page_count() - 1))
         idx = self._mode_offset() + row
         self._cur_row = row
         self.stack.setCurrentIndex(idx)
+        if self._mode == "full" and row in (1, 2, 3):
+            # 背景 / 布局 / GIF 都按分辨率写各自的工程目录，进来先对齐一次
+            page = {1: self.bg_page, 2: self.layout_page, 3: self.gif_page}[row]
+            try:
+                page.reload_state()
+            except Exception:  # noqa: BLE001
+                pass
         if self._mode == "full" and row == 6:
             self.sim_page.on_shown()
         if self._mode == "full" and row == 7:

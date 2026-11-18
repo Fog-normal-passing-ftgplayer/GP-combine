@@ -344,28 +344,36 @@ STATUS_TEXT_SAMPLE = "SOCD:UP DP:DIG MODE:XIN"
 STATUS_TEXT_W = len(STATUS_TEXT_SAMPLE) * 8       # 184
 STATUS_TEXT_H = 10
 STATUS_BATT_W, STATUS_BATT_H = 18, 10
-STATUS_WIFI_R = 6
+
+# 无线图标不是"圆心 + 半径"：固件 drawMiniWireless 在 (x,y) 打一个半径 2 的点，
+# 再往上画半径 4 / 7 / 10 的三道弧（-145°~-35°）。所以 (x,y) 是底部圆心，
+# 图形实际占 x-9..x+9、y-10..y+2 —— 相对锚点是**不对称**的。
+STATUS_WIFI_DOT_R = 2
+STATUS_WIFI_ARCS = (4, 7, 10)
+
+
+def status_box(key: str) -> tuple[int, int, int, int]:
+    """元素相对锚点的包围盒 (dx0, dy0, dx1, dy1)，含边界。"""
+    if key == STATUS_TEXT:
+        return 0, 0, STATUS_TEXT_W, STATUS_TEXT_H
+    if key == STATUS_BATT:
+        return 0, 0, STATUS_BATT_W, STATUS_BATT_H
+    r = STATUS_WIFI_ARCS[-1]
+    return -r + 1, -r, r - 1, STATUS_WIFI_DOT_R
 
 
 def status_extent(key: str) -> tuple[int, int]:
-    """元素占的宽高；wifi 的 (x,y) 是圆心，这里按 2r 算。"""
-    if key == STATUS_TEXT:
-        return STATUS_TEXT_W, STATUS_TEXT_H
-    if key == STATUS_BATT:
-        return STATUS_BATT_W, STATUS_BATT_H
-    return STATUS_WIFI_R * 2, STATUS_WIFI_R * 2
+    """元素包围盒的宽高。"""
+    dx0, dy0, dx1, dy1 = status_box(key)
+    return dx1 - dx0, dy1 - dy0
 
 
 def clamp_status(sp: "StatusPos", key: str, width: int, height: int) -> bool:
-    """把元素整体夹进屏幕（不是只夹锚点）。返回是否改动过。"""
+    """把元素整体夹进屏幕（按包围盒，不是只夹锚点）。返回是否改动过。"""
     x, y = sp.get(key)
-    if key == STATUS_WIFI:
-        nx = max(STATUS_WIFI_R, min(width - STATUS_WIFI_R, x))
-        ny = max(STATUS_WIFI_R, min(height - STATUS_WIFI_R, y))
-    else:
-        bw, bh = status_extent(key)
-        nx = max(0, min(max(0, width - bw), x))
-        ny = max(0, min(max(0, height - bh), y))
+    dx0, dy0, dx1, dy1 = status_box(key)
+    nx = max(-dx0, min(width - 1 - dx1, x))
+    ny = max(-dy0, min(height - 1 - dy1, y))
     if (nx, ny) != (x, y):
         sp.set(key, nx, ny)
         return True

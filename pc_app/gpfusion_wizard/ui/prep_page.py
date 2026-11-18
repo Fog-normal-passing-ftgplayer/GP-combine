@@ -50,6 +50,7 @@ from ..wizard_state import WizardState, source_ready
 
 class PrepPage(QWidget):
     ready_changed = Signal()
+    resolution_changed = Signal()   # 切了屏幕分辨率：背景/布局/GIF/预览都得跟着换
 
     def __init__(self, state: WizardState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -308,6 +309,7 @@ class PrepPage(QWidget):
         self.state.save()
         self._refresh_source()
         self.ready_changed.emit()
+        self.resolution_changed.emit()
 
     def is_ready(self) -> bool:
         return bool(self.state.port) and self._cli_ok and self._core_ok and self._source_ok

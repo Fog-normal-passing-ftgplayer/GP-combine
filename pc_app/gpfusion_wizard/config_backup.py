@@ -75,11 +75,10 @@ def import_config(
 
     if src is not None:
         try:
-            # 背景类型标记（动态壁纸）与源码目录同步
+            # 固件已改成运行时判断，不再需要 bg_wallpaper.h 这个编译期标记；
+            # 顺手清掉历史残留
             wp = local_wallpaper_header(src, new_state.screen_res)
-            if new_state.bg_kind == "dynamic":
-                wp.write_text("#pragma once\n#define BG_WALLPAPER 1\n", encoding="utf-8")
-            elif wp.exists():
+            if wp.exists():
                 wp.unlink()
             write_pico_user_header(
                 local_pico_user_header(src),

@@ -59,3 +59,7 @@ build-all/
 
 # 仿真器的发行包（含 build/ 产物，走 GitHub Release，不入库）
 tools/GP-combine固件彩屏模拟（linux版本）.zip
+
+# 旧的动态壁纸编译期标记（固件已改成运行时判断，不再生成）
+*/bg_wallpaper.h
+*/gif_user.h

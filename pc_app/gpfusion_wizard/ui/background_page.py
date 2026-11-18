@@ -162,13 +162,9 @@ class BackgroundPage(QWidget):
         self._apply_kind_widgets()
         self.generate_now()
 
-    def _write_wallpaper_marker(self) -> None:
-        res = self.state.screen_res
-        out = local_wallpaper_header(Path(self.state.source_dir), res)
-        out.write_text("#pragma once\n#define BG_WALLPAPER 1\n", encoding="utf-8")
-        return out
-
-    def _remove_wallpaper_marker(self) -> None:
+    def _clear_wallpaper_marker(self) -> None:
+        """固件已改成运行时判断（屏保模式选 GIF 即屏保，否则当壁纸），
+        bg_wallpaper.h 这个编译期标记不再需要；顺手清掉历史残留。"""
         res = self.state.screen_res
         out = local_wallpaper_header(Path(self.state.source_dir), res)
         if out.exists():
@@ -229,15 +225,15 @@ class BackgroundPage(QWidget):
         try:
             res = self.state.screen_res
             if self.state.bg_kind == "dynamic":
-                out = self._write_wallpaper_marker()
+                self._clear_wallpaper_marker()
                 self.status_label.setText(
-                    "✔ 动态壁纸已启用（%s）；请在「GIF 动画」页选择 GIF"
-                    % out
+                    "✔ 动态壁纸已启用；请在「GIF 动画」页选择 GIF"
+                    "（它会写进卡内 /wp/1.gfr）"
                 )
                 self.status_label.setStyleSheet("color: #64E0A0;")
                 self.changed.emit()
                 return
-            self._remove_wallpaper_marker()
+            self._clear_wallpaper_marker()
             src = self.state.background_src
             if not src or not Path(src).is_file():
                 self.status_label.setText("请先选择一张背景图片")

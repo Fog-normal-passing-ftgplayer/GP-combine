@@ -79,6 +79,24 @@ build.bat --check        :: 只检查工具链，别编译
 > 用内容哈希而不是修改时间：arduino-cli 有增量缓存，源码没实质变化时不会
 > 重写产物，靠时间戳判断会一直误报过期。
 
+### ⚠️ 安装路径不要有中文
+
+`sim_main.cpp` 的文件 I/O 用的是 `fopen` / `MultiByteToWideChar(CP_ACP)`，也就是
+按**系统 ANSI 代码页**解释路径：
+
+- 中文 Windows（CP936）：中文路径能用
+- 英文/其他 Windows（CP1252 等）：**中文路径下截图会写不出来**
+
+而这个目录名本身就叫 `GP-combine固件彩屏模拟（windows版本）`，`build/`、`out/`
+都在它下面。所以最稳的做法是把它放到**纯 ASCII 路径**下，例如：
+
+```
+D:\gp-combine-sim\        ← 推荐
+D:\工具\GP-combine固件彩屏模拟（windows版本）\   ← 英文系统上截图会失败
+```
+
+（把整个仓库放在 ASCII 路径下更保险；Linux 侧没这个问题，UTF-8 路径是原生的。）
+
 ### 工具链
 
 优先用 **Visual Studio 2019/2022**（「使用 C++ 的桌面开发」）——脚本通过

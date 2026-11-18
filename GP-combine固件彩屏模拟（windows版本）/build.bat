@@ -53,7 +53,7 @@ REM ---- 1) .ino.cpp present and up to date? ---------------------------------
 call :src_hash
 set "NEED_INO=0"
 if not exist "%SRC%" set "NEED_INO=1"
-if "%NEED_INO%"=="0" if exist "%STAMP%" (
+if "%NEED_INO%"=="0" if not "%SRCHASH%"=="none" if exist "%STAMP%" (
   set /p "OLDHASH="<"%STAMP%"
   if not "!OLDHASH!"=="!SRCHASH!" set "NEED_INO=1"
 )

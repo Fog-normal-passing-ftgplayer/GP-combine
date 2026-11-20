@@ -123,7 +123,10 @@ static const char *resetReasonShort(const char *canonical) {
 #define FRAME_TYPE_ESP_SAVE 0x07       // ESP32 -> Pico: 保存 ESP32 侧设置
 #define FRAME_TYPE_ESP_LOAD_REQ 0x08   // ESP32 -> Pico: 请求读取
 #define FRAME_TYPE_ESP_LOAD 0x09       // Pico -> ESP32: 回传设置
-#define FRAME_TYPE_MUTE 0x0A           // ESP32 -> Pico: 1=静音USB输入 0=恢复
+#define FRAME_TYPE_MUTE 0x0A
+#define FRAME_TYPE_LOCK 0x0B           // ESP32 -> Pico: 比赛锁键（1=锁，后跟屏蔽掩码）
+// 比赛锁键屏蔽的系统键：A1(HOME/PS) + A2
+#define LOCK_BTN_MASK  ((uint16_t)((1u << 12) | (1u << 13)))           // ESP32 -> Pico: 1=静音USB输入 0=恢复
 
 // ---- views ----
 #define VIEW_LAYOUT 0   // default: button layout + status
@@ -191,11 +194,23 @@ enum ThemeStyle {
 };
 uint8_t curThemeStyle = THEME_STYLE_NONE;
 
+// ---- 比赛锁键 --------------------------------------------------------------
+// 锁上后：屏蔽 A1(HOME/PS)/A2、禁掉长按 S2 进菜单的快捷键、主界面按键转红。
+// 解除：同时按住 S1+S2 两秒（进不了菜单，只能靠这个手势）。
+static bool compLock = false;
+static unsigned long lockComboStart = 0;
+static unsigned long lastLockSent = 0;
+
 // 游戏主界面（背景图为深色）固定浅色，不随主题变化，保证任何主题下可读
 #define LAYOUT_TEXT    RGB565(215, 222, 235)
 #define LAYOUT_RING    RGB565(150, 160, 175)
 #define LAYOUT_HI      0xFFFF
 #define LAYOUT_TEXT_ON 0x0000
+// 比赛锁键：按键圈/文字与按下填充都转红
+#define LAYOUT_LOCK_RING RGB565(255, 70, 70)
+#define LAYOUT_LOCK_HI   RGB565(255, 40, 40)
+static inline uint16_t layoutRingColor() { return compLock ? LAYOUT_LOCK_RING : LAYOUT_RING; }
+static inline uint16_t layoutHiColor()   { return compLock ? LAYOUT_LOCK_HI   : LAYOUT_HI; }
 
 #define FONT_SCALE     2
 #define ACC_SETTINGS   RGB565(80,200,255)
@@ -291,6 +306,7 @@ static MenuOpt gpOpts[] = {
   {"反向X", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
   {"反向Y", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
   {"去抖延迟", OPT_INT, 5, 1, 20, 1, NULL, 0, "ms"},
+  {"比赛锁键", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
 };
 
 static MenuOpt sysOpts[] = {
@@ -310,7 +326,7 @@ static MenuOpt histOpts[] = {
 };
 
 static MenuSection settingsSections[] = {
-  {"手柄", gpOpts, 7},
+  {"手柄", gpOpts, 8},
   {"显示", histOpts, 4},
   {"系统", sysOpts, 3},
 };
@@ -754,11 +770,11 @@ void drawRing(int cx, int cy, int r, uint16_t color) {
 
 void drawBtn(int cx, int cy, int r, bool pressed, const char *label) {
   if (pressed) {
-    drawDisc(cx, cy, r, LAYOUT_HI);
+    drawDisc(cx, cy, r, layoutHiColor());
     drawTextCentered(cx, cy, label, LAYOUT_TEXT_ON);
   } else {
-    drawRing(cx, cy, r, LAYOUT_RING);
-    drawTextCentered(cx, cy, label, LAYOUT_RING);
+    drawRing(cx, cy, r, layoutRingColor());
+    drawTextCentered(cx, cy, label, layoutRingColor());
   }
 }
 
@@ -775,16 +791,17 @@ void layoutSquare(int cx, int cy, int size, bool pressed, const char *label) {
   int sx = lx(cx - size / 2), sy = ly(cy - size / 2), ss = lr(size);
   if (ss < 2) return;
   if (pressed) {
-    lfbRect(sx, sy, ss, ss, LAYOUT_HI);
+    lfbRect(sx, sy, ss, ss, layoutHiColor());
     drawTextCentered(sx + ss / 2, sy + ss / 2, label, LAYOUT_TEXT_ON);
   } else {
+    uint16_t rc = layoutRingColor();
     for (int t = 0; t < 2; t++) {
-      drawLine(sx + t, sy, sx + ss - 1, sy, LAYOUT_RING);
-      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, LAYOUT_RING);
-      drawLine(sx, sy + t, sx, sy + ss - 1, LAYOUT_RING);
-      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, LAYOUT_RING);
+      drawLine(sx + t, sy, sx + ss - 1, sy, rc);
+      drawLine(sx + t, sy + ss - 1, sx + ss - 1, sy + ss - 1, rc);
+      drawLine(sx, sy + t, sx, sy + ss - 1, rc);
+      drawLine(sx + ss - 1, sy + t, sx + ss - 1, sy + ss - 1, rc);
     }
-    drawTextCentered(sx + ss / 2, sy + ss / 2, label, LAYOUT_RING);
+    drawTextCentered(sx + ss / 2, sy + ss / 2, label, rc);
   }
 }
 
@@ -1572,6 +1589,7 @@ void restoreOpts() {
   for (int i = 0; i < sec.count && i < MAX_SUB_OPTS; i++) sec.opts[i].value = optSnap[i];
   if (subPage == 3) applyBgSettings(); // 背景: re-apply reverted values
   if (subPage == 0 && subSection == 1) applyHistSettings(); // 设置 > 显示
+  if (subPage == 0 && subSection == 0) applyLockSettings(); // 设置 > 手柄（比赛锁键）
   if (subPage == 5) applyWirelessSettings(); // 无线
   redrawNeeded = true;
 }
@@ -1710,6 +1728,7 @@ void saveConfigFile() {
   f.printf("wl=%d\n", wlOpts[0].value);
   f.printf("theme=%d\n", histOpts[2].value);
   f.printf("style=%d\n", histOpts[3].value);
+  f.printf("lock=%d\n", gpOpts[7].value);
   f.flush();
   f.close();
   sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
@@ -1739,11 +1758,14 @@ void loadConfigFile() {
     else if (k == "wl")   wlOpts[0].value = constrain(v, 0, 1);
     else if (k == "theme") histOpts[2].value = constrain(v, 0, THEME_COUNT - 1);
     else if (k == "style") histOpts[3].value = constrain(v, 0, 2);
+    else if (k == "lock") gpOpts[7].value = constrain(v, 0, 1);
+    else if (k == "lock") gpOpts[7].value = constrain(v, 0, 1);
   }
   f.close();
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
+  applyLockSettings();
   // 不再强制关屏保：选「GIF」时卡内动画就当屏保素材用
 }
 
@@ -1817,6 +1839,7 @@ void applyEspCfg(uint8_t *p, uint8_t len) {
   applyBgSettings();
   applyHistSettings();
   applyWirelessSettings();
+  applyLockSettings();
   // 不再强制关屏保：选「GIF」时卡内动画就当屏保素材用
   redrawNeeded = true;
 }
@@ -2094,6 +2117,34 @@ void sendMuteFrame(bool mute) {
   frame[5] = (uint8_t)(crc & 0xFF);
   frame[6] = (uint8_t)(crc >> 8);
   uartWrite(frame, sizeof(frame));
+}
+
+// 比赛锁键状态变化时通知 Pico：锁定则让它把 HOME/PS 等从 USB 输出里屏蔽掉
+void sendLockFrame() {
+  uint8_t f[9];
+  f[0] = FRAME_MAGIC;
+  f[1] = FRAME_VERSION;
+  f[2] = FRAME_TYPE_LOCK;
+  f[3] = 3;
+  f[4] = compLock ? 1 : 0;
+  f[5] = (uint8_t)(LOCK_BTN_MASK & 0xFF);
+  f[6] = (uint8_t)(LOCK_BTN_MASK >> 8);
+  uint16_t crc = 0xFFFF;
+  for (int i = 1; i <= 6; i++) crc = crc16_update(crc, f[i]);
+  f[7] = (uint8_t)(crc & 0xFF);
+  f[8] = (uint8_t)(crc >> 8);
+  uartWrite(f, sizeof(f));
+}
+
+// 菜单项是唯一真相：值变了才通知 Pico，避免每次重绘都发帧
+void applyLockSettings() {
+  bool want = gpOpts[7].value != 0;
+  if (want == compLock) return;
+  compLock = want;
+  lockComboStart = 0;
+  sendLockFrame();
+  lastLockSent = millis();
+  redrawNeeded = true;
 }
 
 // push the 手柄 (gamepad) section values to the Pico
@@ -2419,12 +2470,24 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       if (s2Held && !s2WasHeld) s2PressStart = millis();
       if (!s2Held) s2PressStart = 0;
       s2WasHeld = s2Held;
-      if (s2PressStart && millis() - s2PressStart >= 3000) {
+      if (!compLock && s2PressStart && millis() - s2PressStart >= 3000) {
         s2PressStart = 0;
         eggSeq = 0;
         view = VIEW_MENU;
         sendMuteFrame(true);
         redrawNeeded = true;
+      }
+      // 比赛锁键：锁定期间进不了菜单，用 S1+S2 按住 2 秒解除
+      if (compLock && s2Held && (buttons & 0x0100)) {
+        if (!lockComboStart) lockComboStart = millis();
+        else if (millis() - lockComboStart >= 2000) {
+          lockComboStart = 0;
+          gpOpts[7].value = 0;
+          applyLockSettings();
+          saveConfigFile();
+        }
+      } else {
+        lockComboStart = 0;
       }
       if (inputChanged) redrawNeeded = true;
     }
@@ -2495,6 +2558,7 @@ static void radioSendNow(bool tryLock = false) {
   // 读 tx*（linkTask 收到 UART 输入帧就写），不是 lastButtons —— 后者只在
   // 渲染循环里更新，一帧十几毫秒，发出去就慢了。
   uint16_t wBtns = menuMute ? 0 : txButtons;
+  if (compLock) wBtns &= (uint16_t)~LOCK_BTN_MASK;   // 比赛锁键：HOME/PS 不转发
   uint8_t wDpad = menuMute ? 0 : txDpad;
   uint16_t wLX = menuMute ? 0x8000 : txLX;
   uint16_t wLY = menuMute ? 0x8000 : txLY;
@@ -2716,6 +2780,13 @@ void setup(){
 }
 
 void loop(){
+  // 比赛锁键：每 2 秒重发一次帧。Pico 比 ESP32 晚启动或中途重启都会忘记锁，
+  // 只靠"状态变化时发一次"的话，比赛期间 Pico 一重启 HOME 就悄悄恢复了。
+  // 9 字节 / 2 秒，对 UART 完全无感。
+  if (compLock && millis() - lastLockSent > 2000) {
+    lastLockSent = millis();
+    sendLockFrame();
+  }
   // 无线延后启动：开机动画播完（UI 已经正常显示）再给射频上电
   if (wirelessStartPending && !bootAnimActive) {
     wirelessStartPending = false;

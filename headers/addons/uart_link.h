@@ -41,6 +41,7 @@
 #define LINK_FRAME_TYPE_ESP_LOAD_REQ 0x08  // ESP32 -> Pico: 请求读取
 #define LINK_FRAME_TYPE_ESP_LOAD 0x09      // Pico -> ESP32: 回传设置
 #define LINK_FRAME_TYPE_MUTE 0x0A          // ESP32 -> Pico: 1=静音USB输入 0=恢复
+#define LINK_FRAME_TYPE_LOCK 0x0B          // ESP32 -> Pico: 比赛锁键 [0]=1锁 [1..2]=屏蔽掩码(LE)
 
 // ---- LED 配置帧（type 0x06）payload 语义，Pico 与 ESP32 必须一致 ----
 //   [0] AnimationNonPressedEffects 枚举 id（CE 的 LED 重写，0..LINK_LED_EFFECT_MAX）
@@ -65,6 +66,9 @@ public:
     virtual std::string name() { return "UARTLinkAddon"; }
     virtual void reinit() {}
     static bool isInputMuted() { return inputMuted; }
+    // 比赛锁键：锁定后把 mask 里的按键从 USB 输出里屏蔽（HOME/PS=A1/A2）
+    static bool isLocked() { return lockActive; }
+    static uint16_t getLockMask() { return lockMask; }
 private:
     void espCfgCommitNow();   // 主循环里真正写 flash（不再借 alarm 中断）
     void sendInputFrame(uint16_t buttons, uint8_t dpad,
@@ -78,6 +82,7 @@ private:
     void onEspSaveFrame(uint8_t *payload, uint8_t len);
     void onEspLoadReq();
     void onMuteFrame(uint8_t *payload, uint8_t len);
+    void onLockFrame(uint8_t *payload, uint8_t len);
     void sendEspConfigFrame(bool ok, const uint8_t *data);
     bool espCfgRead();
     void espCfgScheduleWrite();
@@ -112,6 +117,8 @@ private:
     volatile bool espCfgWritePending = false;
     absolute_time_t espCfgWriteDue;   // 合并 60ms 内的多次保存，到点由主循环落盘
     static bool inputMuted;
+    static bool lockActive;
+    static uint16_t lockMask;
 };
 
 #endif

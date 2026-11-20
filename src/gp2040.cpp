@@ -313,6 +313,10 @@ void __not_in_flash_func(GP2040::run)() {
 		memcpy(&processedGamepad->state, &gamepad->state, sizeof(GamepadState));
 		// GP-Combine: 菜单打开时静音 USB 输出；processedGamepad 保持真实状态，
 		// 这样 ESP32 菜单仍能在 UART 输入帧里看到按键。
+		// GP-Combine 比赛锁键：屏蔽 HOME/PS 等系统键，但游戏按键照常输出
+		if (UARTLinkAddon::isLocked()) {
+			gamepad->state.buttons &= (uint16_t)~UARTLinkAddon::getLockMask();
+		}
 		if (UARTLinkAddon::isInputMuted()) {
 			gamepad->state.buttons = 0;
 			gamepad->state.dpad = 0;

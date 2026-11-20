@@ -16,6 +16,8 @@
 #include "FlashPROM.h"
 
 bool UARTLinkAddon::inputMuted = false;
+bool UARTLinkAddon::lockActive = false;
+uint16_t UARTLinkAddon::lockMask = 0;
 
 // ESP32 侧设置持久化：存在 Pico flash 顶部下方独立 4KB 扇区（避开 GP2040-CE 配置区）
 #define ESP_CFG_XIP_ADDR  0x101F7000
@@ -158,6 +160,13 @@ void UARTLinkAddon::onEspLoadReq() {
 void UARTLinkAddon::onMuteFrame(uint8_t *payload, uint8_t len) {
     if (len < 1) return;
     inputMuted = (payload[0] != 0);
+}
+
+void UARTLinkAddon::onLockFrame(uint8_t *payload, uint8_t len) {
+    if (len < 1) return;
+    lockActive = (payload[0] != 0);
+    if (len >= 3) lockMask = (uint16_t)payload[1] | ((uint16_t)payload[2] << 8);
+    else lockMask = 0;
 }
 
 void UARTLinkAddon::sendInputFrame(uint16_t buttons, uint8_t dpad,
@@ -429,6 +438,11 @@ void UARTLinkAddon::handleRxByte(uint8_t b) {
             rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
             rxType == LINK_FRAME_TYPE_MUTE) {
             onMuteFrame(rxPayload, rxLen);
+        }
+        else if (b == (uint8_t)(rxCrcCalc >> 8) &&
+            rxCrcLo == (uint8_t)(rxCrcCalc & 0xFF) &&
+            rxType == LINK_FRAME_TYPE_LOCK) {
+            onLockFrame(rxPayload, rxLen);
         }
         rxState = 0;
         break;

@@ -443,11 +443,13 @@ static MenuOpt histOpts[] = {
   {"按键布局", OPT_ENUM, DEFAULT_LAYOUT, 0, 3, 1, LAYOUT_NAMES, 4, ""},
   {"主题", OPT_ENUM, 0, 0, THEME_COUNT - 1, 1, THEME_NAMES, THEME_COUNT, ""},
   {"风格", OPT_ENUM, 0, 0, 2, 1, STYLE_NAMES, 3, ""},
+  // 菜单页滑入动效：默认关，保持原来的瞬切；列表内的横滑动画不受影响
+  {"菜单滑入", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
 };
 
 static MenuSection settingsSections[] = {
   {"手柄", gpOpts, 8},
-  {"显示", histOpts, 4},
+  {"显示", histOpts, 5},
   {"系统", sysOpts, 3},
 };
 static MenuSection sleepSections[] = {
@@ -2055,6 +2057,7 @@ void saveConfigFile() {
   f.printf("theme=%d\n", histOpts[2].value);
   f.printf("style=%d\n", histOpts[3].value);
   f.printf("lock=%d\n", gpOpts[7].value);
+  f.printf("mslide=%d\n", histOpts[4].value);
   f.flush();
   f.close();
   sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
@@ -2085,7 +2088,7 @@ void loadConfigFile() {
     else if (k == "theme") histOpts[2].value = constrain(v, 0, THEME_COUNT - 1);
     else if (k == "style") histOpts[3].value = constrain(v, 0, 2);
     else if (k == "lock") gpOpts[7].value = constrain(v, 0, 1);
-    else if (k == "lock") gpOpts[7].value = constrain(v, 0, 1);
+    else if (k == "mslide") histOpts[4].value = constrain(v, 0, 1);
   }
   f.close();
   applyBgSettings();
@@ -2377,6 +2380,7 @@ void updateAnimation() {
 // ---- 页面滑动转场 ----------------------------------------------------------
 void slideBegin(int dir) {
   if (!slideSnap) return;
+  if (histOpts[4].value == 0) return;   // 显示 > 菜单滑入：关掉就走原来的瞬切
   memcpy(slideSnap, lfb, (size_t)SCR_W * SCR_H * sizeof(uint16_t));
   slideDir = dir; slideStart = millis(); slideActive = true; lastFrameTime = 0;
 }

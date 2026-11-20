@@ -4,12 +4,13 @@
 Uses the system Noto Sans CJK SC font. Add phrases below and re-run to grow
 the subset; unknown characters simply render as blank.
 """
+import os
 from PIL import Image, ImageDraw, ImageFont
 
 FONT_PATH = "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"
 FONT_INDEX = 2          # Noto CJK TTC order: 0=JP 1=KR 2=SC 3=TC 4=HK
 SIZE = 16
-OUT = "/home/bit/GP2040-CE/esp32/cn_font.h"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cn_font.h")
 
 # menu page titles + common UI words; deduplicated into the glyph set
 PHRASES = [
@@ -34,6 +35,7 @@ PHRASES = [
     "街机", "按键布局",
     "主题", "风格", "浅色",
     "动态壁纸", "壁纸来源", "卡内文件", "固件内置", "屏保已禁用",
+    "比赛锁键", "自检", "竞技",
     "小游戏", "开始", "找不到", "就绪", "内核", "缩放", "拉伸", "居中", "列表", "加载", "失败",
     "品牌橙", "绯红", "翠绿", "紫罗兰", "青蓝",
     "复古", "扫描线", "暗角",

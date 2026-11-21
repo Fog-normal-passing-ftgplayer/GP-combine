@@ -1448,6 +1448,24 @@ void drawMenuTabsStrip() {
   }
 }
 
+// 第一层：只选图标（和演示的页签条同款：全宽均分 + 选中药丸 + 下划线）
+void drawMenuStrip() {
+  drawMenuBg();
+  const int step = 240 / NUM_PAGES;
+  const int cy = (int)(135 * 0.34f);
+  for (int i = 0; i < NUM_PAGES; i++) {
+    int cx = step / 2 + i * step;
+    bool cur = (i == page);
+    if (cur) {
+      lfbRect(cx - 12, cy - 12, 24, 26, RGB565(30, 44, 60));
+      lfbRect(cx - 12, cy + 14, 24, 2, ACC_SETTINGS);
+    }
+    drawMenuTabIcon(i, cx, cy, cur ? colHi : colRing);
+  }
+  drawCJKTextCentered(120, (int)(135 * 0.60f), PAGE_TITLES[page], colHi, 2);
+  drawCJKTextCentered(120, 135 - 16, "左右选择  A进入  B返回", RGB565(120,132,150), 1);
+}
+
 void renderSub() {
   drawMenuBg();
   SubPageDef &def = subDefs[subPage];
@@ -1954,10 +1972,14 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_EASTER) {
     renderEaster();
   } else {
-    drawMenuBg();
-    drawPageContent(outX, page);
-    drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
-    lfbThumbs(page);
+    if (histOpts[5].value) {
+      drawMenuStrip();
+    } else {
+      drawMenuBg();
+      drawPageContent(outX, page);
+      drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
+      lfbThumbs(page);
+    }
   }
   applyThemeStyleOverlay();
 }
@@ -2109,6 +2131,11 @@ void renderBootAnim(float t) {
 }
 
 void menuMove(int dir) {
+  if (histOpts[5].value) {           // 图标层：直接移动选择
+    page = (page + dir + NUM_PAGES) % NUM_PAGES;
+    redrawNeeded = true;
+    return;
+  }
   if (animating) { pendingDir = dir; return; }
   animDir = dir;
   animStart = millis();

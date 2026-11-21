@@ -443,11 +443,12 @@ static MenuOpt histOpts[] = {
   {"风格", OPT_ENUM, 0, 0, 2, 1, STYLE_NAMES, 3, ""},
   // 菜单页滑入动效：默认关，保持原来的瞬切；列表内的横滑动画不受影响
   {"菜单滑入", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
+  {"图标菜单", OPT_BOOL, 0, 0, 1, 1, NULL, 0, ""},
 };
 
 static MenuSection settingsSections[] = {
   {"手柄", gpOpts, 8},
-  {"显示", histOpts, 5},
+  {"显示", histOpts, 6},
   {"系统", sysOpts, 3},
 };
 static MenuSection sleepSections[] = {
@@ -1689,7 +1690,8 @@ void drawMenuBgShifted() {
     }
 }
 
-// ---- 菜单第一层：图标选择 ------------------------------------------------
+// ---- 图标菜单样式（设置 > 显示 > 图标菜单，默认关）-------------------------
+// 和演示一致：页签图标 + 选项列表同屏，左上角提示当前页。
 void drawMenuTabIcon(int idx, int cx, int cy, uint16_t c) {
   switch (idx) {
     case 0:                                  // 设置：三条滑条
@@ -1732,21 +1734,18 @@ void drawMenuTabIcon(int idx, int cx, int cy, uint16_t c) {
   }
 }
 
-void drawMenuStrip() {
-  drawMenuBg();
+// 页签条：画在标题行和选项行之间的空档（y=14..27），不挪动下面的行区
+void drawMenuTabsStrip() {
   const int step = SCR_W / NUM_PAGES;
-  const int cy = (int)(SCR_H * 0.40f);
   for (int i = 0; i < NUM_PAGES; i++) {
     int cx = step / 2 + i * step;
-    bool cur = (i == page);
+    bool cur = (i == subPage);
     if (cur) {
-      lfbRect(cx - 16, cy - 16, 32, 34, RGB565(26, 38, 52));
-      lfbRect(cx - 16, cy + 18, 32, 2, ACC_SETTINGS);
+      lfbRect(cx - 10, 13, 20, 15, RGB565(30, 44, 60));
+      lfbRect(cx - 10, 27, 20, 1, ACC_SETTINGS);
     }
-    drawMenuTabIcon(i, cx, cy, cur ? colHi : colRing);
+    drawMenuTabIcon(i, cx, 20, cur ? colHi : colRing);
   }
-  drawCJKTextCentered(SCR_CX, (int)(SCR_H * 0.60f), PAGE_TITLES[page], colHi, 2);
-  drawCJKTextCentered(SCR_CX, SCR_H - 16, "左右选择  A进入  B返回", RGB565(120,132,150), 1);
 }
 
 void renderSub() {
@@ -1778,6 +1777,7 @@ void renderSub() {
   }
   if (subList) { // section list level
     drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
+    if (histOpts[5].value) drawMenuTabsStrip();
     int hY = 28 + (int)(selY - scrollOff);
     lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
     int first = (int)(scrollOff / 30.0f);
@@ -1796,6 +1796,7 @@ void renderSub() {
   } else { // option list level
     MenuSection &sec = def.sections[subSection];
     drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
+    if (histOpts[5].value) drawMenuTabsStrip();
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
       if (radioUp && radioLinked) {
@@ -2123,6 +2124,7 @@ void saveConfigFile() {
   f.printf("style=%d\n", histOpts[3].value);
   f.printf("lock=%d\n", gpOpts[7].value);
   f.printf("mslide=%d\n", histOpts[4].value);
+  f.printf("icmenu=%d\n", histOpts[5].value);
   f.flush();
   f.close();
   sendEspSave();   // 同时镜像到 Pico flash，断电后从 Pico 读回
@@ -2154,6 +2156,7 @@ void loadConfigFile() {
     else if (k == "style") histOpts[3].value = constrain(v, 0, 2);
     else if (k == "lock") gpOpts[7].value = constrain(v, 0, 1);
     else if (k == "mslide") histOpts[4].value = constrain(v, 0, 1);
+    else if (k == "icmenu") histOpts[5].value = constrain(v, 0, 1);
   }
   f.close();
   applyBgSettings();
@@ -2255,7 +2258,10 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_NES) {
     renderNes();
   } else {
-    drawMenuStrip();
+    drawMenuBg();
+    drawPageContent(outX, page);
+    drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
+    lfbThumbs(page);
   }
   applyThemeStyleOverlay();
 }
@@ -2407,8 +2413,10 @@ void renderBootAnim(float t) {
 }
 
 void menuMove(int dir) {
-  page = (page + dir + NUM_PAGES) % NUM_PAGES;
-  redrawNeeded = true;
+  if (animating) { pendingDir = dir; return; }
+  animDir = dir;
+  animStart = millis();
+  animating = true;
 }
 
 void updateAnimation() {

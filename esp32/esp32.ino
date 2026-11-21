@@ -1451,22 +1451,6 @@ void drawMenuStrip() {
   drawCJKTextCentered(120, 120, "左右选择  A进入  B返回", RGB565(120,132,150), 1);
 }
 
-void drawMenuTabs() {
-  int cx0 = 20, step = 40;                    // 6 个 -> 20,60,...,220? 实际用 (240/6)
-  step = 240 / NUM_PAGES;
-  cx0 = step / 2;
-  for (int i = 0; i < NUM_PAGES; i++) {
-    // 去掉电池页（内容还没做），保留位置但跳过绘制
-    int cx = cx0 + i * step;
-    bool cur = (i == subPage);
-    if (cur) {
-      lfbRect(cx - 10, 13, 20, 15, RGB565(30, 44, 60));
-      lfbRect(cx - 10, 27, 20, 1, ACC_SETTINGS);
-    }
-    drawMenuTabIcon(i, cx, 20, cur ? colHi : colRing);
-  }
-}
-
 void renderSub() {
   drawMenuBg();
   SubPageDef &def = subDefs[subPage];

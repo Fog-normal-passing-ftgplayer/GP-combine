@@ -1689,6 +1689,66 @@ void drawMenuBgShifted() {
     }
 }
 
+// ---- 菜单第一层：图标选择 ------------------------------------------------
+void drawMenuTabIcon(int idx, int cx, int cy, uint16_t c) {
+  switch (idx) {
+    case 0:                                  // 设置：三条滑条
+      for (int i = 0; i < 3; i++) {
+        int y = cy - 4 + i * 4;
+        drawLine(cx - 5, y, cx + 5, y, c);
+        lfbRect(cx - 5 + i * 4, y - 1, 3, 3, c);
+      }
+      break;
+    case 1:                                  // 电池
+      drawLine(cx - 5, cy - 3, cx + 4, cy - 3, c);
+      drawLine(cx - 5, cy + 3, cx + 4, cy + 3, c);
+      drawLine(cx - 5, cy - 3, cx - 5, cy + 3, c);
+      drawLine(cx + 4, cy - 3, cx + 4, cy + 3, c);
+      lfbRect(cx + 5, cy - 1, 2, 3, c);
+      lfbRect(cx - 4, cy - 2, 6, 5, ACC_BATTERY);
+      break;
+    case 2:                                  // 灯光：灯泡
+      drawDisc(cx, cy - 1, 4, c);
+      lfbRect(cx - 2, cy + 3, 5, 2, c);
+      lfbRect(cx - 1, cy + 6, 3, 1, c);
+      break;
+    case 3:                                  // 背景：相框 + 山
+      drawLine(cx - 6, cy - 4, cx + 5, cy - 4, c);
+      drawLine(cx - 6, cy + 4, cx + 5, cy + 4, c);
+      drawLine(cx - 6, cy - 4, cx - 6, cy + 4, c);
+      drawLine(cx + 5, cy - 4, cx + 5, cy + 4, c);
+      drawLine(cx - 5, cy + 3, cx - 1, cy - 2, c);
+      drawLine(cx - 1, cy - 2, cx + 3, cy + 3, c);
+      break;
+    case 4:                                  // 休眠：月牙
+      drawDisc(cx, cy, 5, c);
+      drawDisc(cx + 4, cy - 2, 5, colBg);
+      break;
+    default:                                 // 无线：点 + 两道弧
+      drawDisc(cx, cy + 4, 2, c);
+      drawArc(cx, cy + 4, 5, -145, -35, c);
+      drawArc(cx, cy + 4, 9, -145, -35, c);
+      break;
+  }
+}
+
+void drawMenuStrip() {
+  drawMenuBg();
+  const int step = SCR_W / NUM_PAGES;
+  const int cy = (int)(SCR_H * 0.40f);
+  for (int i = 0; i < NUM_PAGES; i++) {
+    int cx = step / 2 + i * step;
+    bool cur = (i == page);
+    if (cur) {
+      lfbRect(cx - 16, cy - 16, 32, 34, RGB565(26, 38, 52));
+      lfbRect(cx - 16, cy + 18, 32, 2, ACC_SETTINGS);
+    }
+    drawMenuTabIcon(i, cx, cy, cur ? colHi : colRing);
+  }
+  drawCJKTextCentered(SCR_CX, (int)(SCR_H * 0.60f), PAGE_TITLES[page], colHi, 2);
+  drawCJKTextCentered(SCR_CX, SCR_H - 16, "左右选择  A进入  B返回", RGB565(120,132,150), 1);
+}
+
 void renderSub() {
   drawMenuBg();
   SubPageDef &def = subDefs[subPage];
@@ -2195,10 +2255,7 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_NES) {
     renderNes();
   } else {
-    drawMenuBg();
-    drawPageContent(outX, page);
-    drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
-    lfbThumbs(page);
+    drawMenuStrip();
   }
   applyThemeStyleOverlay();
 }
@@ -2350,10 +2407,8 @@ void renderBootAnim(float t) {
 }
 
 void menuMove(int dir) {
-  if (animating) { pendingDir = dir; return; }
-  animDir = dir;
-  animStart = millis();
-  animating = true;
+  page = (page + dir + NUM_PAGES) % NUM_PAGES;
+  redrawNeeded = true;
 }
 
 void updateAnimation() {

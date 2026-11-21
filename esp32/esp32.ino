@@ -1389,6 +1389,84 @@ void drawMenuBgShifted() {
   }
 }
 
+// ---- 轻量菜单样式：顶部图标页签条 ------------------------------------------
+// 6 个 12x12 图标，y=15..27 这段本来就空着，不需要挪动下面的选项行区。
+void drawMenuTabIcon(int idx, int cx, int cy, uint16_t c) {
+  switch (idx) {
+    case 0:                                  // 设置：三条滑条（只有横杠 + 方块，12px 下最清楚）
+      for (int i = 0; i < 3; i++) {
+        int y = cy - 4 + i * 4;
+        drawLine(cx - 5, y, cx + 5, y, c);
+        lfbRect(cx - 5 + i * 4, y - 1, 3, 3, c);
+      }
+      break;
+    case 1:                                  // 电池：外框 + 正极 + 满格
+      drawLine(cx - 5, cy - 3, cx + 4, cy - 3, c);
+      drawLine(cx - 5, cy + 3, cx + 4, cy + 3, c);
+      drawLine(cx - 5, cy - 3, cx - 5, cy + 3, c);
+      drawLine(cx + 4, cy - 3, cx + 4, cy + 3, c);
+      lfbRect(cx + 5, cy - 1, 2, 3, c);
+      lfbRect(cx - 4, cy - 2, 6, 5, ACC_BATTERY);
+      break;
+    case 2:                                  // 灯光：灯泡
+      drawDisc(cx, cy - 1, 4, c);
+      lfbRect(cx - 2, cy + 3, 5, 2, c);
+      lfbRect(cx - 1, cy + 6, 3, 1, c);
+      break;
+    case 3:                                  // 背景：相框 + 山
+      drawLine(cx - 6, cy - 4, cx + 5, cy - 4, c);
+      drawLine(cx - 6, cy + 4, cx + 5, cy + 4, c);
+      drawLine(cx - 6, cy - 4, cx - 6, cy + 4, c);
+      drawLine(cx + 5, cy - 4, cx + 5, cy + 4, c);
+      drawLine(cx - 5, cy + 3, cx - 1, cy - 2, c);
+      drawLine(cx - 1, cy - 2, cx + 3, cy + 3, c);
+      break;
+    case 4:                                  // 休眠：月牙
+      drawDisc(cx, cy, 5, c);
+      drawDisc(cx + 4, cy - 2, 5, colBg);
+      break;
+    default:                                 // 无线：点 + 两道弧
+      drawDisc(cx, cy + 4, 2, c);
+      drawArc(cx, cy + 4, 5, -145, -35, c);
+      drawArc(cx, cy + 4, 9, -145, -35, c);
+      break;
+  }
+}
+
+// 菜单第一层：只选上方图标。A 进入子页，B 回主界面（递进式，和 R1/L1 无关）
+void drawMenuStrip() {
+  drawMenuBg();
+  const int step = 240 / NUM_PAGES;
+  const int cy = 52;
+  for (int i = 0; i < NUM_PAGES; i++) {
+    int cx = step / 2 + i * step;
+    bool cur = (i == page);
+    if (cur) {
+      lfbRect(cx - 16, cy - 16, 32, 34, RGB565(26, 38, 52));
+      lfbRect(cx - 16, cy + 18, 32, 2, ACC_SETTINGS);
+    }
+    drawMenuTabIcon(i, cx, cy, cur ? colHi : colRing);
+  }
+  drawCJKTextCentered(120, 78, PAGE_TITLES[page], colHi, 2);
+  drawCJKTextCentered(120, 120, "左右选择  A进入  B返回", RGB565(120,132,150), 1);
+}
+
+void drawMenuTabs() {
+  int cx0 = 20, step = 40;                    // 6 个 -> 20,60,...,220? 实际用 (240/6)
+  step = 240 / NUM_PAGES;
+  cx0 = step / 2;
+  for (int i = 0; i < NUM_PAGES; i++) {
+    // 去掉电池页（内容还没做），保留位置但跳过绘制
+    int cx = cx0 + i * step;
+    bool cur = (i == subPage);
+    if (cur) {
+      lfbRect(cx - 10, 13, 20, 15, RGB565(30, 44, 60));
+      lfbRect(cx - 10, 27, 20, 1, ACC_SETTINGS);
+    }
+    drawMenuTabIcon(i, cx, 20, cur ? colHi : colRing);
+  }
+}
+
 void renderSub() {
   drawMenuBg();
   SubPageDef &def = subDefs[subPage];
@@ -1891,10 +1969,7 @@ void renderScene(int16_t outX, int16_t inX) {
   } else if (view == VIEW_EASTER) {
     renderEaster();
   } else {
-    drawMenuBg();
-    drawPageContent(outX, page);
-    drawPageContent(inX, (page + animDir + NUM_PAGES) % NUM_PAGES);
-    lfbThumbs(page);
+    drawMenuStrip();
   }
   applyThemeStyleOverlay();
 }
@@ -2046,10 +2121,9 @@ void renderBootAnim(float t) {
 }
 
 void menuMove(int dir) {
-  if (animating) { pendingDir = dir; return; }
-  animDir = dir;
-  animStart = millis();
-  animating = true;
+  // 图标层：直接移动选择（原先的缩略图整屏滑动已被图标层取代）
+  page = (page + dir + NUM_PAGES) % NUM_PAGES;
+  redrawNeeded = true;
 }
 
 void updateAnimation() {
@@ -2487,6 +2561,7 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
               lastStepTime = nowMs;
               redrawNeeded = true;
             }
+            // L1/R1 切到上/下一页（左右键仍然用于改值）
             MenuOpt *o = &sec.opts[subSel];
             uint8_t heldLR = uiD & 0x0C; // LEFT/RIGHT (not for sliders)
             if (heldLR && o->type != OPT_SLIDER &&

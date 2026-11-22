@@ -1747,12 +1747,12 @@ void drawMenuTabsStrip() {
   if (tabXAnim > target - 0.5f && tabXAnim < target + 0.5f) tabXAnim = target;
   else redrawNeeded = true;
   int px = (int)(tabXAnim + 0.5f);
-  lfbRect(px, 13, step, 16, RGB565(30, 44, 60));
-  lfbRect(px, 27, step, 1, ACC_SETTINGS);
+  lfbRect(px, 10, step, 16, RGB565(30, 44, 60));
+  lfbRect(px, 24, step, 1, ACC_SETTINGS);
   for (int i = 0; i < NUM_PAGES; i++) {
     int cx = step / 2 + i * step;
     bool cur = (i == subPage);
-    drawMenuTabIcon(i, cx, 20, cur ? colHi : colRing);
+    drawMenuTabIcon(i, cx, 17, cur ? colHi : colRing);
   }
 }
 
@@ -1823,7 +1823,7 @@ void renderSub() {
     MenuSection &sec = def.sections[subSection];
     if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
 
-    if (subPage == 5) { // 无线: link status right-aligned on the title row
+    if (subPage == 5 && !histOpts[5].value) { // 无线: 图标菜单下不画（会和页签条重叠）
       char lb[24];
       if (radioUp && radioLinked) {
         snprintf(lb, sizeof(lb), "已连接%d%% R%d.%d", radioHistOk,

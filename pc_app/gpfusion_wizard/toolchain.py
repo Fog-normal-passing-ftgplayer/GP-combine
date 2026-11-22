@@ -1,6 +1,7 @@
 """工具链检测与命令构造：arduino-cli、ESP32 核心、git。"""
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import os
@@ -10,7 +11,6 @@ from pathlib import Path
 from .app_config import (
     ESP32_CORE,
     ESP32_INDEX_URL,
-    ESP32_INDEX_URL_MIRRORS,
     arduino_cli_exe_name,
     default_cli_path,
     is_windows,
@@ -97,32 +97,8 @@ def config_init_cmd(cli: Path) -> list[str]:
     return [str(cli), "config", "init"]
 
 
-def url_reachable(url: str, timeout: float = 4.0) -> bool:
-    try:
-        req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return 200 <= r.status < 400
-    except Exception:
-        return False
-
-
-def pick_esp32_index_url(timeout: float = 2.5) -> str:
-    """选一个能连通的下载源：环境变量 > jsDelivr > 官方。
-
-    注意：这个探测是同步的（会挡 UI），所以超时压到 2.5s；
-    两个源都不通就直接用官方，交给 arduino-cli 自己报错。
-    """
-    env = os.environ.get("GPFUSION_ESP32_INDEX")
-    if env:
-        return env
-    for url in ESP32_INDEX_URL_MIRRORS:
-        if url_reachable(url, timeout):
-            return url
-    return ESP32_INDEX_URL
-
-
-def add_index_cmd(cli: Path, url: str | None = None) -> list[str]:
-    return [str(cli), "config", "add", "board_manager.additional_urls", url or ESP32_INDEX_URL]
+def add_index_cmd(cli: Path) -> list[str]:
+    return [str(cli), "config", "add", "board_manager.additional_urls", ESP32_INDEX_URL]
 
 
 def update_index_cmd(cli: Path) -> list[str]:
@@ -136,6 +112,47 @@ def install_core_cmd(cli: Path) -> list[str]:
 def git_clone_cmd(url: str, dest: Path) -> list[str]:
     # --recursive: GP2040-CE 依赖 lib/tinyusb 等子模块
     return ["git", "clone", "--progress", "--recursive", url, str(dest)]
+
+
+def arduino_data_dir() -> Path:
+    if is_windows():
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Arduino15"
+    return Path.home() / ".arduino15"
+
+
+def esp32_archive_info() -> tuple[str, str, int] | None:
+    """从 arduino-cli 缓存的索引里取最新 ESP32 平台的 (下载地址, 文件名, 字节数)。
+
+    用来做断点续传：arduino-cli 自己不支持续传，断了就从 0 开始。
+    """
+    idx = arduino_data_dir() / "package_esp32_index.json"
+    try:
+        data = json.loads(idx.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    for pkg in data.get("packages", []):
+        if pkg.get("name") != "esp32":
+            continue
+        plats = [p for p in pkg.get("platforms", []) if p.get("url")]
+        if not plats:
+            return None
+        plats.sort(key=lambda p: [int(x) if x.isdigit() else 0
+                                  for x in str(p.get("version", "0")).replace("-", ".").split(".")])
+        p = plats[-1]
+        url = p["url"]
+        name = p.get("archiveFileName") or url.rsplit("/", 1)[-1]
+        return url, name, int(p.get("size") or 0)
+    return None
+
+
+def core_download_cmd(cli: Path) -> list[str]:
+    return [str(cli), "core", "download", ESP32_CORE]
+
+
+def resume_download_cmd(url: str, dest: Path) -> list[str]:
+    """curl 断点续传：-C - 从已有文件的末尾继续，网络抖动能接上。"""
+    return ["curl", "-L", "-C", "-", "--retry", "5", "--retry-delay", "3",
+            "-o", str(dest), url]
 
 
 def core_install_cmd(cli: Path) -> list[str]:

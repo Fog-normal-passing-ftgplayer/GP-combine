@@ -56,15 +56,6 @@ def local_build_dir_name(screen_res: str) -> str:
     return "build_esp32s3_%s" % screen_res if is_vertical(screen_res) else "build_esp32s3"
 ESP32_CORE = "esp32:esp32"
 ESP32_INDEX_URL = "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
-# 候选下载源：按顺序探测，选第一个连得通的。
-# jsDelivr 在国内一般能通，内容是官方 gh-pages 的镜像（实测字节完全一致）。
-# 注意：索引镜像只解决 737KB 的索引，300MB 的核心包地址仍指向 GitHub Releases，
-# 那一段要么走代理（HTTPS_PROXY），要么自己改索引里的 url 字段后本地起服务。
-ESP32_INDEX_URL_MIRRORS = [
-    "https://cdn.jsdelivr.net/gh/espressif/arduino-esp32@gh-pages/package_esp32_index.json",
-    ESP32_INDEX_URL,
-]
-
 # 默认仓库地址（GP-Combine 官方仓库）
 DEFAULT_REPO_URL = "https://github.com/Fog-normal-passing-ftgplayer/GP-combine.git"
 

@@ -44,7 +44,10 @@ from ..toolchain import (
     linux_install_hint,
     update_index_cmd,
     winget_install_cmd,
-    pick_esp32_index_url,
+    esp32_archive_info,
+    core_download_cmd,
+    resume_download_cmd,
+    arduino_data_dir,
 )
 from ..wizard_state import WizardState, source_ready
 
@@ -348,6 +351,27 @@ class PrepPage(QWidget):
             self._run_auto_prep()
 
     def _fail_step(self, label: str, code: int) -> None:
+        # 核心包 300MB，arduino-cli 不支持续传（断了就从 0 开始）。
+        # 这里抓未下完的残包，用 curl -C - 接着下，下完直接进安装。
+        if "下载 ESP32 核心包" in label and getattr(self, "_dl_retries", 0) < 3:
+            self._dl_retries = getattr(self, "_dl_retries", 0) + 1
+            info = esp32_archive_info()
+            cli = find_arduino_cli()
+            if info and cli:
+                url, name, size = info
+                dest = arduino_data_dir() / "staging" / "packages" / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                have = dest.stat().st_size if dest.exists() else 0
+                mb = lambda n: "%.0fMB" % (n / 1048576.0)
+                self._log("下载中断（%s/%s），用 curl -C - 续传 %d/3…"
+                          % (mb(have), mb(size) if size else "?", self._dl_retries))
+                self._busy = False
+                self._queue = [
+                    (resume_download_cmd(url, dest), self.core_bar, "续传核心包"),
+                    (core_install_cmd(cli), self.core_bar, "安装 ESP32 核心"),
+                ]
+                self._next_queue()
+                return
         # 核心包 300MB，国内下载经常中途断流。断了自己清缓存重试，
         # 不用让用户去点「强制重新下载」。
         if "安装 ESP32 核心" in label and getattr(self, "_core_retries", 0) < 2:
@@ -493,16 +517,16 @@ class PrepPage(QWidget):
         if not force and core_installed(cli):
             self._finish_step("ESP32 核心已就绪")
             return
-        index_url = pick_esp32_index_url()
         self._log("安装 ESP32 核心 esp32:esp32（首次约 300MB）…")
-        self._log("下载源：%s" % index_url)
         self._core_retries = 0
         self._queue = [
             (config_init_cmd(cli), self.core_bar, "初始化 arduino-cli 配置"),
-            (add_index_cmd(cli, index_url), self.core_bar, "添加 ESP32 下载源"),
+            (add_index_cmd(cli), self.core_bar, "添加 ESP32 下载源"),
             (update_index_cmd(cli), self.core_bar, "更新板卡索引"),
+            (core_download_cmd(cli), self.core_bar, "下载 ESP32 核心包"),
             (core_install_cmd(cli), self.core_bar, "安装 ESP32 核心"),
         ]
+        self._dl_retries = 0
         self._queue_final = lambda: self._finish_step("ESP32 核心安装完成")
         self._next_queue()
 

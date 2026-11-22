@@ -44,6 +44,7 @@ from ..toolchain import (
     linux_install_hint,
     update_index_cmd,
     winget_install_cmd,
+    pick_esp32_index_url,
 )
 from ..wizard_state import WizardState, source_ready
 
@@ -347,6 +348,20 @@ class PrepPage(QWidget):
             self._run_auto_prep()
 
     def _fail_step(self, label: str, code: int) -> None:
+        # 核心包 300MB，国内下载经常中途断流。断了自己清缓存重试，
+        # 不用让用户去点「强制重新下载」。
+        if "安装 ESP32 核心" in label and getattr(self, "_core_retries", 0) < 2:
+            self._core_retries = getattr(self, "_core_retries", 0) + 1
+            self._log("✘ 下载中断（退出码 %d），清理未完成的缓存后自动重试 %d/2…"
+                      % (code, self._core_retries))
+            for d in core_staging_dirs():
+                shutil.rmtree(d, ignore_errors=True)
+            cli = find_arduino_cli()
+            if cli:
+                self._busy = False
+                self._queue = [(core_install_cmd(cli), self.core_bar, "安装 ESP32 核心")]
+                self._next_queue()
+                return
         self._busy = False
         self._queue.clear()
         self._log("✘ %s（退出码 %d）" % (label, code))
@@ -478,11 +493,13 @@ class PrepPage(QWidget):
         if not force and core_installed(cli):
             self._finish_step("ESP32 核心已就绪")
             return
-        self._log("安装 ESP32 核心 esp32:esp32（首次约 300MB，"
-                  "需科学上网/代理，请耐心等待）…")
+        index_url = pick_esp32_index_url()
+        self._log("安装 ESP32 核心 esp32:esp32（首次约 300MB）…")
+        self._log("下载源：%s" % index_url)
+        self._core_retries = 0
         self._queue = [
             (config_init_cmd(cli), self.core_bar, "初始化 arduino-cli 配置"),
-            (add_index_cmd(cli), self.core_bar, "添加 ESP32 下载源"),
+            (add_index_cmd(cli, index_url), self.core_bar, "添加 ESP32 下载源"),
             (update_index_cmd(cli), self.core_bar, "更新板卡索引"),
             (core_install_cmd(cli), self.core_bar, "安装 ESP32 核心"),
         ]

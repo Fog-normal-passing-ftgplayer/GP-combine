@@ -4,11 +4,13 @@ from __future__ import annotations
 import shutil
 import subprocess
 import os
+import urllib.request
 from pathlib import Path
 
 from .app_config import (
     ESP32_CORE,
     ESP32_INDEX_URL,
+    ESP32_INDEX_URL_MIRRORS,
     arduino_cli_exe_name,
     default_cli_path,
     is_windows,
@@ -95,8 +97,32 @@ def config_init_cmd(cli: Path) -> list[str]:
     return [str(cli), "config", "init"]
 
 
-def add_index_cmd(cli: Path) -> list[str]:
-    return [str(cli), "config", "add", "board_manager.additional_urls", ESP32_INDEX_URL]
+def url_reachable(url: str, timeout: float = 4.0) -> bool:
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return 200 <= r.status < 400
+    except Exception:
+        return False
+
+
+def pick_esp32_index_url(timeout: float = 2.5) -> str:
+    """选一个能连通的下载源：环境变量 > jsDelivr > 官方。
+
+    注意：这个探测是同步的（会挡 UI），所以超时压到 2.5s；
+    两个源都不通就直接用官方，交给 arduino-cli 自己报错。
+    """
+    env = os.environ.get("GPFUSION_ESP32_INDEX")
+    if env:
+        return env
+    for url in ESP32_INDEX_URL_MIRRORS:
+        if url_reachable(url, timeout):
+            return url
+    return ESP32_INDEX_URL
+
+
+def add_index_cmd(cli: Path, url: str | None = None) -> list[str]:
+    return [str(cli), "config", "add", "board_manager.additional_urls", url or ESP32_INDEX_URL]
 
 
 def update_index_cmd(cli: Path) -> list[str]:

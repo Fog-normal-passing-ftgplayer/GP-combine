@@ -1799,7 +1799,7 @@ void renderSub() {
   if (def.sectionCount == 0) { // placeholder until the page is built
     if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
     drawMenuIcon(ICON_X, 30, subPage);
-    drawCJKTextCentered(SCR_CX, 122, "待实现", RGB565(170,180,195), 1);
+    drawCJKTextCentered(SCR_CX, 122, subPage == 6 ? "按 A 进入列表" : "待实现", RGB565(170,180,195), 1);
     return;
   }
   if (subList) { // section list level
@@ -2768,7 +2768,15 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       // 焦点在图标行：左右换页，A 下到列表，B 退出菜单
       if (uiDEdge & 0x04) subPageStep(-1);
       if (uiDEdge & 0x08) subPageStep(+1);
-      if (bEdge & 0x01) { iconFocus = false; redrawNeeded = true; }
+      if (bEdge & 0x01) {
+        if (subDefs[subPage].sectionCount == 0 && subPage == 6) {
+          nesScanRoms();               // 小游戏占位页：直接进 ROM 列表
+          view = VIEW_NES_LIST;
+        } else {
+          iconFocus = false;           // 有列表的页面：焦点下移
+        }
+        redrawNeeded = true;
+      }
       else if (bEdge & 0x02) {
         view = VIEW_LAYOUT;
         sendMuteFrame(false);
@@ -3015,6 +3023,11 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
             }
           }
         }
+      }
+      if (def.sectionCount == 0 && (bEdge & 0x01) && subPage == 6) {
+        nesScanRoms();                 // 小游戏：A 进 ROM 列表
+        view = VIEW_NES_LIST;
+        redrawNeeded = true;
       }
       if (def.sectionCount == 0 && (bEdge & 0x02)) { // placeholder page: B back
         view = VIEW_MENU;

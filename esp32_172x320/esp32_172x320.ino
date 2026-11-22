@@ -2835,8 +2835,15 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
           redrawNeeded = true;
         }
       }
-      if (bEdge & 0x02) {            // B 返回菜单
-        view = VIEW_MENU;
+      if (bEdge & 0x02) {            // B 返回
+        if (histOpts[5].value) {
+          // 图标菜单：回到小游戏页、焦点在图标行（不是大图标总览页）
+          subPage = 6; subSel = 0; subSection = 0; subList = false;
+          iconFocus = true;
+          view = VIEW_SUB;
+        } else {
+          view = VIEW_MENU;
+        }
         selY = 0; scrollOff = 0;
         animating = false;
         pendingDir = 0;
@@ -3005,7 +3012,8 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
         redrawNeeded = true;
       }
       if (def.sectionCount == 0 && (bEdge & 0x02)) { // placeholder page: B back
-        view = VIEW_MENU;
+        if (histOpts[5].value) { iconFocus = true; view = VIEW_SUB; }  // 图标菜单：回图标行
+        else view = VIEW_MENU;
         redrawNeeded = true;
       }
       s2PressStart = 0;

@@ -513,6 +513,7 @@ static SubPageDef subDefs[NUM_PAGES] = {
 int subSel = 0;
 // 图标菜单：同一屏里两级焦点（图标行 <-> 选项列表）
 static bool iconFocus = false;
+static float tabXAnim = -1.0f;   // 页签指示器动画位置（px）
 int subSection = 0;
 bool subList = false;
 int subScroll = 0;   // first visible option row
@@ -1739,13 +1740,18 @@ void drawMenuTabIcon(int idx, int cx, int cy, uint16_t c) {
 // 页签条：画在标题行和选项行之间的空档（y=14..27），不挪动下面的行区
 void drawMenuTabsStrip() {
   const int step = SCR_W / NUM_PAGES;
+  float target = (float)(subPage * step);
+  if (tabXAnim < 0) tabXAnim = target;
+  // 缓动：每帧逼近目标，还在动就请求重绘
+  tabXAnim += (target - tabXAnim) * 0.30f;
+  if (tabXAnim > target - 0.5f && tabXAnim < target + 0.5f) tabXAnim = target;
+  else redrawNeeded = true;
+  int px = (int)(tabXAnim + 0.5f);
+  lfbRect(px, 13, step, 16, RGB565(30, 44, 60));
+  lfbRect(px, 27, step, 1, ACC_SETTINGS);
   for (int i = 0; i < NUM_PAGES; i++) {
     int cx = step / 2 + i * step;
     bool cur = (i == subPage);
-    if (cur) {
-      lfbRect(cx - 10, 13, 20, 15, RGB565(30, 44, 60));
-      lfbRect(cx - 10, 27, 20, 1, ACC_SETTINGS);
-    }
     drawMenuTabIcon(i, cx, 20, cur ? colHi : colRing);
   }
 }
@@ -1773,7 +1779,7 @@ void renderSub() {
   if (histOpts[5].value) drawMenuTabsStrip();   // 图标菜单：每个子页都显示页签条
   SubPageDef &def = subDefs[subPage];
   if (subPage == 1) { // 电池: custom status page
-    drawCJKTextCentered(SCR_CX, 6, "电池", colText, 1);
+    if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 6, "电池", colText, 1);
     int pct = battPercent(stBattMv);
     char buf[16];
     bool usb = (stBattFlags & 0x02) != 0;
@@ -1791,13 +1797,13 @@ void renderSub() {
     return;
   }
   if (def.sectionCount == 0) { // placeholder until the page is built
-    drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
+    if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
     drawMenuIcon(ICON_X, 30, subPage);
     drawCJKTextCentered(SCR_CX, 122, "待实现", RGB565(170,180,195), 1);
     return;
   }
   if (subList) { // section list level
-    drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
+    if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
     int hY = 28 + (int)(selY - scrollOff);
     if (!iconFocus) lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // 图标行有焦点时不亮列表
     int first = (int)(scrollOff / 30.0f);
@@ -1815,7 +1821,7 @@ void renderSub() {
     drawCJKTextCentered(SCR_CX, 122, "A进入 B返回 上下选择", RGB565(120,132,150), 1);
   } else { // option list level
     MenuSection &sec = def.sections[subSection];
-    drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
+    if (!histOpts[5].value) drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
 
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];

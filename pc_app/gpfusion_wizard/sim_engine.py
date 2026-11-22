@@ -38,6 +38,28 @@ def lib_tag(res: str) -> str:
     return "320" if "320" in res else "240"
 
 
+def sync_to_bin(res: str, source_dir: str | None = None) -> Path | None:
+    """把刚编好的库同步到 gpfusion_wizard/bin/。
+
+    打包成 exe 后 find_lib 只能读到 bin/（仓库不在 exe 旁边），
+    而「编译固件并重启预览」写到的是仓库 tools/*/build/ —— 不同步的话
+    重编就白做了，预览永远是旧的。
+    """
+    src = find_lib(res, source_dir)
+    if src is None:
+        return None
+    pkg_bin = Path(__file__).resolve().parent / "bin"
+    dst = pkg_bin / src.name
+    try:
+        if dst.resolve() == src.resolve():
+            return dst
+        pkg_bin.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        return dst
+    except OSError:
+        return None
+
+
 def find_lib(res: str, source_dir: str | None = None) -> Path | None:
     """找仿真库。
 

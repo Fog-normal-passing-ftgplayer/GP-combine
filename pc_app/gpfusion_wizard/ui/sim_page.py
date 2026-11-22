@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from ..app_config import local_wallpaper_gfr, screen_dims
 from ..sim_build import SimBuilder, build_plan, compile_hint, diagnose
-from ..sim_engine import find_lib, lib_tag
+from ..sim_engine import find_lib, lib_tag, sync_to_bin, lib_tag
 from ..wizard_state import WizardState
 from .firmware_screen import FirmwareScreen
 
@@ -175,7 +175,9 @@ class SimPage(QWidget):
             self.screen.setFocus()
             w, h = screen_dims(res)
             src = "卡内壁纸" if gfr else "静态背景（还没生成动态壁纸）"
-            self.info.setText("引擎已启动：%dx%d · %s\n库文件：%s" % (w, h, src, lib))
+            import datetime
+            mt = datetime.datetime.fromtimestamp(lib.stat().st_mtime).strftime("%m-%d %H:%M:%S")
+            self.info.setText("引擎已启动：%dx%d · %s\n库文件：%s（%s）" % (w, h, src, lib, mt))
 
     def _apply_power(self) -> None:
         mode = int(self.power_combo.currentData() or 0)
@@ -224,7 +226,11 @@ class SimPage(QWidget):
         if not ok:
             self.info.setText("构建失败，详情见下方日志（预览仍是旧版本）")
             return
-        self.info.setText("构建完成，正在重启预览…")
+        # 打包版只认 bin/：把新库同步过去，否则重启还是旧库
+        dst = sync_to_bin(str(self.res_combo.currentData() or self.state.screen_res),
+                          getattr(self.state, "source_dir", "") or None)
+        note = "（已同步 %s）" % dst.name if dst else "（警告：同步到 bin/ 失败）"
+        self.info.setText("构建完成，正在重启预览…" + note)
         self._start()
 
     def _on_res_changed(self) -> None:

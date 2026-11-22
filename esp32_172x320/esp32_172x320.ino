@@ -507,6 +507,8 @@ static SubPageDef subDefs[NUM_PAGES] = {
   {NULL, 0},              // 小游戏（按 A 进 ROM 列表，不走普通子页）
 };
 int subSel = 0;
+// 图标菜单：同一屏里两级焦点（图标行 <-> 选项列表）
+static bool iconFocus = false;
 int subSection = 0;
 bool subList = false;
 int subScroll = 0;   // first visible option row
@@ -1763,6 +1765,7 @@ void drawMenuStrip() {
 
 void renderSub() {
   drawMenuBg();
+  if (histOpts[5].value) drawMenuTabsStrip();   // 图标菜单：每个子页都显示页签条
   SubPageDef &def = subDefs[subPage];
   if (subPage == 1) { // 电池: custom status page
     drawCJKTextCentered(SCR_CX, 6, "电池", colText, 1);
@@ -1790,9 +1793,8 @@ void renderSub() {
   }
   if (subList) { // section list level
     drawCJKTextCentered(SCR_CX, 5, PAGE_TITLES[subPage], colText, 1);
-    if (histOpts[5].value) drawMenuTabsStrip();
     int hY = 28 + (int)(selY - scrollOff);
-    lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
+    if (!iconFocus) lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // 图标行有焦点时不亮列表
     int first = (int)(scrollOff / 30.0f);
     for (int i = first; i < def.sectionCount && i < first + 4; i++) {
       int y = 28 + (int)(i * 30 - scrollOff);
@@ -1809,7 +1811,7 @@ void renderSub() {
   } else { // option list level
     MenuSection &sec = def.sections[subSection];
     drawCJKTextCentered(SCR_CX, 5, sec.title, colText, 1);
-    if (histOpts[5].value) drawMenuTabsStrip();
+
     if (subPage == 5) { // 无线: link status right-aligned on the title row
       char lb[24];
       if (radioUp && radioLinked) {
@@ -1823,7 +1825,7 @@ void renderSub() {
                   radioLinked ? ACC_SETTINGS : RGB565(170,70,70), 1);
     }
     int hY = 28 + (int)(selY - scrollOff);
-    lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // gliding highlight bar
+    if (!iconFocus) lfbRect(8, hY - 2, 304, 19, RGB565(42,54,72)); // 图标行有焦点时不亮列表
     int first = (int)(scrollOff / 24.0f);
     for (int i = first; i < sec.count && i < first + 5; i++) {
       MenuOpt *o = &sec.opts[i];
@@ -2003,6 +2005,11 @@ void restoreOpts() {
 // go back one level (option list -> section list/menu)
 void subBack() {
   SubPageDef &def = subDefs[subPage];
+  if (histOpts[5].value && subList == false) {
+    iconFocus = true;            // 图标菜单：先回到图标行
+    redrawNeeded = true;
+    return;
+  }
   if (subList || def.sectionCount <= 1) {
     slideBegin(-1);
     view = VIEW_MENU;
@@ -2468,6 +2475,17 @@ void updateAnimation() {
 }
 
 // ---- 页面滑动转场 ----------------------------------------------------------
+void subPageStep(int dir) {
+  slideBegin(dir > 0 ? +1 : -1);
+  subPage = (subPage + dir + NUM_PAGES) % NUM_PAGES;
+  subSel = 0; subSection = 0;
+  subList = (subDefs[subPage].sectionCount > 1);
+  subScroll = 0; secScroll = 0;
+  selY = 0; scrollOff = 0;
+  listAnimating = false; sliderMode = false;
+  redrawNeeded = true;
+}
+
 void slideBegin(int dir) {
   if (!slideSnap) return;
   if (histOpts[4].value == 0) return;   // 显示 > 菜单滑入：关掉就走原来的瞬切
@@ -2715,7 +2733,17 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
     if (bEdge & 0x1000) pushHist("A1");
     if (bEdge & 0x2000) pushHist("A2");
 
-    if (view == VIEW_MENU) {
+    if (view == VIEW_SUB && iconFocus) {
+      // 焦点在图标行：左右换页，A 下到列表，B 退出菜单
+      if (uiDEdge & 0x04) subPageStep(-1);
+      if (uiDEdge & 0x08) subPageStep(+1);
+      if (bEdge & 0x01) { iconFocus = false; redrawNeeded = true; }
+      else if (bEdge & 0x02) {
+        view = VIEW_LAYOUT;
+        sendMuteFrame(false);
+        redrawNeeded = true;
+      }
+    } else if (view == VIEW_MENU) {
       if (uiDEdge & 0x04) menuMove(-1); // DPAD/摇杆 LEFT
       if (uiDEdge & 0x08) menuMove(+1); // DPAD/摇杆 RIGHT
       eggInput(dEdge);                // 彩蛋：右左...12 连击
@@ -2970,7 +2998,18 @@ void onInputFrame(uint8_t *payload, uint8_t len) {
       if (!compLock && s2PressStart && millis() - s2PressStart >= 3000) {
         s2PressStart = 0;
         eggSeq = 0;
-        view = VIEW_MENU;
+        if (histOpts[5].value) {
+          // 图标菜单：直接进子页，焦点先放在图标行
+          subPage = page;
+          subSel = 0; subSection = 0;
+          subList = (subDefs[subPage].sectionCount > 1);
+          subScroll = 0; secScroll = 0;
+          selY = 0; scrollOff = 0; listAnimating = false;
+          iconFocus = true;
+          view = VIEW_SUB;
+        } else {
+          view = VIEW_MENU;
+        }
         sendMuteFrame(true);
         redrawNeeded = true;
       }
